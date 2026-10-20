@@ -1,0 +1,38 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #ffffff; }
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.custom-node {
+  padding: 15px; 
+  border-radius: 8px; 
+  background-color: #1e293b; 
+  border: 2px solid #334155; 
+  color: white;
+  display: flex; 
+  align-items: center; 
+  gap: 10px; 
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3); 
+  position: relative;
+  width: 100%; 
+  height: 100%;
+  overflow: hidden; 
+}
+
+.status-dot { width: 12px; height: 12px; border-radius: 50%; position: absolute; top: 10px; right: 10px; }
+
+.status-visual { background-color: #64748b; }
+.status-online { background-color: #10b981; animation: pulse-green 2s infinite; }
+@keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+.status-offline { background-color: #ef4444; animation: pulse-red 1s infinite; }
+@keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+
+/* Deixa a bolinha de conexão mais visível e fácil de agarrar */
+.react-flow__handle {
+  width: 12px;
+  height: 12px;
+  background-color: #3b82f6;
+  border: 2px solid #1e293b;
+  z-index: 10;
+}
