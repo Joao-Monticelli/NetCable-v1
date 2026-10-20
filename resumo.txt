@@ -513,3 +513,21 @@ Para tornar a edição do diagrama muito mais fluida e próxima da realidade de 
   Essa funcionalidade se soma ao `EdgeModal.jsx`. O usuário tem **duas formas** de alterar uma conexão:
   1. **Visual e Rápida:** Arrastando a ponta do cabo no mapa.
   2. **Precisa:** Clicando na linha e alterando a Origem/Destino pelos selects do modal.
+
+  ### 3.11. Conexões Laterais Livres e Estilo de Cabo Ortogonal (Fix)
+
+Durante os testes de criação de topologias complexas, foi identificado que o React Flow estava forçando as conexões a subirem para o topo do equipamento, mesmo quando o usuário tentava puxar o cabo pelas laterais. Além disso, as curvas orgânicas (Bezier) dos cabos estavam se sobrepondo aos nós, dificultando a leitura visual da rede.
+
+Para corrigir isso e melhorar a experiência do usuário, foram aplicadas as seguintes soluções:
+
+- **Modo de Conexão Livre (`connectionMode="loose"`):**
+  Agora, as 4 bolinhas (Handles) de cada equipamento (Topo, Base, Esquerda, Direita) funcionam tanto como ponto de partida quanto de chegada. O usuário pode puxar um cabo da lateral esquerda de um Switch e conectar na lateral esquerda de um Servidor, sem restrições de direção.
+
+- **Identificadores Únicos nos Handles (`id="left"`, `id="right"`, etc.):**
+  Foi adicionado um ID a cada bolinha. Isso ensina o React Flow a respeitar a posição exata de onde o cabo está saindo, evitando que ele "puxe" a linha para o centro ou para o topo do nó de forma automática.
+
+- **Traço Ortogonal (`type: 'smoothstep'`):**
+  O estilo padrão dos cabos foi alterado de curvas suaves (que atravessavam os nós) para **linhas ortogonais em ângulos de 90 graus**. Agora, se você puxar um cabo para o lado, ele sairá reto horizontalmente, descerá/subirá na vertical e entrará reto no outro equipamento. Isso deixa o diagrama com aparência de esquema técnico/profissional.
+
+- **Raio de Reconexão (`reconnectRadius`):**
+  Aumentamos a área de "ímã" ao redor das bolinhas. Isso significa que o usuário não precisa ser milimétrico para reconectar um cabo já existente; basta soltar o mouse perto da bolinha que o React Flow faz a conexão.

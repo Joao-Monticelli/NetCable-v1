@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect, memo } from 'react'
 import ReactFlow, {
-  Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge
+  Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge
 } from 'reactflow'
 import { Server, Wifi, Shield, Monitor } from 'lucide-react'
 import EquipmentModal from './Modals/EquipmentModal'
@@ -20,9 +20,9 @@ const CustomNode = memo(({ data, selected }) => {
     <div className="custom-node" style={{ width: '100%', height: '100%' }}>
       <NodeResizer minWidth={150} minHeight={60} isVisible={selected} lineStyle={{ borderColor: '#3b82f6' }} handleStyle={{ backgroundColor: '#3b82f6' }} />
       
-      {/* Alças de conexão - Aumentadas para facilitar o arrasto */}
-      <Handle type="target" position={Position.Top} style={{ background: '#3b82f6', width: '12px', height: '12px', zIndex: 10 }} />
-      <Handle type="target" position={Position.Left} style={{ background: '#3b82f6', width: '12px', height: '12px', zIndex: 10 }} />
+      {/* Alças de conexão com position ID para o React Flow saber diferenciar */}
+      <Handle type="source" position={Position.Top} id="top" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
+      <Handle type="source" position={Position.Left} id="left" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
       
       <div className={`status-dot ${data.status === 'visual' ? 'status-visual' : (data.status === 'online' ? 'status-online' : 'status-offline')}`} />
       
@@ -32,19 +32,24 @@ const CustomNode = memo(({ data, selected }) => {
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{data.ip}</div>
       </div>
       
-      <Handle type="source" position={Position.Bottom} style={{ background: '#3b82f6', width: '12px', height: '12px', zIndex: 10 }} />
-      <Handle type="source" position={Position.Right} style={{ background: '#3b82f6', width: '12px', height: '12px', zIndex: 10 }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
+      <Handle type="source" position={Position.Right} id="right" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
     </div>
   )
 })
 
 const nodeTypes = { custom: CustomNode }
 
+// --- FORÇA O CABO A SER RETO (SmoothStep) ---
+const edgeTypes = {
+  smoothstep: SmoothStepEdge,
+}
+
 const defaultEdgeOptions = {
   animated: true,
+  type: 'smoothstep', // Força a linha a ser "quebrada" em 90 graus
   style: { stroke: '#3b82f6', strokeWidth: 2.5 },
   markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
-  // Aumenta a área de clique do cabo para facilitar a seleção
   interactionWidth: 20, 
 }
 
@@ -79,7 +84,6 @@ export default function NetworkMap({ initialNodes = [], initialEdges = [], newEq
   const onNodeClick = (event, node) => setSelectedNode(node)
   const onEdgeClick = (event, edge) => setSelectedEdge(edge)
 
-  // --- LÓGICA DE RECONEXÃO DE CABO ARRASTANDO A PONTA ---
   const onReconnect = useCallback(
     (oldEdge, newConnection) => {
       setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds))
@@ -135,6 +139,7 @@ export default function NetworkMap({ initialNodes = [], initialEdges = [], newEq
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -143,10 +148,10 @@ export default function NetworkMap({ initialNodes = [], initialEdges = [], newEq
         onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter}
         onEdgeMouseLeave={onEdgeMouseLeave}
-        // --- PROPS PARA PERMITIR ARRASTAR A PONTA DO CABO ---
         onReconnect={onReconnect}
         edgesReconnectable={true}
-        reconnectRadius={20} // Facilita acertar a ponta do cabo
+        reconnectRadius={20}
+        connectionMode="loose" 
         fitView
       >
         <Background />
