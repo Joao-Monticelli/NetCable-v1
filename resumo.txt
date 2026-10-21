@@ -531,3 +531,20 @@ Para corrigir isso e melhorar a experiência do usuário, foram aplicadas as seg
 
 - **Raio de Reconexão (`reconnectRadius`):**
   Aumentamos a área de "ímã" ao redor das bolinhas. Isso significa que o usuário não precisa ser milimétrico para reconectar um cabo já existente; basta soltar o mouse perto da bolinha que o React Flow faz a conexão.
+  ### 3.12. Refinamento Visual: Cores de Conexão e Ajustes de UI
+
+Para deixar o diagrama muito mais informativo e a interface mais limpa, foram implementadas as seguintes mudanças:
+
+- **Cores Dinâmicas nas Conexões:**
+  As linhas (edges) agora mudam de cor dependendo do status do equipamento de destino.
+  - 🟢 **Verde (`#10b981`):** Equipamento online e se comunicando.
+  - 🔴 **Vermelho (`#ef4444`):** Equipamento offline ou falha na comunicação.
+  - 🟡 **Amarelo (`#f59e0b`):** Equipamento em estado de "conectando" ou com status pendente (preparado para a Fase 2).
+  - ⚪ **Cinza (`#64748b`):** Equipamentos "Sem IP" (Visuais, que não são pingados).
+  *(Nota: Atualmente a cor é definida no momento da criação da conexão com base no status do nó alvo, mas será atualizada em tempo real quando o Backend estiver rodando).*
+
+- **Organização da Barra de Ferramentas:**
+  O botão de "Configurações" foi movido para o canto direito absoluto da barra superior (estilo Excel). A ordem agora é: `Adicionar Equipamento` -> `Salvar Projeto` -> `Configurações` (ícone de engrenagem).
+
+- **Redimensionamento por Quinas (NodeResizer):**
+  Removemos as linhas de redimensionamento das bordas superior e inferior. Agora, as alças de redimensionamento aparecem **apenas nas quinas (cantos)** do equipamento. O usuário deve clicar e arrastar a quina para ajustar tanto a largura quanto a altura de uma vez, garantindo um controle mais natural e preciso.
