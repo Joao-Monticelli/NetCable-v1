@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut } from 'lucide-react'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
+import { api } from '../services/api'
 
 export default function Editor() {
   const navigate = useNavigate()
@@ -18,6 +19,8 @@ export default function Editor() {
   
   const [mapNodes, setMapNodes] = useState([])
   const [mapEdges, setMapEdges] = useState([])
+  
+  const [showConfigMenu, setShowConfigMenu] = useState(false)
 
   const currentNodes = useRef([])
   const currentEdges = useRef([])
@@ -27,8 +30,7 @@ export default function Editor() {
     if (projectId === 'novo') return
     const fetchProjeto = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/projetos/${projectId}/dados`)
-        const data = await res.json()
+        const data = await api.obterProjeto(projectId)
         setProjectName(data.nome)
         
         const formattedNodes = data.equipamentos.map(eq => ({
@@ -39,8 +41,7 @@ export default function Editor() {
         
         const formattedEdges = data.conexoes.map(conn => ({
           id: conn.id, source: conn.source, target: conn.target, label: conn.label,
-          sourceHandle: conn.source_handle, // NOVO
-          targetHandle: conn.target_handle, // NOVO
+          sourceHandle: conn.source_handle, targetHandle: conn.target_handle,
           type: 'smoothstep', animated: true, interactionWidth: 20,
           style: { stroke: '#3b82f6', strokeWidth: 2.5 }, markerEnd: { type: 'arrowclosed', color: '#3b82f6' }
         }))
@@ -110,30 +111,63 @@ export default function Editor() {
       }))
       
       const conexoesFormatadas = currentEdges.current.map(edge => ({
-        id: edge.id, 
-        source: edge.source, 
-        target: edge.target, 
-        label: edge.label || null,
-        sourceHandle: edge.sourceHandle || null, // NOVO
-        targetHandle: edge.targetHandle || null  // NOVO
+        id: edge.id, source: edge.source, target: edge.target, label: edge.label || null,
+        sourceHandle: edge.sourceHandle || null, targetHandle: edge.targetHandle || null
       }))
 
       let idParaSalvar = projectId
       if (projectId === 'novo') {
-        const res = await fetch(`http://127.0.0.1:8000/api/projetos?nome=${encodeURIComponent(projectName)}`, { method: 'POST' })
-        const projetoCriado = await res.json()
+        const projetoCriado = await api.criarProjeto(projectName)
         idParaSalvar = projetoCriado.id
       }
-      const response = await fetch(`http://127.0.0.1:8000/api/projetos/${idParaSalvar}/salvar`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ equipamentos: equipamentosFormatados, conexoes: conexoesFormatadas })
-      })
-      if (response.ok) {
+      
+      const ok = await api.salvarMapa(idParaSalvar, equipamentosFormatados, conexoesFormatadas)
+      
+      if (ok) {
         alert('Projeto salvo!')
         if (projectId === 'novo') navigate(`/editor/${idParaSalvar}`, { replace: true })
       }
     } catch (error) { alert('Erro ao salvar.') } finally { setIsSaving(false) }
   }
+
+  // --- FUNÇÃO CORRIGIDA PARA GERAR O LINK ---
+  const handleCopyLink = () => {
+    if (projectId === 'novo') {
+      alert("Salve o projeto primeiro antes de gerar o link!");
+      return;
+    }
+    
+    // Pega o host atual (seja localhost ou 192.168...)
+    const link = `${window.location.origin}/share/${projectId}`;
+    
+    // Tenta copiar
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(link);
+        alert(`Link copiado para a área de transferência!\n\n${link}`);
+      } else {
+        // Fallback para conexões HTTP (sem SSL) na rede local
+        const textArea = document.createElement("textarea");
+        textArea.value = link;
+        textArea.style.position = "absolute";
+        textArea.style.left = "-999999px";
+        document.body.prepend(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+        alert(`Link gerado (copie manualmente se não estiver na área de transferência):\n\n${link}`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert(`Não foi possível copiar automaticamente. Copie o link abaixo:\n\n${link}`);
+    }
+    
+    setShowConfigMenu(false);
+  };
+
+  const handleLogout = () => {
+    navigate('/');
+  };
 
   if (isLoadingData) return <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Loader2 className="spin" /> Carregando...</div>
 
@@ -174,7 +208,23 @@ export default function Editor() {
             {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : 'Salvar'}
           </button>
           
-          <button onClick={() => alert('Em breve.')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Settings size={18} /></button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowConfigMenu(!showConfigMenu)} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: showConfigMenu ? '#475569' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+              <Settings size={18} />
+            </button>
+
+            {showConfigMenu && (
+              <div style={{ position: 'absolute', top: '110%', right: 0, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '5px', minWidth: '180px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100 }}>
+                <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
+                  <Share2 size={16} color="#3b82f6"/> Gerar Link Público
+                </button>
+                <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
+                <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <LogOut size={16} /> Sair (Logout)
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

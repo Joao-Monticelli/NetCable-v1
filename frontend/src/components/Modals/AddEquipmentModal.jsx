@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network } from 'lucide-react'
+import { api } from '../../services/api' // IMPORTANDO A API
 
 export default function AddEquipmentModal({ onClose, onAdd }) {
   const [nome, setNome] = useState('')
@@ -24,19 +25,14 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
 
   const handleTestConnection = async () => {
     if (semIp) return
-    if (!ip) {
-      setTestResult('error')
-      return
-    }
+    if (!ip) { setTestResult('error'); return }
     
     setIsTesting(true)
     setTestResult(null)
     setPingTime(null)
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/ping/${ip}`)
-      const data = await response.json()
-
+      const data = await api.ping(ip) // Usando a API
       if (data.status === 'online') {
         setTestResult('success')
         setPingTime(data.tempo_ms)
@@ -51,14 +47,8 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   }
 
   const handleAdd = async () => {
-    if (!nome) {
-      alert('Por favor, preencha o Nome do equipamento.')
-      return
-    }
-    if (!semIp && !ip) {
-      alert('Por favor, preencha o IP ou marque a opção "Sem IP".')
-      return
-    }
+    if (!nome) { alert('Preencha o Nome.'); return }
+    if (!semIp && !ip) { alert('Preencha o IP ou marque Sem IP.'); return }
 
     let finalStatus = 'offline'
     let finalPingTime = null
@@ -66,37 +56,25 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
     if (semIp) {
       finalStatus = 'visual'
     } else {
-      // Se ainda não testou ou deu erro, testa de novo na hora de adicionar para garantir
       if (testResult !== 'success') {
         try {
-          const response = await fetch(`http://127.0.0.1:8000/api/ping/${ip}`)
-          const data = await response.json()
+          const data = await api.ping(ip)
           if (data.status === 'online') {
             finalStatus = 'online'
             finalPingTime = data.tempo_ms
           } else {
-            const confirm = window.confirm('O IP não respondeu ao teste. Deseja adicionar mesmo assim?')
-            if (!confirm) return
+            if (!window.confirm('O IP não respondeu. Deseja adicionar mesmo assim?')) return
           }
         } catch (error) {
-          const confirm = window.confirm('Erro ao conectar com o backend. Deseja adicionar mesmo assim?')
-          if (!confirm) return
+          if (!window.confirm('Erro no backend. Deseja adicionar mesmo assim?')) return
         }
       } else {
-        // Se já testou e deu sucesso, usa os dados que já temos
         finalStatus = 'online'
         finalPingTime = pingTime
       }
     }
     
-    // Envia os dados corretos para o mapa
-    onAdd({ 
-      nome, 
-      ip: semIp ? 'Sem IP' : ip, 
-      tipo, 
-      status: finalStatus,
-      pingTime: finalPingTime
-    })
+    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime })
   }
 
   const handleAddTipo = () => {
@@ -126,7 +104,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
             <input type="checkbox" id="semIp" checked={semIp} onChange={(e) => setSemIp(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             <label htmlFor="semIp" style={{ fontSize: '14px', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Network size={16} /> Equipamento sem IP (Camada 2 / Apenas Visual)
+              <Network size={16} /> Equipamento sem IP (Camada 2)
             </label>
           </div>
 
@@ -154,13 +132,9 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>Tipo de Equipamento</label>
             <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
               <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
-                {tipos.map((t) => (
-                  <option key={t.value} value={t.value}>{t.value}</option>
-                ))}
+                {tipos.map((t) => <option key={t.value} value={t.value}>{t.value}</option>)}
               </select>
-              <button onClick={() => setMostrarNovoTipo(!mostrarNovoTipo)} style={{ padding: '10px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }} title="Criar novo tipo">
-                <Plus size={18} />
-              </button>
+              <button onClick={() => setMostrarNovoTipo(!mostrarNovoTipo)} style={{ padding: '10px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }} title="Criar novo tipo"><Plus size={18} /></button>
             </div>
           </div>
 
@@ -174,9 +148,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '30px', gap: '10px' }}>
           <button onClick={onClose} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: '6px', cursor: 'pointer' }}>Cancelar</button>
-          <button onClick={handleAdd} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-            <Plus size={18} /> Adicionar ao Mapa
-          </button>
+          <button onClick={handleAdd} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Plus size={18} /> Adicionar</button>
         </div>
 
       </div>

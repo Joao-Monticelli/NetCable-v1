@@ -548,3 +548,56 @@ Para deixar o diagrama muito mais informativo e a interface mais limpa, foram im
 
 - **Redimensionamento por Quinas (NodeResizer):**
   Removemos as linhas de redimensionamento das bordas superior e inferior. Agora, as alças de redimensionamento aparecem **apenas nas quinas (cantos)** do equipamento. O usuário deve clicar e arrastar a quina para ajustar tanto a largura quanto a altura de uma vez, garantindo um controle mais natural e preciso.
+  Aqui está o resumo completo e detalhado de todas as evoluções que fizemos hoje (Fase 2: Backend e Integrações). Copie o bloco abaixo e adicione ao final do seu arquivo README.md.
+
+📌 Adição ao arquivo README.md (Copie e Cole)
+markdown
+### 3.13. Fase 2: Backend (FastAPI), Banco de Dados (SQLite) e Integrações
+
+Hoje o projeto deu um salto gigante: saiu de um protótipo visual para um sistema com persistência real de dados e monitoramento em tempo real.
+
+#### 🐍 Backend e Banco de Dados
+- **FastAPI:** O servidor Python está rodando e expondo rotas para o React.
+- **SQLite & SQLAlchemy:** O banco de dados `netcable.db` foi criado. Ele armazena:
+  - **Projetos:** Nome e ID.
+  - **Equipamentos:** ID, Nome, IP, Tipo, Status, Tempo de Ping, Posição (X, Y), Largura e Altura.
+  - **Conexões:** Origem, Destino, Rótulo, e os IDs dos Handles (bolinhas de onde o cabo sai e chega, para não perder a posição ao carregar).
+- **Rotas da API:** Criadas rotas para Listar Projetos, Criar Projeto, Salvar Mapa, Carregar Dados, Excluir Projeto e Ping Real (ICMP).
+
+#### ⚛️ Integração Frontend + Backend
+- **Ping Real no Cadastro:** O botão "Testar" no modal de novo equipamento agora faz um `fetch` real para o Python, que usa a biblioteca `ping3` para testar a conexão e retorna o tempo em milissegundos (ex: `15.4ms`).
+- **Monitoramento Contínuo (Polling):** O mapa React agora possui um "relógio" (setInterval) que a cada 5 segundos pergunta ao Python o status de todos os equipamentos na tela. Se a máquina cair, a bolinha fica vermelha automaticamente.
+- **Salvamento e Carregamento:** O botão "Salvar" envia o JSON completo do mapa para o banco. Ao clicar em um projeto na lista, o React busca os dados no Python e redesenha o diagrama exatamente como foi salvo.
+
+#### 🎨 Melhorias de UI/UX e Lógica Visual
+- **Cores Dinâmicas e Efeito Cascata:** As linhas (edges) agora mudam de cor baseadas no status:
+  - 🟢 **Verde:** Origem e destino online.
+  - 🔴 **Vermelho:** Destino offline.
+  - 🟡 **Amarelo (Efeito Cascata):** O equipamento "Pai" caiu (vermelho), mas o "Filho" ainda está respondendo (online). O cabo amarelo indica um alerta de falha na hierarquia superior.
+  - ⚪ **Cinza:** Equipamento visual (sem IP).
+- **Posicionamento Inteligente:** Ao criar um novo equipamento, ele não nasce mais no canto da tela. A função `screenToFlowPosition` calcula o centro da tela atual e posiciona o nó exatamente onde o usuário está olhando.
+- **Redimensionamento por Quinas:** Ajuste no `NodeResizer` para permitir redimensionar os equipamentos apenas puxando os cantos (quinas), tanto para largura quanto para altura.
+- **Contadores na Barra:** A barra superior agora exibe um resumo em tempo real: quantos equipamentos estão Online (verde), Offline (vermelho) e Sem IP (cinza).
+
+#### 🛡️ Segurança, Backup e Compartilhamento
+- **Backup (Exportar/Importar JSON):** Dois novos botões na barra permitem baixar um arquivo `.json` com todo o diagrama e importá-lo em outro projeto, servindo como backup seguro.
+- **Modo de Leitura (Link Público):** 
+  - No menu de **Configurações** (engrenagem), há a opção de **Gerar Link Público**.
+  - O link copiado (ex: `http://localhost:5173/share/1`) abre uma tela sem barra de ferramentas, onde o usuário não pode editar, arrastar ou criar nada.
+  - Porém, o monitoramento (ping e cores das linhas) continua funcionando em tempo real.
+- **Logout:** A opção de "Sair" foi movida para dentro do menu de configurações.
+- **Prevenção de Duplicidade:** O botão "Salvar" agora possui um estado de carregamento (loader) que o desabilita enquanto a requisição está sendo processada, evitando que cliques múltiplos criem projetos duplicados no banco.
+💡 O que conquistamos hoje?
+Hoje você concluiu a Fase 2 do projeto! O NetCable agora é um sistema funcional que:
+
+Salva e carrega projetos de verdade.
+
+Faz ping real (ICMP) nas máquinas.
+
+Atualiza os status em tempo real.
+
+Tem um visual profissional com o efeito cascata amarelo.
+
+Permite compartilhar uma tela de monitoramento público sem risco de alguém bagunçar seu diagrama.
+
+Amanhã, quando voltarmos, o próximo passo natural será preparar o Docker e o deploy no TrueNAS, além de começarmos a pensar na autenticação real (Login com senha). Parabéns pelo progresso! 🚀
