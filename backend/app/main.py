@@ -14,7 +14,7 @@ app = FastAPI(title="NetCable API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"], # Libera para o link público funcionar
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,8 +61,8 @@ class ConexaoBase(BaseModel):
     source: str
     target: str
     label: Optional[str] = None
-    source_handle: Optional[str] = None # NOVO
-    target_handle: Optional[str] = None # NOVO
+    source_handle: Optional[str] = None
+    target_handle: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -93,8 +93,8 @@ class ConexaoCreate(BaseModel):
     source: str
     target: str
     label: Optional[str] = None
-    sourceHandle: Optional[str] = None # NOVO
-    targetHandle: Optional[str] = None # NOVO
+    sourceHandle: Optional[str] = None
+    targetHandle: Optional[str] = None
 
 class MapaSchema(BaseModel):
     equipamentos: List[EquipamentoCreate]

@@ -5,6 +5,7 @@ import ReactFlow, {
 import { Server, Wifi, Shield, Monitor, Activity } from 'lucide-react'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
+import { api } from '../services/api' // IMPORTANDO A API CENTRALIZADA
 
 const CustomNode = memo(({ data, selected }) => {
   const getIcon = () => {
@@ -45,36 +46,24 @@ const CustomNode = memo(({ data, selected }) => {
 
 const nodeTypes = { custom: CustomNode }
 const edgeTypes = { smoothstep: SmoothStepEdge }
+const defaultEdgeOptions = { animated: true, type: 'smoothstep', interactionWidth: 20 }
 
-const defaultEdgeOptions = {
-  animated: true,
-  type: 'smoothstep',
-  interactionWidth: 20, 
-}
-
-// Função que calcula a cor do cabo baseado na hierarquia (Pai e Filho)
 const calcularCorConexao = (sourceNode, targetNode) => {
-  if (!sourceNode || !targetNode) return { stroke: '#64748b', color: '#64748b' } // Padrão cinza
+  if (!sourceNode || !targetNode) return { stroke: '#64748b', color: '#64748b' }
   
-  const isSourceOnline = sourceNode.data.status === 'online';
   const isSourceOffline = sourceNode.data.status === 'offline';
   const isTargetOnline = targetNode.data.status === 'online';
   const isTargetOffline = targetNode.data.status === 'offline';
   const isTargetVisual = targetNode.data.status === 'visual';
 
-  if (isTargetVisual) return { stroke: '#64748b', color: '#64748b' }; // Destino Visual (Cinza)
-  if (isTargetOffline) return { stroke: '#ef4444', color: '#ef4444' }; // Destino caiu (Vermelho)
+  if (isTargetVisual) return { stroke: '#64748b', color: '#64748b' }; // Cinza
+  if (isTargetOffline) return { stroke: '#ef4444', color: '#ef4444' }; // Vermelho
+  if (isSourceOffline && isTargetOnline) return { stroke: '#f59e0b', color: '#f59e0b' }; // Amarelo (Cascata)
   
-  // Se chegou aqui, o destino está online.
-  if (isSourceOffline) {
-     return { stroke: '#f59e0b', color: '#f59e0b' }; // Alerta: Pai caiu, mas o filho responde (Amarelo)
-  }
-  
-  // Ambos online
   return { stroke: '#10b981', color: '#10b981' }; // Verde
 }
 
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, readOnly = false }) {
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -82,20 +71,19 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   
   const { screenToFlowPosition, getViewport } = useReactFlow()
 
-  // Efeito para avisar o Editor
   useEffect(() => {
     if (onMapUpdate) onMapUpdate(nodes, edges)
   }, [nodes, edges, onMapUpdate])
 
-  // Efeito que RECALCULA as cores ao carregar ou mudar os nós/arestas
+  // Recalcula as cores das linhas baseado no status dos nós
   useEffect(() => {
     setEdges((currentEdges) => 
       currentEdges.map((edge) => {
         const sourceNode = nodes.find(n => n.id === edge.source)
         const targetNode = nodes.find(n => n.id === edge.target)
-        
-        // Se as cores já estiverem certas, não recria o objeto (evita loop)
         const corEsperada = calcularCorConexao(sourceNode, targetNode)
+        
+        // Se a cor já estiver certa, não faz nada para evitar loop infinito
         if (edge.style?.stroke === corEsperada.stroke) return edge;
 
         return {
@@ -105,11 +93,10 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         }
       })
     )
-  }, [nodes, initialEdges]) // Recalcula sempre que os nós (status) mudarem
+  }, [nodes, initialEdges])
 
-  // Efeito para adicionar novo equipamento
   useEffect(() => {
-    if (newEquipment) {
+    if (newEquipment && !readOnly) {
       let posicaoNoMapa = { x: 250, y: 250 }
       try {
         const centerX = window.innerWidth / 2
@@ -123,9 +110,9 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       }
       setNodes((nds) => [...nds, newNode])
     }
-  }, [newEquipment, screenToFlowPosition, getViewport])
+  }, [newEquipment, screenToFlowPosition, getViewport, readOnly])
 
-  // Efeito de Monitoramento
+  // Monitoramento (Polling)
   useEffect(() => {
     const interval = setInterval(async () => {
       if (nodes.length === 0) return
@@ -133,10 +120,11 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       const pingPromises = nodes.map(async (node) => {
         if (node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
         try {
-          const response = await fetch(`http://127.0.0.1:8000/api/ping/${node.data.ip}`)
-          const data = await response.json()
+          const data = await api.ping(node.data.ip) // Usa a API centralizada
           return { id: node.id, status: data.status, pingTime: data.tempo_ms }
-        } catch (error) { return { id: node.id, status: 'offline', pingTime: null } }
+        } catch (error) { 
+          return { id: node.id, status: 'offline', pingTime: null } 
+        }
       })
 
       const results = await Promise.all(pingPromises)
@@ -162,6 +150,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [])
   
   const onConnect = useCallback((params) => {
+    if (readOnly) return
     const sourceNode = nodes.find(n => n.id === params.source)
     const targetNode = nodes.find(n => n.id === params.target)
     const cor = calcularCorConexao(sourceNode, targetNode)
@@ -171,20 +160,32 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       style: { stroke: cor.stroke, strokeWidth: 2.5 },
       markerEnd: { type: MarkerType.ArrowClosed, color: cor.color },
     }, eds))
-  }, [nodes])
+  }, [nodes, readOnly])
 
-  const onNodeClick = (event, node) => setSelectedNode(node)
-  const onEdgeClick = (event, edge) => setSelectedEdge(edge)
-  const onReconnect = useCallback((oldEdge, newConnection) => {
-      setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds))
-  }, [])
+  const onNodeClick = (event, node) => { if (!readOnly) setSelectedNode(node) }
+  const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edge) }
+  const onReconnect = useCallback((oldEdge, newConnection) => { if (!readOnly) setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds)) }, [readOnly])
   
   const onEdgeMouseEnter = (event, edge) => setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 4 } } : e))
   const onEdgeMouseLeave = (event, edge) => setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 2.5 } } : e))
 
-  const handleUpdateNode = (id, newData) => { setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: { ...node.data, ...newData } } : node)); setSelectedNode(null) }
-  const handleDeleteNode = (id) => { setNodes((nds) => nds.filter((node) => node.id !== id)); setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id)); setSelectedNode(null) }
+  const handleUpdateNode = (id, newData) => { 
+    if (!readOnly) { 
+      setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: { ...node.data, ...newData } } : node)); 
+      setSelectedNode(null) 
+    } 
+  }
+  
+  const handleDeleteNode = (id) => { 
+    if (!readOnly) { 
+      setNodes((nds) => nds.filter((node) => node.id !== id)); 
+      setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id)); 
+      setSelectedNode(null) 
+    } 
+  }
+  
   const handleUpdateEdge = (id, newLabel, newSource, newTarget) => {
+    if (readOnly) return;
     setEdges((eds) => eds.map((edge) => {
       if (edge.id === id) {
         const sourceNode = nodes.find(n => n.id === newSource)
@@ -196,7 +197,13 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     }))
     setSelectedEdge(null)
   }
-  const handleDeleteEdge = (id) => { setEdges((eds) => eds.filter((edge) => edge.id !== id)); setSelectedEdge(null) }
+  
+  const handleDeleteEdge = (id) => { 
+    if (!readOnly) { 
+      setEdges((eds) => eds.filter((edge) => edge.id !== id)); 
+      setSelectedEdge(null) 
+    } 
+  }
 
   return (
     <>
@@ -205,7 +212,8 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         defaultEdgeOptions={defaultEdgeOptions} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
-        onReconnect={onReconnect} edgesReconnectable={true} reconnectRadius={20} connectionMode="loose" fitView
+        onReconnect={onReconnect} edgesReconnectable={!readOnly} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
+        reconnectRadius={20} connectionMode="loose" fitView
       >
         <Background />
         <Controls />
