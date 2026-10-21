@@ -5,7 +5,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   const [nome, setNome] = useState('')
   const [ip, setIp] = useState('')
   const [tipo, setTipo] = useState('Roteador')
-  const [semIp, setSemIp] = useState(false) // NOVO ESTADO
+  const [semIp, setSemIp] = useState(false)
   
   const [tipos, setTipos] = useState([
     { value: 'Roteador', icon: Wifi },
@@ -20,27 +20,37 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
 
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
+  const [pingTime, setPingTime] = useState(null)
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
     if (semIp) return
     if (!ip) {
       setTestResult('error')
       return
     }
+    
     setIsTesting(true)
     setTestResult(null)
+    setPingTime(null)
 
-    setTimeout(() => {
-      if (ip.startsWith('192.') || ip.startsWith('8.8') || ip === '127.0.0.1') {
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/ping/${ip}`)
+      const data = await response.json()
+
+      if (data.status === 'online') {
         setTestResult('success')
+        setPingTime(data.tempo_ms)
       } else {
         setTestResult('error')
       }
+    } catch (error) {
+      setTestResult('error')
+    } finally {
       setIsTesting(false)
-    }, 1500)
+    }
   }
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!nome) {
       alert('Por favor, preencha o Nome do equipamento.')
       return
@@ -49,16 +59,43 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
       alert('Por favor, preencha o IP ou marque a opção "Sem IP".')
       return
     }
-    if (!semIp && testResult === 'error') {
-      const confirm = window.confirm('O IP não respondeu ao teste. Deseja adicionar mesmo assim?')
-      if (!confirm) return
+
+    let finalStatus = 'offline'
+    let finalPingTime = null
+
+    if (semIp) {
+      finalStatus = 'visual'
+    } else {
+      // Se ainda não testou ou deu erro, testa de novo na hora de adicionar para garantir
+      if (testResult !== 'success') {
+        try {
+          const response = await fetch(`http://127.0.0.1:8000/api/ping/${ip}`)
+          const data = await response.json()
+          if (data.status === 'online') {
+            finalStatus = 'online'
+            finalPingTime = data.tempo_ms
+          } else {
+            const confirm = window.confirm('O IP não respondeu ao teste. Deseja adicionar mesmo assim?')
+            if (!confirm) return
+          }
+        } catch (error) {
+          const confirm = window.confirm('Erro ao conectar com o backend. Deseja adicionar mesmo assim?')
+          if (!confirm) return
+        }
+      } else {
+        // Se já testou e deu sucesso, usa os dados que já temos
+        finalStatus = 'online'
+        finalPingTime = pingTime
+      }
     }
     
+    // Envia os dados corretos para o mapa
     onAdd({ 
       nome, 
       ip: semIp ? 'Sem IP' : ip, 
       tipo, 
-      status: semIp ? 'visual' : (testResult === 'success' ? 'online' : 'offline') 
+      status: finalStatus,
+      pingTime: finalPingTime
     })
   }
 
@@ -103,7 +140,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
             </div>
             {testResult === 'success' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontSize: '13px', marginTop: '8px' }}>
-                <CheckCircle size={16} /> Conexão estabelecida com sucesso!
+                <CheckCircle size={16} /> Online! Resposta em {pingTime}ms.
               </div>
             )}
             {testResult === 'error' && (
