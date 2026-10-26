@@ -1,0 +1,27 @@
+services:
+  backend:
+    container_name: netcable_backend
+    network_mode: "host"
+    environment:
+      - PYTHONUNBUFFERED=1
+      # =======================================================
+      # 👇 ALTERE AQUI: DEFINA SEU USUÁRIO E SENHA 👇
+      # =======================================================
+      - ADMIN_USER=seu_usuario_aqui
+      - ADMIN_PASSWORD=sua_senha_forte_aqui
+    image: ghcr.io/joao-monticelli/netcable-backend:latest
+    restart: unless-stopped
+    volumes:
+      # =======================================================
+      # 👇 ALTERE AQUI: CAMINHO DO POOL ONDE OS DADOS SERÃO SALVOS 👇
+      # =======================================================
+      - /mnt/SEU_POOL/apps/netcable:/app/data
+
+  frontend:
+    container_name: netcable_frontend
+    depends_on:
+      - backend
+    image: ghcr.io/joao-monticelli/netcable-frontend:latest
+    ports:
+      - "3080:80"
+    restart: unless-stopped
