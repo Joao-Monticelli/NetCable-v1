@@ -12,11 +12,8 @@ RUN npm install
 # Copia o código fonte
 COPY . .
 
-# GARANTE QUE OS BINÁRIOS DO NODE TÊM PERMISSÃO DE EXECUÇÃO (Resolve o erro 126)
-RUN chmod -R +x node_modules/.bin/
-
-# Gera os arquivos estáticos de produção (pasta dist)
-RUN npm run build
+# Executa o Vite diretamente pelo Node (evita o erro de permissão no binário)
+RUN node node_modules/vite/bin/vite.js build
 
 # Estágio 2: Servidor Web (Nginx)
 FROM nginx:alpine
