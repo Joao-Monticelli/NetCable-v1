@@ -7,6 +7,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import ping3
 import socket
+import time # Importação necessária para medir o tempo
 import os
 from pydantic import BaseModel
 from typing import List, Optional
@@ -122,18 +123,23 @@ def deletar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: m
         return {"status": "sucesso"}
     raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
-# --- FUNÇÃO DE PING (TCP + ICMP) ---
+# --- FUNÇÃO DE PING (TCP + ICMP com medição de tempo) ---
 @app.get("/api/ping/{ip}")
 def ping_equipamento(ip: str):
     try:
-        # 1. Tenta conectar em portas comuns (TCP) - Resolve switches com firewall
+        # 1. Tenta conectar em portas comuns (TCP) e mede o tempo
         for porta in [80, 443, 22]:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1.5)
+            
+            inicio = time.time()
             resultado = sock.connect_ex((ip, porta))
+            fim = time.time()
             sock.close()
+            
             if resultado == 0:
-                return {"ip": ip, "status": "online", "tempo_ms": 0}
+                tempo_ms = round((fim - inicio) * 1000, 2)
+                return {"ip": ip, "status": "online", "tempo_ms": tempo_ms}
         
         # 2. Se não conectou em nenhuma porta, tenta o ping ICMP tradicional
         resposta = ping3.ping(ip, timeout=1.5)
