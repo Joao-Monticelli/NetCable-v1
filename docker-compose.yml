@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: https://github.com/Joao-Monticelli/NetCable-v1.git#main:backend
+    container_name: netcable_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # AQUI ESTÁ O SEGREDO: Mapeia o banco para uma pasta no TrueNAS
+      # Troque /mnt/SEU_POOL/apps/netcable pela pasta que você criou no seu TrueNAS
+      - /mnt/SEU_POOL/apps/netcable:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    build:
+      context: https://github.com/Joao-Monticelli/NetCable-v1.git#main:frontend
+    container_name: netcable_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

@@ -1,6 +1,29 @@
 from sqlalchemy.orm import Session
 from . import models
 
+# --- USUÁRIOS ---
+def get_usuario(db: Session, username: str):
+    return db.query(models.Usuario).filter(models.Usuario.username == username).first()
+
+def criar_usuario(db: Session, username: str, password_hash: str, email: str = None):
+    db_user = models.Usuario(username=username, password_hash=password_hash, email=email)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+def atualizar_perfil(db: Session, user_id: int, novo_email: str = None, nova_senha_hash: str = None):
+    db_user = db.query(models.Usuario).filter(models.Usuario.id == user_id).first()
+    if db_user:
+        if novo_email is not None:
+            db_user.email = novo_email
+        if nova_senha_hash is not None:
+            db_user.password_hash = nova_senha_hash
+        db.commit()
+        db.refresh(db_user)
+    return db_user
+
+# --- PROJETOS ---
 def get_projetos(db: Session):
     return db.query(models.Projeto).all()
 
@@ -9,6 +32,14 @@ def criar_projeto(db: Session, nome: str):
     db.add(db_projeto)
     db.commit()
     db.refresh(db_projeto)
+    return db_projeto
+
+def atualizar_projeto_nome(db: Session, projeto_id: int, novo_nome: str):
+    db_projeto = db.query(models.Projeto).filter(models.Projeto.id == projeto_id).first()
+    if db_projeto:
+        db_projeto.nome = novo_nome
+        db.commit()
+        db.refresh(db_projeto)
     return db_projeto
 
 def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list):
@@ -28,8 +59,8 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
         db_conn = models.Conexao(
             id=conn['id'], projeto_id=projeto_id, 
             source=conn['source'], target=conn['target'], label=conn.get('label'),
-            source_handle=conn.get('sourceHandle'), # NOVO
-            target_handle=conn.get('targetHandle')  # NOVO
+            source_handle=conn.get('sourceHandle'),
+            target_handle=conn.get('targetHandle')
         )
         db.add(db_conn)
         
