@@ -9,7 +9,8 @@ O **NetCable** é uma ferramenta open-source para mapear e monitorar sua rede em
 
 > ⚠️ **Este projeto está em fase BETA.** Novas funcionalidades e correções estão sendo adicionadas constantemente.
 
-![Uploading image.png…]()
+<img width="1680" height="895" alt="image" src="https://github.com/user-attachments/assets/a9435cfe-4b75-4963-a301-1b53e5ebbece" />
+
 
 
 ## ✨ Funcionalidades
