@@ -601,3 +601,68 @@ Tem um visual profissional com o efeito cascata amarelo.
 Permite compartilhar uma tela de monitoramento público sem risco de alguém bagunçar seu diagrama.
 
 Amanhã, quando voltarmos, o próximo passo natural será preparar o Docker e o deploy no TrueNAS, além de começarmos a pensar na autenticação real (Login com senha). Parabéns pelo progresso! 🚀
+
+### 3.14. Segurança, Experiência do Usuário (UX) e Preparação para Docker
+
+Nesta etapa, o NetCable deixou de ser um protótipo visual e se tornou um sistema seguro, com usuários, notificações visuais e infraestrutura pronta para o servidor (TrueNAS).
+
+#### 🔐 Autenticação e Segurança
+- **Login Real (JWT):** O sistema agora exige usuário e senha. O Python gera um Token JWT criptografado que é armazenado no navegador (`localStorage`). Todas as rotas de criação/edição/exclusão exigem esse token.
+- **Criptografia de Senha:** As senhas não são salvas em texto puro. Usamos a biblioteca `passlib` com `bcrypt` para gerar um hash seguro.
+- **Criação Automática do Admin:** Na primeira vez que o servidor sobe, ele verifica se existe um usuário `admin`. Se não existir, ele cria com a senha padrão `admin` (que deve ser alterada depois).
+- **Perfil do Usuário:** Foi criado um modal (`SettingsModal`) onde o usuário logado pode alterar sua senha e cadastrar um e-mail (preparação para notificações futuras). O acesso a esse modal foi colocado na tela de Projetos e no Editor (dentro do menu de engrenagem).
+- **Proteção de Rotas (Frontend):** O `App.jsx` agora possui um `PrivateRoute` que verifica se o token existe. Se não existir, redireciona para a tela de Login.
+
+#### 🎨 Melhorias de Experiência do Usuário (UX)
+- **Sistema de Notificações (Toasts):** Substituímos os antigos `alert()` do navegador por notificações elegantes no canto da tela (usando a biblioteca `react-hot-toast`). Elas aparecem para sucesso, erro, avisos e carregamento.
+- **Edição do Nome do Projeto:** O nome do projeto agora é salvo no banco de dados quando você clica no lápis (`✏️`) e depois em "Salvar".
+- **Posicionamento Inteligente:** Novos equipamentos agora nascem no centro da tela onde o usuário está visualizando, e não mais no canto superior esquerdo.
+- **Redimensionamento por Quinas:** Ajuste no `NodeResizer` para permitir alterar o tamanho dos equipamentos puxando apenas os cantos.
+
+#### 🚨 Sistema de Alertas em Tempo Real (Frontend)
+- **Monitoramento Contínuo:** O React faz um ping a cada 5 segundos em todos os equipamentos. Se um equipamento que estava online cair, o sistema dispara alertas.
+- **Alerta Visual no Header:** Um ícone de sino (Bell) no topo da tela começa a piscar em vermelho e o título da aba do navegador também pisca com a mensagem "⚠️ QUEDA DETECTADA".
+- **Alerta Sonoro:** O sistema toca um arquivo de áudio (`alert.mp3` na pasta `public/`) ou gera um "bip" sintetizado pelo navegador quando uma queda é detectada.
+- **Preparação para E-mail/Telegram:** A opção de notificações externas foi adicionada no modal de perfil, mas está marcada como "EM BREVE". A estrutura de backend (`notifier.py`) já está preparada para receber as credenciais SMTP.
+
+#### 🐳 Infraestrutura (Docker)
+- **Dockerfile (Backend):** Cria a imagem do Python com todas as dependências (`requirements.txt`) e expõe a porta 8000.
+- **Dockerfile (Frontend):** Usa um build multi-stage. O Node gera a pasta `dist` e o Nginx serve os arquivos estáticos na porta 80.
+- **Configuração do Nginx:** Criado o arquivo `nginx.conf` para redirecionar rotas SPA (ex: `/editor/1`) para o `index.html`, evitando erro 404 ao atualizar a página.
+- **docker-compose.yml:** Orquestra os containers do Backend e Frontend. Configurado para montar o banco de dados em um volume (para não perder os dados) e reiniciar automaticamente (`restart: unless-stopped`).
+
+#### 📂 Estrutura de Arquivos Atualizada (Fase 2)
+```text
+NetCable-v1/
+├── docker-compose.yml          (NOVO)
+├── README.md
+├── backend/
+│   ├── Dockerfile              (NOVO)
+│   ├── requirements.txt        (ATUALIZADO)
+│   ├── netcable.db
+│   └── app/
+│       ├── main.py             (Login, Perfil, Rotas Protegidas)
+│       ├── models.py           (Tabela de Usuário com Email)
+│       ├── crud.py             (Funções de Usuário e Perfil)
+│       ├── database.py
+│       ├── notifier.py         (NOVO - Estrutura de notificações)
+│       └── monitor.py          (NOVO - Background task - opcional)
+└── frontend/
+    ├── Dockerfile              (NOVO)
+    ├── nginx.conf              (NOVO)
+    ├── public/
+    │   └── alert.mp3           (NOVO - Som de alerta)
+    └── src/
+        ├── services/api.js     (Login, Token, Rotas Protegidas)
+        ├── pages/
+        │   ├── Login.jsx       (Login Real)
+        │   ├── Projects.jsx    (Menu de Configurações)
+        │   ├── Editor.jsx      (Alertas, Perfil, Nome Editável)
+        │   └── SharedView.jsx  (Link Público)
+        └── components/
+            ├── NetworkMap.jsx  (Pings, Cores, Efeito Cascata)
+            └── Modals/
+                ├── AddEquipmentModal.jsx
+                ├── EquipmentModal.jsx
+                ├── EdgeModal.jsx
+                └── SettingsModal.jsx (NOVO - Perfil)

@@ -2,7 +2,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Cria o arquivo netcable.db na pasta backend
 SQLALCHEMY_DATABASE_URL = "sqlite:///./netcable.db"
 
 engine = create_engine(

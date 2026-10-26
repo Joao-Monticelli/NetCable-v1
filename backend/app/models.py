@@ -2,6 +2,13 @@ from sqlalchemy import Column, Integer, String, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from .database import Base
 
+class Usuario(Base):
+    __tablename__ = "usuarios"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    email = Column(String, nullable=True)
+
 class Projeto(Base):
     __tablename__ = "projetos"
     id = Column(Integer, primary_key=True, index=True)
@@ -30,6 +37,5 @@ class Conexao(Base):
     source = Column(String)
     target = Column(String)
     label = Column(String, nullable=True)
-    # NOVAS COLUNAS
     source_handle = Column(String, nullable=True) 
     target_handle = Column(String, nullable=True)
