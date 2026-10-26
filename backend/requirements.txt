@@ -4,6 +4,7 @@ ping3
 sqlalchemy
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt==4.0.1
 python-multipart
 requests
 apscheduler
