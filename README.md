@@ -26,11 +26,17 @@ O **NetCable** é uma ferramenta open-source para mapear e monitorar sua rede em
 
 ---
 
-## 🚀 Como Instalar
+## 🚀 Como Instalar (TrueNAS)
 
-O NetCable é instalado no **TrueNAS** via Docker (Custom App).
+O NetCable é instalado no **TrueNAS** via Docker (Custom App). O processo é simples:
 
-👉 **[Clique aqui para ver o Guia de Instalação Passo a Passo (INSTALL.md)](INSTALL.md)**
+1. **Baixe o arquivo YAML de instalação:** 
+   👉 **[Clique aqui para baixar o arquivo `trueNAS.yml`](install/trueNAS.yml)**
+2. **No TrueNAS**, vá em **Apps** > **Custom App** > **Install via YAML**.
+3. **Cole o conteúdo** do YAML e edite os dados de **usuário**, **senha** e o **caminho do seu pool**.
+4. Clique em **Install**.
+
+Para um guia detalhado com todos os passos, acesse o **[Guia de Instalação Passo a Passo (INSTALL.md)](INSTALL.md)**.
 
 ---
 
