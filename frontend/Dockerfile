@@ -9,11 +9,14 @@ COPY package*.json ./
 # Instala as dependências
 RUN npm install
 
+# Instala o Vite globalmente para garantir permissão de execução
+RUN npm install -g vite
+
 # Copia o código fonte
 COPY . .
 
-# Executa o Vite diretamente pelo Node (evita o erro de permissão no binário)
-RUN node node_modules/vite/bin/vite.js build
+# Executa o Vite diretamente (agora ele está global)
+RUN vite build
 
 # Estágio 2: Servidor Web (Nginx)
 FROM nginx:alpine
