@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 import ping3
-import os # Importação necessária para ler as variáveis
+import socket
+import os
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -121,6 +122,28 @@ def deletar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: m
         return {"status": "sucesso"}
     raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
+# --- FUNÇÃO DE PING (TCP + ICMP) ---
+@app.get("/api/ping/{ip}")
+def ping_equipamento(ip: str):
+    try:
+        # 1. Tenta conectar em portas comuns (TCP) - Resolve switches com firewall
+        for porta in [80, 443, 22]:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1.5)
+            resultado = sock.connect_ex((ip, porta))
+            sock.close()
+            if resultado == 0:
+                return {"ip": ip, "status": "online", "tempo_ms": 0}
+        
+        # 2. Se não conectou em nenhuma porta, tenta o ping ICMP tradicional
+        resposta = ping3.ping(ip, timeout=1.5)
+        if resposta is not None:
+            return {"ip": ip, "status": "online", "tempo_ms": round(resposta * 1000, 2)}
+            
+        return {"ip": ip, "status": "offline", "tempo_ms": None}
+    except Exception:
+        return {"ip": ip, "status": "offline", "tempo_ms": None}
+
 class EquipamentoCreate(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
     pingTime: Optional[float] = None; posX: float; posY: float; width: float; height: float
@@ -138,16 +161,6 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
     eq_dict = [eq.dict() for eq in mapa.equipamentos]
     conn_dict = [conn.dict() for conn in mapa.conexoes]
     return crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict)
-
-@app.get("/api/ping/{ip}")
-def ping_equipamento(ip: str):
-    try:
-        resposta = ping3.ping(ip, timeout=2)
-        if resposta is not None:
-            return {"ip": ip, "status": "online", "tempo_ms": round(resposta * 1000, 2)}
-        return {"ip": ip, "status": "offline", "tempo_ms": None}
-    except Exception:
-        return {"ip": ip, "status": "offline", "tempo_ms": None}
 
 class EquipamentoBase(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
