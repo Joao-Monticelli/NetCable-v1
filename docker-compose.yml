@@ -1,8 +1,6 @@
 services:
   backend:
-    build:
-      context: https://github.com/Joao-Monticelli/NetCable-v1.git#main
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/joao-monticelli/netcable-backend:latest
     container_name: netcable_backend
     restart: unless-stopped
     ports:
@@ -13,9 +11,7 @@ services:
       - PYTHONUNBUFFERED=1
 
   frontend:
-    build:
-      context: https://github.com/Joao-Monticelli/NetCable-v1.git#main
-      dockerfile: frontend/Dockerfile
+    image: ghcr.io/joao-monticelli/netcable-frontend:latest
     container_name: netcable_frontend
     restart: unless-stopped
     ports:
