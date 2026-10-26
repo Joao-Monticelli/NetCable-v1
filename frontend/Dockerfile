@@ -12,6 +12,9 @@ RUN npm install
 # Copia o código fonte
 COPY . .
 
+# GARANTE QUE OS BINÁRIOS DO NODE TÊM PERMISSÃO DE EXECUÇÃO (Resolve o erro 126)
+RUN chmod -R +x node_modules/.bin/
+
 # Gera os arquivos estáticos de produção (pasta dist)
 RUN npm run build
 
