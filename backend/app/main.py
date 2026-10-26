@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 import ping3
+import os # Importação necessária para ler as variáveis
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -61,9 +62,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+# --- CRIAÇÃO DO USUÁRIO ADMIN (COM VARIÁVEIS DE AMBIENTE) ---
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+
 db_init = SessionLocal()
-if not crud.get_usuario(db_init, "admin"):
-    crud.criar_usuario(db_init, "admin", pwd_context.hash("admin"), "admin@netcable.local")
+if not crud.get_usuario(db_init, ADMIN_USER):
+    crud.criar_usuario(db_init, ADMIN_USER, pwd_context.hash(ADMIN_PASSWORD), "admin@netcable.local")
 db_init.close()
 
 @app.post("/api/login")
