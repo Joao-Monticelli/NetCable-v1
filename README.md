@@ -1,9 +1,15 @@
-🌐 NetCable — Mapeador Visual de Rede (BETA)
+<img width="1680" height="895" alt="netcable" src="https://github.com/user-attachments/assets/61740b49-8e3e-46ae-a908-cfd8ab658469" />🌐 NetCable — Mapeador Visual de Rede (BETA)
 
 ![Status](https://img.shields.io/badge/Status-BETA-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Python](https://img.shields.io/badge/Python-3.11-yellow)
 ![React](https://img.shields.io/badge/React-18-blue)
+
+<img width="1678" height="894" alt="netcable2" src="https://github.com/user-attachments/assets/1267e35c-83bc-4099-a174-ea4889ac81d1" />
+
+<img width="1678" height="894" alt="netcable2" src="https://github.com/user-attachments/assets/8c297d1f-fed7-4df8-8d4c-0ecd2af1c5fa" />
+
+
 
 
 O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar sua rede em tempo real. Crie diagramas visuais arrastando e soltando equipamentos, conecte-os com cabos virtuais e acompanhe o status de cada dispositivo com alertas em tempo real.
