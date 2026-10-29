@@ -1,4 +1,4 @@
-<img width="1680" height="895" alt="netcable" src="https://github.com/user-attachments/assets/61740b49-8e3e-46ae-a908-cfd8ab658469" />🌐 NetCable — Mapeador Visual de Rede (BETA)
+🌐 NetCable — Mapeador Visual de Rede (BETA)
 
 ![Status](https://img.shields.io/badge/Status-BETA-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
