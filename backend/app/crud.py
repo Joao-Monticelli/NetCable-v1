@@ -43,15 +43,24 @@ def atualizar_projeto_nome(db: Session, projeto_id: int, novo_nome: str):
     return db_projeto
 
 def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list):
+    previous_configs = {
+        item.id: item.monitor_config
+        for item in db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).all()
+    }
     db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).delete()
     db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).delete()
     
     for eq in equipamentos:
+        config = eq.get('monitorConfig')
+        if eq.get('monitorMode', 'ip') == 'snmpv3' and config and not config.get('authPassword') and not config.get('privPassword'):
+            config = previous_configs.get(eq['id'], config)
         db_eq = models.Equipamento(
             id=eq['id'], projeto_id=projeto_id, nome=eq['nome'], 
             ip=eq['ip'], tipo=eq['tipo'], status=eq['status'],
             ping_time=eq.get('pingTime'), pos_x=eq['posX'], pos_y=eq['posY'],
-            width=eq.get('width', 200), height=eq.get('height', 80)
+            width=eq.get('width', 200), height=eq.get('height', 80),
+            monitor_mode=eq.get('monitorMode', 'ip'),
+            monitor_config=config
         )
         db.add(db_eq)
         

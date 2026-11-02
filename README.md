@@ -29,6 +29,28 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 💾 Exportar/Importar JSON — faça backup e restaure seu diagrama facilmente
 
+## 🔧 Atualizações recentes
+
+O NetCable recebeu uma primeira evolução no monitoramento e na integração com redes reais:
+
+✅ **Método de monitoramento por equipamento** — escolha entre IP/ICMP + TCP, SNMPv3 ou modo somente visual.
+
+✅ **Suporte inicial a SNMPv3** — autenticação MD5/SHA, privacidade AES/DES, teste de conexão e porta SNMP configurável.
+
+✅ **Descoberta de vizinhos LLDP/CDP** — consulta as tabelas de vizinhança disponibilizadas pelo equipamento via SNMP.
+
+✅ **Proteção das credenciais** — configurações SNMP são cifradas no backend e as senhas não são incluídas nos backups JSON.
+
+✅ **Diagnóstico da instalação** — nova verificação da API, banco de dados, caminho do SQLite e disponibilidade do PySNMP.
+
+✅ **Comunicação simplificada** — o frontend usa o caminho `/api`, com proxy no Vite e no Nginx. Usuários não precisam configurar ou conhecer a porta interna do backend.
+
+✅ **Mensagens de erro mais claras** — falhas de conexão, API e monitoramento agora são exibidas com mais detalhes.
+
+✅ **Compatibilidade com bancos existentes** — novas configurações de monitoramento são adicionadas automaticamente sem apagar os projetos atuais.
+
+Esses recursos estão em validação com switches, firewalls e outros equipamentos reais. A criação automática de nós e conexões a partir da descoberta, além da coleta detalhada de interfaces, CPU e memória, permanece planejada para as próximas versões.
+
 🚀 Como Rodar (Docker — recomendado)
 A forma mais simples de rodar o NetCable é via Docker Compose, em qualquer máquina com Docker instalado (VPS, mini PC, Raspberry Pi, VM, PC de laboratório etc.).
 

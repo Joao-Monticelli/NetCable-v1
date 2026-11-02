@@ -8,3 +8,5 @@ bcrypt==4.0.1
 python-multipart
 requests
 apscheduler
+pysnmp==4.4.12
+pyasn1<0.6

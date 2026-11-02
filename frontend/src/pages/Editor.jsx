@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
 import SettingsModal from '../components/Modals/SettingsModal'
+import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import { api } from '../services/api'
 
 export default function Editor() {
@@ -24,6 +25,7 @@ export default function Editor() {
   const [showConfigMenu, setShowConfigMenu] = useState(false)
   
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
+  const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
 
   // Estado do Alerta
@@ -36,10 +38,7 @@ export default function Editor() {
   useEffect(() => {
     const fetchMe = async () => {
       try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/me`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('netcable_token')}` }
-        })
-        if (res.ok) setCurrentUser(await res.json())
+        setCurrentUser(await api.me())
       } catch (error) { console.error(error) }
     }
     fetchMe()
@@ -54,7 +53,7 @@ export default function Editor() {
         const formattedNodes = data.equipamentos.map(eq => ({
           id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
           style: { width: eq.width, height: eq.height },
-          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time }
+          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {} }
         }))
         const formattedEdges = data.conexoes.map(conn => ({
           id: conn.id, source: conn.source, target: conn.target, label: conn.label,
@@ -114,7 +113,8 @@ export default function Editor() {
       }
       const equipamentosFormatados = currentNodes.current.map(node => ({
         id: node.id, nome: node.data.label, ip: node.data.ip, tipo: node.data.tipo, status: node.data.status,
-        pingTime: node.data.pingTime || null, posX: node.position.x, posY: node.position.y, width: node.style?.width || 200, height: node.style?.height || 80
+        pingTime: node.data.pingTime || null, posX: node.position.x, posY: node.position.y, width: node.style?.width || 200, height: node.style?.height || 80,
+        monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null
       }))
       const conexoesFormatadas = currentEdges.current.map(edge => ({
         id: edge.id, source: edge.source, target: edge.target, label: edge.label || null,
@@ -145,7 +145,19 @@ export default function Editor() {
   const handleAddEquipment = (equipamento) => { setNewEquipment({ ...equipamento, id: Date.now() }); setIsAddModalOpen(false) }
 
   const handleExport = () => {
-    const dataToExport = { projeto: projectName, equipamentos: currentNodes.current, conexoes: currentEdges.current }
+    const equipamentosSeguros = currentNodes.current.map(node => ({
+      ...node,
+      data: node.data ? {
+        ...node.data,
+        snmpConfig: node.data.snmpConfig ? {
+          username: node.data.snmpConfig.username,
+          authProtocol: node.data.snmpConfig.authProtocol,
+          privProtocol: node.data.snmpConfig.privProtocol,
+          port: node.data.snmpConfig.port
+        } : null
+      } : node.data
+    }))
+    const dataToExport = { projeto: projectName, equipamentos: equipamentosSeguros, conexoes: currentEdges.current }
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -227,6 +239,9 @@ export default function Editor() {
                 <button onClick={() => { setShowConfigMenu(false); setIsSettingsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
                   <UserCog size={16} color="#94a3b8"/> Editar Perfil
                 </button>
+                <button onClick={() => { setShowConfigMenu(false); setIsDiagnosticsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Activity size={16} color="#10b981"/> Diagnóstico
+                </button>
                 <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
                   <Share2 size={16} color="#3b82f6"/> Gerar Link Público
                 </button>
@@ -246,6 +261,7 @@ export default function Editor() {
 
       {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} />}
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} />}
+      {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
     </div>
   )
 }

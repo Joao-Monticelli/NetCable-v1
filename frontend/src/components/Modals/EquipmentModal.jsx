@@ -5,9 +5,11 @@ export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
   const [nome, setNome] = useState(node.data.label || '')
   const [ip, setIp] = useState(node.data.ip || '')
   const [tipo, setTipo] = useState(node.data.tipo || 'Roteador')
+  const [monitorMode, setMonitorMode] = useState(node.data.monitorMode || 'ip')
+  const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161, ...(node.data.snmpConfig || {}) })
 
   const handleSave = () => {
-    onUpdate(node.id, { label: nome, ip, tipo })
+    onUpdate(node.id, { label: nome, ip, tipo, monitorMode: ip === 'Sem IP' ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null })
   }
 
   // Função para restaurar o tamanho original
@@ -34,6 +36,22 @@ export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>Nome do Equipamento</label>
             <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
           </div>
+
+          <div>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Método de monitoramento</label>
+            <select value={ip === 'Sem IP' ? 'visual' : monitorMode} onChange={(e) => setMonitorMode(e.target.value)} disabled={ip === 'Sem IP'} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+              <option value="ip">IP / ICMP + TCP</option>
+              <option value="snmpv3">SNMPv3</option>
+            </select>
+          </div>
+
+          {monitorMode === 'snmpv3' && ip !== 'Sem IP' && <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '10px' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8' }}>Credenciais SNMPv3 (deixe as senhas vazias para manter as atuais)</span>
+            <input value={snmpConfig.username} onChange={(e) => setSnmpConfig({ ...snmpConfig, username: e.target.value })} placeholder="Usuário" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
+            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.authProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, authProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>SHA</option><option>MD5</option></select><input type="password" value={snmpConfig.authPassword || ''} onChange={(e) => setSnmpConfig({ ...snmpConfig, authPassword: e.target.value })} placeholder="Senha de autenticação" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
+            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.privProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, privProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>AES</option><option>DES</option><option>3DES</option></select><input type="password" value={snmpConfig.privPassword || ''} onChange={(e) => setSnmpConfig({ ...snmpConfig, privPassword: e.target.value })} placeholder="Senha de privacidade" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
+            <input type="number" min="1" max="65535" value={snmpConfig.port || 161} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder="Porta SNMP (padrão 161)" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
+          </div>}
           
           <div>
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>Endereço IP</label>

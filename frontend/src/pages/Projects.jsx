@@ -34,10 +34,7 @@ export default function Projects() {
     // Busca os dados do usuário logado para preencher o Modal de Perfil
     const fetchMe = async () => {
       try {
-        const res = await fetch(`http://${window.location.hostname}:8000/api/me`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('netcable_token')}` }
-        })
-        if (res.ok) setCurrentUser(await res.json())
+        setCurrentUser(await api.me())
       } catch (error) { console.error(error) }
     }
     fetchMe()
