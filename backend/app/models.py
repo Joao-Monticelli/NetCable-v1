@@ -28,6 +28,8 @@ class Equipamento(Base):
     pos_y = Column(Float)
     width = Column(Float, default=200)
     height = Column(Float, default=80)
+    monitor_mode = Column(String, default="ip")
+    monitor_config = Column(String, nullable=True)
     projeto = relationship("Projeto", back_populates="equipamentos")
 
 class Conexao(Base):

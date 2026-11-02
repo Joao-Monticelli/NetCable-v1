@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Save, User, Key, Mail, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { api } from '../../services/api'
 
 export default function SettingsModal({ onClose, currentUser }) {
   const [email, setEmail] = useState(currentUser?.email || '')
@@ -12,25 +13,9 @@ export default function SettingsModal({ onClose, currentUser }) {
     e.preventDefault()
     setIsSaving(true)
     try {
-      const res = await fetch(`http://${window.location.hostname}:8000/api/me/perfil`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('netcable_token')}`
-        },
-        body: JSON.stringify({
-          email: email,
-          senha_atual: senhaAtual || null,
-          nova_senha: novaSenha || null
-        })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        toast.success('Perfil atualizado com sucesso!')
-        onClose()
-      } else {
-        toast.error(data.detail || 'Erro ao atualizar perfil.')
-      }
+      await api.atualizarPerfil({ email, senha_atual: senhaAtual || null, nova_senha: novaSenha || null })
+      toast.success('Perfil atualizado com sucesso!')
+      onClose()
     } catch (error) {
       toast.error('Erro de comunicação com o servidor.')
     } finally {

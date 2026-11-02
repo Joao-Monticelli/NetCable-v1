@@ -7,6 +7,10 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   const [ip, setIp] = useState('')
   const [tipo, setTipo] = useState('Roteador')
   const [semIp, setSemIp] = useState(false)
+  const [monitorMode, setMonitorMode] = useState('ip')
+  const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161 })
+  const [neighbors, setNeighbors] = useState(null)
+  const [isDiscovering, setIsDiscovering] = useState(false)
   
   const [tipos, setTipos] = useState([
     { value: 'Roteador', icon: Wifi },
@@ -22,6 +26,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState(null)
   const [pingTime, setPingTime] = useState(null)
+  const [testMessage, setTestMessage] = useState('')
 
   const handleTestConnection = async () => {
     if (semIp) return
@@ -30,19 +35,35 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
     setIsTesting(true)
     setTestResult(null)
     setPingTime(null)
+    setTestMessage('')
 
     try {
-      const data = await api.ping(ip) // Usando a API
+      const data = monitorMode === 'snmpv3' ? await api.monitor(null, ip, monitorMode, snmpConfig) : await api.ping(ip)
       if (data.status === 'online') {
         setTestResult('success')
         setPingTime(data.tempo_ms)
       } else {
         setTestResult('error')
+        setTestMessage(data.error || 'O equipamento não respondeu.')
       }
     } catch (error) {
       setTestResult('error')
+      setTestMessage(error.message || 'Falha ao consultar o equipamento.')
     } finally {
       setIsTesting(false)
+    }
+  }
+
+  const handleDiscovery = async () => {
+    if (!ip || !snmpConfig.username) return
+    setIsDiscovering(true)
+    try {
+      const data = await api.discoverNeighbors(ip, snmpConfig)
+      setNeighbors(data.neighbors || [])
+    } catch (error) {
+      setNeighbors([])
+    } finally {
+      setIsDiscovering(false)
     }
   }
 
@@ -58,7 +79,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
     } else {
       if (testResult !== 'success') {
         try {
-          const data = await api.ping(ip)
+            const data = monitorMode === 'snmpv3' ? await api.monitor(null, ip, monitorMode, snmpConfig) : await api.ping(ip)
           if (data.status === 'online') {
             finalStatus = 'online'
             finalPingTime = data.tempo_ms
@@ -74,7 +95,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
       }
     }
     
-    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime })
+    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null })
   }
 
   const handleAddTipo = () => {
@@ -96,6 +117,24 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Método de monitoramento</label>
+            <select value={semIp ? 'visual' : monitorMode} onChange={(e) => setMonitorMode(e.target.value)} disabled={semIp} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+              <option value="ip">IP / ICMP + TCP</option>
+              <option value="snmpv3">SNMPv3</option>
+            </select>
+          </div>
+
+          {monitorMode === 'snmpv3' && !semIp && <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '10px' }}>
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Credenciais SNMPv3</label>
+            <input value={snmpConfig.username} onChange={(e) => setSnmpConfig({ ...snmpConfig, username: e.target.value })} placeholder="Usuário" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
+            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.authProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, authProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>SHA</option><option>MD5</option></select><input type="password" value={snmpConfig.authPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, authPassword: e.target.value })} placeholder="Senha de autenticação" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
+            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.privProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, privProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>AES</option><option>DES</option><option>3DES</option></select><input type="password" value={snmpConfig.privPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, privPassword: e.target.value })} placeholder="Senha de privacidade" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
+            <input type="number" min="1" max="65535" value={snmpConfig.port} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder="Porta SNMP (padrão 161)" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
+            <button onClick={handleDiscovery} disabled={isDiscovering || !ip || !snmpConfig.username} style={{ padding: '9px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: isDiscovering ? 'wait' : 'pointer' }}>{isDiscovering ? 'Consultando vizinhos...' : 'Descobrir vizinhos LLDP/CDP'}</button>
+            {neighbors && <div style={{ fontSize: '12px', color: neighbors.length ? '#10b981' : '#f59e0b' }}>{neighbors.length ? `${neighbors.length} vizinho(s) encontrado(s): ${neighbors.map(item => item.name || item.port || 'sem nome').join(', ')}` : 'Nenhum vizinho LLDP/CDP encontrado.'}</div>}
+          </div>}
+
           <div>
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>Nome do Equipamento</label>
             <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Switch Andar 1" style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
@@ -123,7 +162,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
             )}
             {testResult === 'error' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#ef4444', fontSize: '13px', marginTop: '8px' }}>
-                <XCircle size={16} /> Falha na conexão. Verifique o IP.
+                <XCircle size={16} /> {testMessage || 'Falha na conexão. Verifique o IP.'}
               </div>
             )}
           </div>

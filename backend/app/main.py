@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -9,13 +10,26 @@ import ping3
 import socket
 import time # Importação necessária para medir o tempo
 import os
+import json
+import base64
+import hashlib
+from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel
 from typing import List, Optional
+from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailableError
 
 from . import models, crud
 from .database import engine, SessionLocal
 
 models.Base.metadata.create_all(bind=engine)
+
+# Compatibilidade com bancos SQLite criados antes do suporte a SNMP.
+with engine.begin() as connection:
+    columns = {column[1] for column in connection.exec_driver_sql("PRAGMA table_info(equipamentos)")}
+    if "monitor_mode" not in columns:
+        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_mode VARCHAR DEFAULT 'ip'")
+    if "monitor_config" not in columns:
+        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_config VARCHAR")
 
 app = FastAPI(title="NetCable API")
 
@@ -31,6 +45,22 @@ SECRET_KEY = "sua_chave_secreta_super_segura_aqui_mude_em_producao"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
+_fernet_key = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
+fernet = Fernet(_fernet_key)
+
+def proteger_config(config):
+    if not config:
+        return None
+    return fernet.encrypt(json.dumps(config).encode()).decode()
+
+def abrir_config(value):
+    if not value:
+        return {}
+    try:
+        return json.loads(fernet.decrypt(value.encode()).decode())
+    except (InvalidToken, ValueError, TypeError):
+        return {}
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
@@ -40,6 +70,29 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@app.get("/api/health")
+def health_check(db: Session = Depends(get_db)):
+    database_ok = False
+    database_error = None
+    try:
+        db.execute(text("SELECT 1"))
+        database_ok = True
+    except Exception as exc:
+        database_error = str(exc)
+    try:
+        from .snmp_service import _hlapi
+        _hlapi()
+        snmp = {"installed": True, "status": "ready"}
+    except Exception as exc:
+        snmp = {"installed": False, "status": "unavailable", "detail": str(exc)}
+    return {
+        "status": "ok" if database_ok else "degraded",
+        "api": "online",
+        "database": {"connected": database_ok, "error": database_error},
+        "snmp": snmp,
+        "database_path": str(engine.url.database),
+    }
 
 def verificar_senha(senha_plana, senha_hash):
     return pwd_context.verify(senha_plana, senha_hash)
@@ -123,6 +176,44 @@ def deletar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: m
         return {"status": "sucesso"}
     raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
+# --- MONITORAMENTO E DESCOBERTA ---
+class MonitorRequest(BaseModel):
+    equipmentId: Optional[str] = None
+    ip: str
+    mode: str = "ip"
+    config: Optional[dict] = None
+
+@app.post("/api/monitor")
+def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    if request.mode != "snmpv3":
+        return ping_equipamento(request.ip)
+    config = request.config or {}
+    if request.equipmentId and not config.get("authPassword"):
+        equipment = db.query(models.Equipamento).filter(models.Equipamento.id == request.equipmentId).first()
+        config = abrir_config(equipment.monitor_config if equipment else None)
+    config.update({"host": request.ip})
+    try:
+        result = snmp_test(config)
+        return {"ip": request.ip, "status": "online", "tempo_ms": None, **result}
+    except SNMPUnavailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        return {"ip": request.ip, "status": "offline", "tempo_ms": None, "error": str(exc)}
+
+class DiscoveryRequest(BaseModel):
+    ip: str
+    config: dict
+
+@app.post("/api/discovery/neighbors")
+def descobrir_vizinhos(request: DiscoveryRequest, user: models.Usuario = Depends(get_current_user)):
+    config = {**request.config, "host": request.ip}
+    try:
+        return {"ip": request.ip, "neighbors": discover_neighbors(config)}
+    except SNMPUnavailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Falha na descoberta: {exc}")
+
 # --- FUNÇÃO DE PING (TCP + ICMP com medição de tempo) ---
 @app.get("/api/ping/{ip}")
 def ping_equipamento(ip: str):
@@ -153,6 +244,7 @@ def ping_equipamento(ip: str):
 class EquipamentoCreate(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
     pingTime: Optional[float] = None; posX: float; posY: float; width: float; height: float
+    monitorMode: str = "ip"; monitorConfig: Optional[dict] = None
 
 class ConexaoCreate(BaseModel):
     id: str; source: str; target: str; label: Optional[str] = None
@@ -165,12 +257,15 @@ class MapaSchema(BaseModel):
 @app.post("/api/projetos/{projeto_id}/salvar")
 def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     eq_dict = [eq.dict() for eq in mapa.equipamentos]
+    for eq in eq_dict:
+        eq['monitorConfig'] = proteger_config(eq.get('monitorConfig'))
     conn_dict = [conn.dict() for conn in mapa.conexoes]
     return crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict)
 
 class EquipamentoBase(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
     ping_time: Optional[float] = None; pos_x: float; pos_y: float; width: float; height: float
+    monitor_mode: str = "ip"; monitor_config: Optional[dict] = None
     class Config: from_attributes = True
 
 class ConexaoBase(BaseModel):
@@ -189,4 +284,10 @@ def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db)):
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).all()
-    return {"id": projeto.id, "nome": projeto.nome, "equipamentos": projeto.equipamentos, "conexoes": conexoes}
+    equipamentos = []
+    for equipamento in projeto.equipamentos:
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode')}
+        config = abrir_config(equipamento.monitor_config)
+        item['monitor_config'] = {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
+        equipamentos.append(item)
+    return {"id": projeto.id, "nome": projeto.nome, "equipamentos": equipamentos, "conexoes": conexoes}

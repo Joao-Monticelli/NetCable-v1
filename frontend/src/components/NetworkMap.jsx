@@ -101,7 +101,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
 
       const newNode = {
         id: `node_${Date.now()}`, type: 'custom', position: posicaoNoMapa, style: { width: 200, height: 80 }, 
-        data: { label: newEquipment.nome, ip: newEquipment.ip, tipo: newEquipment.tipo, status: newEquipment.status || 'offline', pingTime: newEquipment.pingTime }
+        data: { label: newEquipment.nome, ip: newEquipment.ip, tipo: newEquipment.tipo, status: newEquipment.status || 'offline', pingTime: newEquipment.pingTime, monitorMode: newEquipment.monitorMode || 'ip', snmpConfig: newEquipment.snmpConfig || {} }
       }
       setNodes((nds) => [...nds, newNode])
     }
@@ -113,12 +113,12 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       if (nodes.length === 0) return
 
       const pingPromises = nodes.map(async (node) => {
-        if (node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
+        if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
         try {
-          const data = await api.ping(node.data.ip)
+          const data = await api.monitor(node.id, node.data.ip, node.data.monitorMode || 'ip', node.data.snmpConfig)
           return { id: node.id, nome: node.data.label, status: data.status, pingTime: data.tempo_ms }
         } catch (error) { 
-          return { id: node.id, nome: node.data.label, status: 'offline', pingTime: null } 
+          return { id: node.id, nome: node.data.label, status: 'offline', pingTime: null }
         }
       })
 
@@ -203,7 +203,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         defaultEdgeOptions={defaultEdgeOptions} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
-        onReconnect={onReconnect} edgesReconnectable={!readOnly} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
+        onReconnect={onReconnect} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
         reconnectRadius={20} connectionMode="loose" fitView
       >
         <Background />

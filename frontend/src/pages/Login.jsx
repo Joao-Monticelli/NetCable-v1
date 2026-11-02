@@ -18,7 +18,7 @@ export default function Login() {
       toast.success('Bem-vindo ao NetCable!')
       navigate('/projects')
     } catch (err) {
-      toast.error('Usuário ou senha incorretos.')
+      toast.error(err.message || 'Falha ao fazer login.', { duration: 7000 })
     } finally {
       setIsLoading(false)
     }
