@@ -137,7 +137,8 @@ def short_label(hostname, ip, mac, vendor):
         return hostname
     if vendor:
         suffix = "".join(mac.split(":")[3:]) if mac else ""
-        return f"{vendor.split(',')[0].strip()}-{suffix}"[:32] or ip
+        name = vendor.split(",")[0].strip()[:20]
+        return f"{name}-{suffix}" if suffix else name
     return ip
 
 
@@ -146,7 +147,8 @@ def scan_subnet(subnet=None, workers=64):
     if not subnet:
         subnet = default_subnet()
     base = subnet.split("/")[0].rsplit(".", 1)[0]
-    targets = [f"{base}.{i}" for i in range(1, 255)]
+    own = _own_ip()
+    targets = [f"{base}.{i}" for i in range(1, 255) if f"{base}.{i}" != own]
 
     alive = set()
     with ThreadPoolExecutor(max_workers=workers) as pool:
