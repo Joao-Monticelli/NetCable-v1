@@ -126,7 +126,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           id: `node_${discoverBatch.id}_${i}`, type: 'custom',
           position: { x: base.x + (i % perRow) * dx, y: base.y + Math.floor(i / perRow) * dy },
           style: { width: 200, height: 80 },
-          data: { label: d.hostname || d.ip, ip: d.ip, tipo: 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null }
+          data: { label: d.label || d.hostname || d.ip, ip: d.ip, tipo: d.tipo || 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null }
         }))
         setNodes((nds) => [...nds, ...gridNodes])
       }
