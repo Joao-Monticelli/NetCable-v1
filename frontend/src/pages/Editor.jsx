@@ -58,7 +58,7 @@ export default function Editor() {
         const formattedNodes = data.equipamentos.map(eq => ({
           id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
           style: { width: eq.width, height: eq.height },
-          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {} }
+          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {}, mac: eq.mac || null, os: eq.os_info || null }
         }))
         const formattedEdges = data.conexoes.map(conn => ({
           id: conn.id, source: conn.source, target: conn.target, label: conn.label,
@@ -119,7 +119,8 @@ export default function Editor() {
       const equipamentosFormatados = currentNodes.current.map(node => ({
         id: node.id, nome: node.data.label, ip: node.data.ip, tipo: node.data.tipo, status: node.data.status,
         pingTime: node.data.pingTime || null, posX: node.position.x, posY: node.position.y, width: node.style?.width || 200, height: node.style?.height || 80,
-        monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null
+        monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null,
+        mac: node.data.mac || null, osInfo: node.data.os || null
       }))
       const conexoesFormatadas = currentEdges.current.map(edge => ({
         id: edge.id, source: edge.source, target: edge.target, label: edge.label || null,

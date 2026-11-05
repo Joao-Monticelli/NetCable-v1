@@ -65,16 +65,23 @@ export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('equipment.type')}</label>
             <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
               {/* keep legacy PT values selectable for old diagrams */}
-              {!['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc', 'unknown'].includes(tipo) && (
+              {!['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc', 'phone', 'laptop', 'tv', 'printer', 'camera', 'iot', 'mesh', 'unknown'].includes(tipo) && (
                 <option value={tipo}>{typeLabel(t, tipo)}</option>
               )}
               <option value="unknown">{t('types.unknown')}</option>
               <option value="router">{t('types.router')}</option>
+              <option value="phone">{t('types.phone')}</option>
+              <option value="laptop">{t('types.laptop')}</option>
+              <option value="mesh">{t('types.mesh')}</option>
               <option value="managed-switch">{t('types.managedSwitch')}</option>
               <option value="unmanaged-switch">{t('types.unmanagedSwitch')}</option>
               <option value="firewall">{t('types.firewall')}</option>
               <option value="server">{t('types.server')}</option>
               <option value="pc">{t('types.pc')}</option>
+              <option value="tv">{t('types.tv')}</option>
+              <option value="printer">{t('types.printer')}</option>
+              <option value="camera">{t('types.camera')}</option>
+              <option value="iot">{t('types.iot')}</option>
             </select>
           </div>
           

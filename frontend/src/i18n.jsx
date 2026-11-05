@@ -147,6 +147,13 @@ const STRINGS = {
     types: {
       unknown: 'Unknown',
       router: 'Router',
+      phone: 'Phone',
+      laptop: 'Laptop',
+      tv: 'TV',
+      printer: 'Printer',
+      camera: 'Camera',
+      iot: 'IoT Device',
+      mesh: 'Mesh Node',
       managedSwitch: 'Managed Switch',
       unmanagedSwitch: 'Unmanaged Switch',
       firewall: 'Firewall',
@@ -321,6 +328,13 @@ const STRINGS = {
     types: {
       unknown: 'Desconhecido',
       router: 'Roteador',
+      phone: 'Celular',
+      laptop: 'Notebook',
+      tv: 'TV',
+      printer: 'Impressora',
+      camera: 'Câmera',
+      iot: 'Dispositivo IoT',
+      mesh: 'Nó Mesh',
       managedSwitch: 'Switch Gerenciável',
       unmanagedSwitch: 'Switch Não Gerenciável',
       firewall: 'Firewall',
@@ -433,11 +447,18 @@ export function LangToggle() {
 // Canonical device-type values (stored in the DB) with bilingual labels.
 // Old PT values still in existing diagrams keep working: the icon switch in
 // NetworkMap matches both languages.
-export const TYPE_VALUES = ['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc', 'unknown']
+export const TYPE_VALUES = ['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc', 'phone', 'laptop', 'tv', 'printer', 'camera', 'iot', 'mesh', 'unknown']
 
 export function typeLabel(t, value) {
   switch (value) {
     case 'unknown': return t('types.unknown')
+    case 'phone': return t('types.phone')
+    case 'laptop': return t('types.laptop')
+    case 'tv': return t('types.tv')
+    case 'printer': return t('types.printer')
+    case 'camera': return t('types.camera')
+    case 'iot': return t('types.iot')
+    case 'mesh': return t('types.mesh')
     case 'router': case 'Roteador': return t('types.router')
     case 'managed-switch': case 'Switch Gerenciável': return t('types.managedSwitch')
     case 'unmanaged-switch': case 'Switch Não Gerenciável': return t('types.unmanagedSwitch')

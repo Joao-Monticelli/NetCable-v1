@@ -117,19 +117,61 @@ def _open_ports(ip, ports=PROBE_PORTS):
     return open_ports
 
 
-def guess_tipo(ip, open_ports):
-    """Best-effort device class from gateway position and open ports."""
+def guess_tipo(ip, open_ports, vendor=None):
+    """Best-effort device class from gateway position, vendor and open ports."""
     try:
         last_octet = int(ip.rsplit(".", 1)[1])
     except ValueError:
         last_octet = -1
     if last_octet in (1, 254):
         return "router"
+    v = (vendor or "").lower()
+    if any(k in v for k in ("skyworth", "chuangwei", "tcl", "lg electronics", "vizio", "hisense", "philips", "panasonic", "roku", "chromecast", "google inc")):
+        return "tv"
+    if "samsung" in v:
+        return "tv" if open_ports else "phone"
+    if any(k in v for k in ("hewlett", "canon", "epson", "brother", "xerox", "lexmark", "kyocera")):
+        return "printer"
+    if any(k in v for k in ("hikvision", "dahua", "axis ", "hanwha", "uniview", "reolink", "amcrest", "foscam")):
+        return "camera"
+    if any(k in v for k in ("espressif", "tuya", "itead", "sonoff", "shelly", "aqara")):
+        return "iot"
+    if any(k in v for k in ("xiaomi", "oppo", "vivo", "oneplus", "realme", "motorola", "huawei", "honor", "nothing", "apple")):
+        return "phone"
     if 445 in open_ports or 139 in open_ports:
         return "pc"
     if open_ports:
         return "server"
     return "unknown"
+
+
+def guess_os(hostname, vendor, open_ports):
+    """Best-effort OS/firmware label from hostname, vendor and open ports."""
+    h = (hostname or "").lower()
+    v = (vendor or "").lower()
+    if h.startswith("android-") or "android" in h:
+        return "Android"
+    if "iphone" in h or "ipad" in h:
+        return "iOS"
+    if h.startswith("desktop-") or h.startswith("win-") or "desktop" in h:
+        return "Windows"
+    if "macbook" in h or "imac" in h or h.startswith("mac-"):
+        return "macOS"
+    if any(k in v for k in ("skyworth", "chuangwei", "tcl", "lg electronics", "vizio", "hisense", "philips", "panasonic", "roku")):
+        return "Smart TV"
+    if "samsung" in v:
+        return "Smart TV" if open_ports else "Android"
+    if any(k in v for k in ("hewlett", "canon", "epson", "brother", "xerox", "lexmark", "kyocera")):
+        return "Printer"
+    if any(k in v for k in ("hikvision", "dahua", "axis ", "hanwha", "uniview", "reolink", "amcrest", "foscam")):
+        return "IP camera"
+    if any(k in v for k in ("espressif", "tuya", "itead", "sonoff", "shelly", "aqara")):
+        return "ESP firmware"
+    if 445 in open_ports or 139 in open_ports:
+        return "Windows"
+    if "apple" in v:
+        return "Apple device"
+    return None
 
 
 def short_label(hostname, ip, mac, vendor):
@@ -185,7 +227,8 @@ def scan_subnet(subnet=None, workers=64):
             "hostname": names.get(ip) or ip,
             "vendor": vendor,
             "open_ports": open_ports,
-            "tipo": guess_tipo(ip, open_ports),
+            "tipo": guess_tipo(ip, open_ports, vendor),
+            "os": guess_os(names.get(ip) or ip, vendor, open_ports),
             "label": short_label(names.get(ip) or ip, ip, mac, vendor),
             "status": "online",
         })

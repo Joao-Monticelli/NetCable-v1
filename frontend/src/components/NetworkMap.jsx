@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, memo, useRef } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, HelpCircle } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, HelpCircle, Smartphone, Laptop, Tv, Printer, Camera, Cpu, Router } from 'lucide-react'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
@@ -12,9 +12,16 @@ import { useLang } from '../i18n.jsx'
 const CustomNode = memo(({ data, selected }) => {
   const getIcon = () => {
     switch (data.tipo) {
-      case 'router': case 'Roteador': return <Wifi size={18} color="#3b82f6" />
+      case 'router': case 'Roteador': return <Router size={18} color="#3b82f6" />
+      case 'mesh': return <Wifi size={18} color="#38bdf8" />
       case 'firewall': case 'Firewall': return <Shield size={18} color="#f59e0b" />
       case 'pc': case 'PC': return <Monitor size={18} color="#94a3b8" />
+      case 'laptop': return <Laptop size={18} color="#94a3b8" />
+      case 'phone': return <Smartphone size={18} color="#22d3ee" />
+      case 'tv': return <Tv size={18} color="#c084fc" />
+      case 'printer': return <Printer size={18} color="#94a3b8" />
+      case 'camera': return <Camera size={18} color="#f472b6" />
+      case 'iot': return <Cpu size={18} color="#4ade80" />
       case 'unknown': return <HelpCircle size={18} color="#94a3b8" />
       default: return <Server size={18} color="#10b981" />
     }
@@ -33,10 +40,13 @@ const CustomNode = memo(({ data, selected }) => {
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '10px' }}>
         <div style={{ fontWeight: 'bold', fontSize: '14px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{data.label}</div>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{data.ip}</div>
-        
-        {data.status === 'online' && data.pingTime && (
+        {data.mac && (
+          <div style={{ fontSize: '10px', color: '#64748b', fontFamily: 'monospace' }}>{data.mac}</div>
+        )}
+
+        {(data.status === 'online' && (data.pingTime || data.os)) && (
           <div style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
-            <Activity size={10} /> {data.pingTime}ms
+            <Activity size={10} /> {data.pingTime ? `${data.pingTime}ms` : ''}{data.pingTime && data.os ? ' · ' : ''}{data.os || ''}
           </div>
         )}
       </div>
@@ -135,11 +145,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           id: `node_${discoverBatch.id}_gw`, type: 'custom',
           position: { x: base.x + (perRow * dx) / 2 - 100, y: base.y - 200 },
           style: { width: 200, height: 80 },
-          data: {
-            label: (gwEntry && (gwEntry.label || gwEntry.hostname)) || gatewayIp,
-            ip: gatewayIp, tipo: 'router', status: 'online', pingTime: null,
-            monitorMode: 'ip', snmpConfig: null,
-          },
+          data: { label: (gwEntry && (gwEntry.label || gwEntry.hostname)) || gatewayIp, ip: gatewayIp, tipo: 'router', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null, mac: (gwEntry && gwEntry.mac) || null, os: (gwEntry && gwEntry.os) || null },
         }
         gatewayNodes = [routerNode]
         gridDevices = fresh.filter(d => d.ip !== gatewayIp)
@@ -149,7 +155,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         id: `node_${discoverBatch.id}_${i}`, type: 'custom',
         position: { x: base.x + (i % perRow) * dx, y: base.y + Math.floor(i / perRow) * dy },
         style: { width: 200, height: 80 },
-        data: { label: d.label || d.hostname || d.ip, ip: d.ip, tipo: d.tipo || 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null }
+        data: { label: d.label || d.hostname || d.ip, ip: d.ip, tipo: d.tipo || 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null, mac: d.mac || null, os: d.os || null }
       }))
       const edgeStyle = { stroke: '#3b82f6', strokeWidth: 2.5 }
       const gridEdges = gridNodes.map((nn) => ({

@@ -30,6 +30,8 @@ class Equipamento(Base):
     height = Column(Float, default=80)
     monitor_mode = Column(String, default="ip")
     monitor_config = Column(String, nullable=True)
+    mac = Column(String, nullable=True)
+    os_info = Column(String, nullable=True)
     projeto = relationship("Projeto", back_populates="equipamentos")
 
 class Conexao(Base):

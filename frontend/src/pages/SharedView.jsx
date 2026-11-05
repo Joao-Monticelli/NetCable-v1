@@ -24,7 +24,7 @@ export default function SharedView() {
         const formattedNodes = data.equipamentos.map(eq => ({
           id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
           style: { width: eq.width, height: eq.height },
-          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time }
+          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, mac: eq.mac || null, os: eq.os_info || null }
         }))
         const formattedEdges = data.conexoes.map(conn => ({
           id: conn.id, source: conn.source, target: conn.target, label: conn.label,

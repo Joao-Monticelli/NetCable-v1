@@ -60,7 +60,8 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
             ping_time=eq.get('pingTime'), pos_x=eq['posX'], pos_y=eq['posY'],
             width=eq.get('width', 200), height=eq.get('height', 80),
             monitor_mode=eq.get('monitorMode', 'ip'),
-            monitor_config=config
+            monitor_config=config,
+            mac=eq.get('mac'), os_info=eq.get('osInfo')
         )
         db.add(db_eq)
         

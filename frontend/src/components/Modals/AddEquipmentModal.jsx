@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network } from 'lucide-react'
+import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network, Router, Laptop, Smartphone, Tv, Printer, Camera, Cpu } from 'lucide-react'
 import { api } from '../../services/api' // IMPORTANDO A API
 import { useLang, typeLabel } from '../../i18n.jsx'
 
@@ -15,12 +15,19 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   const [isDiscovering, setIsDiscovering] = useState(false)
 
   const [tipos, setTipos] = useState([
-    { value: 'router', icon: Wifi },
+    { value: 'router', icon: Router },
+    { value: 'mesh', icon: Wifi },
     { value: 'managed-switch', icon: Server },
     { value: 'unmanaged-switch', icon: Server },
     { value: 'firewall', icon: Shield },
     { value: 'server', icon: Server },
     { value: 'pc', icon: Monitor },
+    { value: 'laptop', icon: Laptop },
+    { value: 'phone', icon: Smartphone },
+    { value: 'tv', icon: Tv },
+    { value: 'printer', icon: Printer },
+    { value: 'camera', icon: Camera },
+    { value: 'iot', icon: Cpu },
     { value: 'unknown', icon: Server },
   ])
   const [novoTipo, setNovoTipo] = useState('')
