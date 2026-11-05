@@ -112,6 +112,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
 
   useEffect(() => {
     if (discoverBatch && discoverBatch.devices && discoverBatch.devices.length && !readOnly) {
+      const gatewayIp = discoverBatch.gatewayIp || null
       let base = { x: 250, y: 250 }
       try {
         const centerX = window.innerWidth / 2
@@ -121,15 +122,44 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       const perRow = 5, dx = 240, dy = 140
       const existingIps = new Set(nodes.map(n => n.data.ip))
       const fresh = discoverBatch.devices.filter(d => !existingIps.has(d.ip))
-      if (fresh.length) {
-        const gridNodes = fresh.map((d, i) => ({
-          id: `node_${discoverBatch.id}_${i}`, type: 'custom',
-          position: { x: base.x + (i % perRow) * dx, y: base.y + Math.floor(i / perRow) * dy },
+      if (!fresh.length) return
+
+      // Tree root: reuse an existing router node, or create the gateway one.
+      let routerNode = nodes.find(n => n.data.tipo === 'router')
+        || (gatewayIp ? nodes.find(n => n.data.ip === gatewayIp) : null)
+      const gwEntry = gatewayIp ? fresh.find(d => d.ip === gatewayIp) : null
+      let gridDevices = fresh
+      let gatewayNodes = []
+      if (!routerNode && gatewayIp) {
+        routerNode = {
+          id: `node_${discoverBatch.id}_gw`, type: 'custom',
+          position: { x: base.x + (perRow * dx) / 2 - 100, y: base.y - 200 },
           style: { width: 200, height: 80 },
-          data: { label: d.label || d.hostname || d.ip, ip: d.ip, tipo: d.tipo || 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null }
-        }))
-        setNodes((nds) => [...nds, ...gridNodes])
+          data: {
+            label: (gwEntry && (gwEntry.label || gwEntry.hostname)) || gatewayIp,
+            ip: gatewayIp, tipo: 'router', status: 'online', pingTime: null,
+            monitorMode: 'ip', snmpConfig: null,
+          },
+        }
+        gatewayNodes = [routerNode]
+        gridDevices = fresh.filter(d => d.ip !== gatewayIp)
       }
+      if (!gridDevices.length && !gatewayNodes.length) return
+      const gridNodes = gridDevices.map((d, i) => ({
+        id: `node_${discoverBatch.id}_${i}`, type: 'custom',
+        position: { x: base.x + (i % perRow) * dx, y: base.y + Math.floor(i / perRow) * dy },
+        style: { width: 200, height: 80 },
+        data: { label: d.label || d.hostname || d.ip, ip: d.ip, tipo: d.tipo || 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null }
+      }))
+      const edgeStyle = { stroke: '#3b82f6', strokeWidth: 2.5 }
+      const gridEdges = gridNodes.map((nn) => ({
+        id: `edge_${discoverBatch.id}_${nn.id}`, source: routerNode.id, target: nn.id,
+        type: 'smoothstep', animated: true, interactionWidth: 20,
+        style: { ...edgeStyle },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      }))
+      setNodes((nds) => [...nds, ...gatewayNodes, ...gridNodes])
+      setEdges((eds) => [...eds, ...gridEdges])
     }
   }, [discoverBatch, screenToFlowPosition, readOnly, t])
 

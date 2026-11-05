@@ -155,11 +155,12 @@ export default function Editor() {
     try {
       const result = await api.discoverSubnet()
       const devices = result.devices || []
+      const gatewayIp = result.subnet ? result.subnet.split('.').slice(0, 3).join('.') + '.1' : null
       const existing = new Set(currentNodes.current.map(n => n.data.ip))
       const fresh = devices.filter(d => !existing.has(d.ip))
       const skipped = devices.length - fresh.length
       if (!fresh.length) { toast(t('editor.discoverNone')); return }
-      setDiscoverBatch({ id: Date.now(), devices: fresh })
+      setDiscoverBatch({ id: Date.now(), devices: fresh, gatewayIp })
       toast.success(t('editor.discoverFound', { n: fresh.length }))
       if (skipped > 0) toast(t('editor.discoverExists', { n: skipped }), { icon: 'ℹ️' })
     } catch (error) { toast.error(t('editor.discoverFail')) } finally { setIsScanning(false) }
