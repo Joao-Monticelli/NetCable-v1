@@ -40,6 +40,12 @@ const STRINGS = {
       editProfile: 'Edit Profile',
       diagnostics: 'Diagnostics',
       publicLink: 'Generate Public Link',
+      discover: 'Discover',
+      discovering: 'Scanning network...',
+      discoverNone: 'No new devices found.',
+      discoverFound: '{n} new device(s) added to the map. Review and Save.',
+      discoverFail: 'Network scan failed.',
+      discoverExists: '{n} already on the map, skipped.',
       logout: 'Log out',
       deviceDown: 'Device {name} is down!',
       outageTitle: '⚠️ OUTAGE DETECTED ⚠️',
@@ -139,6 +145,7 @@ const STRINGS = {
       recheck: 'Check again',
     },
     types: {
+      unknown: 'Unknown',
       router: 'Router',
       managedSwitch: 'Managed Switch',
       unmanagedSwitch: 'Unmanaged Switch',
@@ -198,6 +205,12 @@ const STRINGS = {
       editProfile: 'Editar Perfil',
       diagnostics: 'Diagnóstico',
       publicLink: 'Gerar Link Público',
+      discover: 'Descobrir',
+      discovering: 'Escaneando a rede...',
+      discoverNone: 'Nenhum dispositivo novo encontrado.',
+      discoverFound: '{n} novo(s) dispositivo(s) no mapa. Revise e Salve.',
+      discoverFail: 'Falha no escaneamento da rede.',
+      discoverExists: '{n} já estavam no mapa, ignorados.',
       logout: 'Sair',
       deviceDown: 'O equipamento {name} caiu!',
       outageTitle: '⚠️ QUEDA DETECTADA ⚠️',
@@ -297,6 +310,7 @@ const STRINGS = {
       recheck: 'Verificar novamente',
     },
     types: {
+      unknown: 'Desconhecido',
       router: 'Roteador',
       managedSwitch: 'Switch Gerenciável',
       unmanagedSwitch: 'Switch Não Gerenciável',
@@ -380,10 +394,11 @@ export function LangToggle() {
 // Canonical device-type values (stored in the DB) with bilingual labels.
 // Old PT values still in existing diagrams keep working: the icon switch in
 // NetworkMap matches both languages.
-export const TYPE_VALUES = ['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc']
+export const TYPE_VALUES = ['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc', 'unknown']
 
 export function typeLabel(t, value) {
   switch (value) {
+    case 'unknown': return t('types.unknown')
     case 'router': case 'Roteador': return t('types.router')
     case 'managed-switch': case 'Switch Gerenciável': return t('types.managedSwitch')
     case 'unmanaged-switch': case 'Switch Não Gerenciável': return t('types.unmanagedSwitch')

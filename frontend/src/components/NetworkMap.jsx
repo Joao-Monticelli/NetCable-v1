@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, memo, useRef } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, HelpCircle } from 'lucide-react'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
@@ -15,6 +15,7 @@ const CustomNode = memo(({ data, selected }) => {
       case 'router': case 'Roteador': return <Wifi size={18} color="#3b82f6" />
       case 'firewall': case 'Firewall': return <Shield size={18} color="#f59e0b" />
       case 'pc': case 'PC': return <Monitor size={18} color="#94a3b8" />
+      case 'unknown': return <HelpCircle size={18} color="#94a3b8" />
       default: return <Server size={18} color="#10b981" />
     }
   }
@@ -63,7 +64,7 @@ const calcularCorConexao = (sourceNode, targetNode) => {
   return { stroke: '#10b981', color: '#10b981' };
 }
 
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, discoverBatch = null, onMapUpdate, onAlertaQueda, readOnly = false }) {
   const { t } = useLang()
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
@@ -108,6 +109,29 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       setNodes((nds) => [...nds, newNode])
     }
   }, [newEquipment, screenToFlowPosition, getViewport, readOnly])
+
+  useEffect(() => {
+    if (discoverBatch && discoverBatch.devices && discoverBatch.devices.length && !readOnly) {
+      let base = { x: 250, y: 250 }
+      try {
+        const centerX = window.innerWidth / 2
+        const centerY = window.innerHeight / 2
+        base = screenToFlowPosition({ x: centerX, y: centerY })
+      } catch(e) { console.warn(t('misc.centerNode')) }
+      const perRow = 5, dx = 240, dy = 140
+      const existingIps = new Set(nodes.map(n => n.data.ip))
+      const fresh = discoverBatch.devices.filter(d => !existingIps.has(d.ip))
+      if (fresh.length) {
+        const gridNodes = fresh.map((d, i) => ({
+          id: `node_${discoverBatch.id}_${i}`, type: 'custom',
+          position: { x: base.x + (i % perRow) * dx, y: base.y + Math.floor(i / perRow) * dy },
+          style: { width: 200, height: 80 },
+          data: { label: d.hostname || d.ip, ip: d.ip, tipo: 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null }
+        }))
+        setNodes((nds) => [...nds, ...gridNodes])
+      }
+    }
+  }, [discoverBatch, screenToFlowPosition, readOnly, t])
 
   // Monitoramento Contínuo (Frontend) e Alerta
   useEffect(() => {

@@ -65,9 +65,10 @@ export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('equipment.type')}</label>
             <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
               {/* keep legacy PT values selectable for old diagrams */}
-              {!['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc'].includes(tipo) && (
+              {!['router', 'managed-switch', 'unmanaged-switch', 'firewall', 'server', 'pc', 'unknown'].includes(tipo) && (
                 <option value={tipo}>{typeLabel(t, tipo)}</option>
               )}
+              <option value="unknown">{t('types.unknown')}</option>
               <option value="router">{t('types.router')}</option>
               <option value="managed-switch">{t('types.managedSwitch')}</option>
               <option value="unmanaged-switch">{t('types.unmanagedSwitch')}</option>

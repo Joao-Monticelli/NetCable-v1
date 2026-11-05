@@ -17,6 +17,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel
 from typing import List, Optional
 from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailableError
+from . import scan_service
 
 from . import models, crud
 from .database import engine, SessionLocal
@@ -203,6 +204,18 @@ def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), 
 class DiscoveryRequest(BaseModel):
     ip: str
     config: dict
+
+
+class SubnetScanRequest(BaseModel):
+    subnet: Optional[str] = None
+
+
+@app.post("/api/discovery/subnet")
+def escanear_subrede(request: SubnetScanRequest, user: models.Usuario = Depends(get_current_user)):
+    try:
+        return scan_service.scan_subnet(request.subnet)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Falha no escaneamento: {exc}")
 
 @app.post("/api/discovery/neighbors")
 def descobrir_vizinhos(request: DiscoveryRequest, user: models.Usuario = Depends(get_current_user)):

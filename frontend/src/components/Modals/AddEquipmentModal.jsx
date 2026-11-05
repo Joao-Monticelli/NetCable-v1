@@ -21,6 +21,7 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
     { value: 'firewall', icon: Shield },
     { value: 'server', icon: Server },
     { value: 'pc', icon: Monitor },
+    { value: 'unknown', icon: Server },
   ])
   const [novoTipo, setNovoTipo] = useState('')
   const [mostrarNovoTipo, setMostrarNovoTipo] = useState(false)

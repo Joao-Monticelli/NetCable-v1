@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Radar } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
@@ -19,6 +19,8 @@ export default function Editor() {
   const [isEditingName, setIsEditingName] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [newEquipment, setNewEquipment] = useState(null)
+  const [discoverBatch, setDiscoverBatch] = useState(null)
+  const [isScanning, setIsScanning] = useState(false)
   const [stats, setStats] = useState({ online: 0, offline: 0, visual: 0 })
   const [isSaving, setIsSaving] = useState(false)
   const [isLoadingData, setIsLoadingData] = useState(projectId !== 'novo')
@@ -147,6 +149,22 @@ export default function Editor() {
   const handleLogout = () => { api.logout(); navigate('/'); };
   const handleAddEquipment = (equipamento) => { setNewEquipment({ ...equipamento, id: Date.now() }); setIsAddModalOpen(false) }
 
+  const handleDiscover = async () => {
+    if (isScanning) return
+    setIsScanning(true)
+    try {
+      const result = await api.discoverSubnet()
+      const devices = result.devices || []
+      const existing = new Set(currentNodes.current.map(n => n.data.ip))
+      const fresh = devices.filter(d => !existing.has(d.ip))
+      const skipped = devices.length - fresh.length
+      if (!fresh.length) { toast(t('editor.discoverNone')); return }
+      setDiscoverBatch({ id: Date.now(), devices: fresh })
+      toast.success(t('editor.discoverFound', { n: fresh.length }))
+      if (skipped > 0) toast(t('editor.discoverExists', { n: skipped }), { icon: 'ℹ️' })
+    } catch (error) { toast.error(t('editor.discoverFail')) } finally { setIsScanning(false) }
+  }
+
   const handleExport = () => {
     const equipamentosSeguros = currentNodes.current.map(node => ({
       ...node,
@@ -226,6 +244,10 @@ export default function Editor() {
           <button onClick={() => fileInputRef.current.click()} title={t('editor.importTitle')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>
           <button onClick={handleExport} title={t('editor.exportTitle')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
+          <button onClick={handleDiscover} disabled={isScanning} title={t('editor.discover')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isScanning ? '#475569' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: isScanning ? 'wait' : 'pointer' }}>
+            {isScanning ? <Loader2 size={18} className="spin" /> : <Radar size={18} />} {isScanning ? t('editor.discovering') : t('editor.discover')}
+          </button>
+
           <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
             <Plus size={18} /> {t('editor.add')}
           </button>
@@ -260,7 +282,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} discoverBatch={discoverBatch} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} />
       </div>
 
       {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} />}

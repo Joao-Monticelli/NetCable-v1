@@ -97,6 +97,14 @@ export const api = {
     if (!res.ok) throw new Error((await res.json()).detail || msg('api.discoveryFail'));
     return res.json();
   },
+
+  async discoverSubnet(subnet = null) {
+    const res = await fetch(`${API_URL}/discovery/subnet`, {
+      method: 'POST', headers: getHeaders(), body: JSON.stringify({ subnet })
+    });
+    if (!res.ok) throw new Error(msg('api.discoveryFail'));
+    return res.json();
+  },
   
   async listarProjetos() {
     const res = await fetch(`${API_URL}/projetos`, { headers: getHeaders() });
