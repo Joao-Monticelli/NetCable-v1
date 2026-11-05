@@ -1,16 +1,16 @@
 import { getLang, tr, serverDetail } from '../i18n.jsx'
 
-// Em produção e no desenvolvimento o frontend usa o mesmo host do backend
-// através de proxy. VITE_API_URL continua disponível para instalações externas.
+// In production and development the frontend uses the backend host
+// through a proxy. VITE_API_URL remains available for external installs.
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 const API_URL = `${API_BASE_URL}/api`;
 
 const msg = (key) => tr(getLang(), key);
 
-// Pega o token salvo no navegador
+// Saved token in the browser
 const getToken = () => localStorage.getItem('netcable_token');
 
-// Função genérica para headers
+// Generic headers helper
 const getHeaders = () => ({
   'Content-Type': 'application/json',
   'Authorization': `Bearer ${getToken()}`
@@ -40,7 +40,7 @@ export const api = {
         const body = await res.json()
         if (body.detail) detail = serverDetail(body.detail)
       } catch (error) {
-        // Mantém a mensagem HTTP quando o backend não retorna JSON.
+        // Keep the HTTP message when the backend returns no JSON.
       }
       throw new Error(detail)
     }

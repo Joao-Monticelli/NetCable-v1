@@ -15,9 +15,9 @@ export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
     onUpdate(node.id, { label: nome, ip, tipo, monitorMode: (ip === 'Sem IP' || ip === 'No IP') ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null })
   }
 
-  // Função para restaurar o tamanho original
+  // Restore the original size
   const handleResetSize = () => {
-    // Acessa a referência do elemento pai do React Flow (nó) e altera o CSS
+    // Access the parent element of the React Flow node and change the CSS
     const nodeElement = document.querySelector(`.react-flow__node[data-id="${node.id}"]`)
     if (nodeElement) {
       nodeElement.style.width = '200px'

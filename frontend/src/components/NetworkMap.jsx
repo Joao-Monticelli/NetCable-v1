@@ -169,7 +169,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     }
   }, [discoverBatch, screenToFlowPosition, readOnly, t])
 
-  // Monitoramento Contínuo (Frontend) e Alerta
+  // Continuous monitoring (frontend) and alerting
   useEffect(() => {
     const interval = setInterval(async () => {
       if (nodes.length === 0) return
@@ -191,7 +191,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           const result = results.find(r => r && r.id === node.id)
           
           if (result) {
-            // VERIFICA SE CAIU (Estava online, agora está offline)
+            // CHECK IF IT WENT DOWN (was online, now offline)
             if (statusAnterior.current[node.id] === 'online' && result.status === 'offline') {
               // Toca o som
               const audio = new Audio('/alert.mp3') // Vamos precisar de um mp3
@@ -201,7 +201,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
               if (onAlertaQueda) onAlertaQueda(t('editor.deviceDown', { name: result.nome }))
             }
             
-            // Atualiza a referência
+            // Update the reference
             statusAnterior.current[node.id] = result.status
 
             if (result.status !== node.data.status) {

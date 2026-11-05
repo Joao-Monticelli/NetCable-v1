@@ -43,7 +43,7 @@ export default function SettingsModal({ onClose, currentUser }) {
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
           </div>
 
-          {/* OPÇÕES EM BREVE */}
+          {/* COMING SOON OPTIONS */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.6, padding: '10px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
             <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}><Send size={14}/> {t('settings.telegram')}</span>
             <span style={{ fontSize: '10px', backgroundColor: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>{t('settings.soon')}</span>

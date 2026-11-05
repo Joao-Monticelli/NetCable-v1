@@ -1,0 +1,138 @@
+🌐 NetCable — Mapeador Visual de Rede (BETA)
+
+![Status](https://img.shields.io/badge/Status-BETA-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Python](https://img.shields.io/badge/Python-3.11-yellow)
+![React](https://img.shields.io/badge/React-18-blue)
+
+<img width="1080" height="602" alt="image" src="https://github.com/user-attachments/assets/792717d9-2239-4b9a-9959-fdead1927bb7" />
+
+<img width="1678" height="894" alt="netcable2" src="https://github.com/user-attachments/assets/1267e35c-83bc-4099-a174-ea4889ac81d1" />
+
+<img width="1678" height="894" alt="netcable2" src="https://github.com/user-attachments/assets/8c297d1f-fed7-4df8-8d4c-0ecd2af1c5fa" />
+
+
+
+
+O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar sua rede em tempo real. Crie diagramas visuais arrastando e soltando equipamentos, conecte-os com cabos virtuais e acompanhe o status de cada dispositivo com alertas em tempo real.
+
+⚠️ Este projeto está em fase BETA e em desenvolvimento ativo. Funcionalidades podem mudar, bugs podem aparecer e várias melhorias estão planejadas (veja a seção Roadmap). Feedbacks e contribuições são bem-vindos.
+
+✨ Funcionalidades
+🔐 Login seguro — autenticação via JWT
+
+🎨 Mapeamento visual — crie diagramas de rede arrastando ícones e puxando linhas (cabos)
+
+📡 Monitoramento inteligente — testa cada equipamento usando TCP (portas 80, 443, 22) e ICMP (ping)
+
+🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo) e alerta sonoro
+
+🔗 Link público — compartilhe o diagrama em modo somente leitura
+
+💾 Exportar/Importar JSON — faça backup e restaure seu diagrama facilmente
+
+## 🔧 Atualizações recentes
+
+O NetCable recebeu uma primeira evolução no monitoramento e na integração com redes reais:
+
+✅ **Método de monitoramento por equipamento** — escolha entre IP/ICMP + TCP, SNMPv3 ou modo somente visual.
+
+✅ **Suporte inicial a SNMPv3** — autenticação MD5/SHA, privacidade AES/DES, teste de conexão e porta SNMP configurável.
+
+✅ **Descoberta de vizinhos LLDP/CDP** — consulta as tabelas de vizinhança disponibilizadas pelo equipamento via SNMP.
+
+✅ **Proteção das credenciais** — configurações SNMP são cifradas no backend e as senhas não são incluídas nos backups JSON.
+
+✅ **Diagnóstico da instalação** — nova verificação da API, banco de dados, caminho do SQLite e disponibilidade do PySNMP.
+
+✅ **Comunicação simplificada** — o frontend usa o caminho `/api`, com proxy no Vite e no Nginx. Usuários não precisam configurar ou conhecer a porta interna do backend.
+
+✅ **Mensagens de erro mais claras** — falhas de conexão, API e monitoramento agora são exibidas com mais detalhes.
+
+✅ **Compatibilidade com bancos existentes** — novas configurações de monitoramento são adicionadas automaticamente sem apagar os projetos atuais.
+
+Esses recursos estão em validação com switches, firewalls e outros equipamentos reais. A criação automática de nós e conexões a partir da descoberta, além da coleta detalhada de interfaces, CPU e memória, permanece planejada para as próximas versões.
+
+🚀 Como Rodar (Docker — recomendado)
+A forma mais simples de rodar o NetCable é via Docker Compose, em qualquer máquina com Docker instalado (VPS, mini PC, Raspberry Pi, VM, PC de laboratório etc.).
+
+bash
+git clone https://github.com/Joao-Monticelli/NetCable-v1.git
+cd NetCable-v1
+# edite o docker-compose.yml com usuário, senha e caminho dos dados
+docker compose up -d
+Depois acesse http://localhost:<porta> no navegador.
+
+💡 O NetCable não exige TrueNAS. Ele roda em qualquer ambiente com Docker. O TrueNAS é apenas uma das formas de hospedar — veja abaixo.
+
+🖥️ Opção: Instalar no TrueNAS (Custom App)
+Se você já usa TrueNAS SCALE e quer rodar o NetCable junto aos seus apps:
+
+Baixe o arquivo YAML de instalação: install/trueNAS.yml
+
+No TrueNAS, vá em Apps → Custom App → Install via YAML
+
+Cole o conteúdo do YAML e edite usuário, senha e o caminho do pool
+
+Clique em Install
+
+Para o passo a passo detalhado, veja o INSTALL.md.
+
+⚠️ Nota: o NetCable é um app de rede, não um app de storage. Ele roda bem no TrueNAS, mas o TrueNAS não é obrigatório — use a opção Docker acima se preferir simplicidade.
+
+🛠️ Tecnologias Utilizadas
+Frontend: React, Vite, React Flow, Lucide React, React Hot Toast
+
+Backend: Python, FastAPI, SQLAlchemy, SQLite, Ping3
+
+Infraestrutura: Docker, Docker Compose, GitHub Actions, GitHub Container Registry (GHCR)
+
+🗺️ Roadmap
+O projeto está em beta e as seguintes melhorias estão planejadas:
+
+□ Suporte a múltiplos usuários e permissões
+□ Histórico de status dos dispositivos (uptime/downtime)
+□ Notificações externas (e-mail, webhook, Telegram/Discord)
+□ Suporte a PostgreSQL como alternativa ao SQLite
+□ Melhorias de performance no monitoramento (fila/agendamento)
+□ Testes automatizados (backend e frontend)
+□ Documentação de API (OpenAPI/Swagger)
+□ Temas claro/escuro
+□ Internacionalização (pt-BR / en)
+Sugestões de funcionalidades são bem-vindas via Issues.
+
+🤝 Contribuindo
+Contribuições são muito bem-vindas! Sinta-se à vontade para abrir Issues com bugs, sugestões ou dúvidas, e Pull Requests com melhorias.
+
+📄 Licença
+Este projeto está sob a licença MIT. Sinta-se livre para usar, modificar e contribuir.
+
+🔍 O que mudou em relação ao README atual
+Docker como opção principal — o README antigo abria direto com "Como Instalar (TrueNAS)", o que fazia o projeto parecer um app de storage. Agora o Docker é o caminho padrão e o TrueNAS é uma opção entre outras.
+
+Aviso de beta + Roadmap — deixa explícito que o projeto está em evolução, reduzindo críticas do tipo "isso não está pronto".
+
+Nota de que o TrueNAS é opcional — antecipa a crítica mais comum de comunidades de storage.
+
+Seção de contribuição — abre espaço para feedback construtivo.
+
+Roadmap com melhorias reais — mostra direção e maturidade.
+
+Sugestões de melhorias futuras (para depois)
+Screenshots/GIF do diagrama funcionando — isso aumenta muito o engajamento em qualquer comunidade.
+
+Badges no topo (build status, licença, versão) — dá aparência profissional.
+
+Seção "Por que NetCable?" — um parágrafo curto explicando o problema que ele resolve (mapear rede visualmente sem ferramentas pagas).
+
+- **Frontend:** React, Vite, React Flow, Lucide React, React Hot Toast.
+- **Backend:** Python, FastAPI, SQLAlchemy, SQLite, Ping3.
+- **Infraestrutura:** Docker, GitHub Actions, GitHub Container Registry (GHCR).
+
+---
+
+## 📄 Licença
+Este projeto está sob a licença MIT. Sinta-se livre para contribuir e usar.
+
+---
+*Documento gerado e mantido pela equipe NetCable.*

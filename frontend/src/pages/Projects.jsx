@@ -12,7 +12,7 @@ export default function Projects() {
   const [projetos, setProjetos] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   
-  // Estados para o Menu de Configurações e Modal
+  // State for the settings menu and modal
   const [showConfigMenu, setShowConfigMenu] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
@@ -33,7 +33,7 @@ export default function Projects() {
   useEffect(() => {
     fetchProjetos()
     
-    // Busca os dados do usuário logado para preencher o Modal de Perfil
+    // Fetch the logged-in user data to fill the Profile modal
     const fetchMe = async () => {
       try {
         setCurrentUser(await api.me())
@@ -67,7 +67,7 @@ export default function Projects() {
           <h1 style={{ fontSize: '24px' }}>{t('projects.title')}</h1>
         </div>
 
-        {/* LADO DIREITO: MENU DE CONFIGURAÇÕES */}
+        {/* RIGHT SIDE: SETTINGS MENU */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <LangToggle />
           <div style={{ position: 'relative' }}>

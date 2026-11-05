@@ -90,22 +90,22 @@ export default function Editor() {
     setStats(counts)
   }, [])
 
-  // Callback chamado quando o NetworkMap detecta uma queda
+  // Callback when NetworkMap detects an outage
   const handleAlertaQueda = useCallback((mensagem) => {
     setTemAlerta(true)
-    toast.error(mensagem, { duration: 5000 }) // Notificação no canto da tela
+    toast.error(mensagem, { duration: 5000 }) // Corner notification
     
-    // Piscar o título da aba do navegador
+    // Blink the browser tab title
     let isOriginalTitle = false;
     const interval = setInterval(() => {
       document.title = isOriginalTitle ? t('editor.outageTitle') : 'NetCable';
       isOriginalTitle = !isOriginalTitle;
     }, 1000);
     
-    // Para de piscar depois de 10 segundos
+    // Stop blinking after 10 seconds
     setTimeout(() => clearInterval(interval), 10000);
     
-    // Remove o alerta visual após 10 segundos
+    // Remove the visual alert after 10 seconds
     setTimeout(() => setTemAlerta(false), 10000)
   }, [t])
 
@@ -231,7 +231,7 @@ export default function Editor() {
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <LangToggle />
 
-          {/* ÍCONE DE ALERTA NO HEADER */}
+          {/* HEADER ALERT ICON */}
           <div title={temAlerta ? t('editor.alertOn') : t('editor.alertOff')} style={{ padding: '8px', backgroundColor: temAlerta ? '#ef4444' : 'transparent', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {temAlerta ? <AlertTriangle size={20} color="white" className="animate-pulse" /> : <Bell size={20} color="#64748b" />}
           </div>
