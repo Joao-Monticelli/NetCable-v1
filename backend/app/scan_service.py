@@ -145,7 +145,7 @@ def guess_tipo(ip, open_ports, vendor=None):
     return "unknown"
 
 
-def guess_os(hostname, vendor, open_ports):
+def guess_os(hostname, vendor, open_ports, tipo=None):
     """Best-effort OS/firmware label from hostname, vendor and open ports."""
     h = (hostname or "").lower()
     v = (vendor or "").lower()
@@ -171,6 +171,14 @@ def guess_os(hostname, vendor, open_ports):
         return "Windows"
     if "apple" in v:
         return "Apple device"
+    if tipo == "router":
+        return "Router"
+    if tipo == "printer":
+        return "Printer"
+    if tipo == "camera":
+        return "IP camera"
+    if tipo == "tv":
+        return "Smart TV"
     return None
 
 
@@ -221,14 +229,15 @@ def scan_subnet(subnet=None, workers=64):
         mac = macs.get(ip)
         vendor = vendor_for(mac, oui)
         open_ports = ports.get(ip, [])
+        tipo = guess_tipo(ip, open_ports, vendor)
         found.append({
             "ip": ip,
             "mac": mac,
             "hostname": names.get(ip) or ip,
             "vendor": vendor,
             "open_ports": open_ports,
-            "tipo": guess_tipo(ip, open_ports, vendor),
-            "os": guess_os(names.get(ip) or ip, vendor, open_ports),
+            "tipo": tipo,
+            "os": guess_os(names.get(ip) or ip, vendor, open_ports, tipo),
             "label": short_label(names.get(ip) or ip, ip, mac, vendor),
             "status": "online",
         })
