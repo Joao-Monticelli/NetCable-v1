@@ -1,7 +1,11 @@
+import { getLang, tr } from '../i18n.jsx'
+
 // Em produção e no desenvolvimento o frontend usa o mesmo host do backend
 // através de proxy. VITE_API_URL continua disponível para instalações externas.
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 const API_URL = `${API_BASE_URL}/api`;
+
+const msg = (key) => tr(getLang(), key);
 
 // Pega o token salvo no navegador
 const getToken = () => localStorage.getItem('netcable_token');
@@ -26,10 +30,12 @@ export const api = {
         body: formData
       });
     } catch (error) {
-      throw new Error(`Não foi possível conectar à API do NetCable: ${error.message}`)
+      const err = new Error(`${msg('api.connectFail')}${error.message}`)
+      err.code = 'CONNECT_FAIL'
+      throw err
     }
     if (!res.ok) {
-      let detail = `Falha no login (HTTP ${res.status})`
+      let detail = `${msg('api.loginFail')}${res.status})`
       try {
         const body = await res.json()
         if (body.detail) detail = body.detail
@@ -45,7 +51,11 @@ export const api = {
 
   async me() {
     const res = await fetch(`${API_URL}/me`, { headers: getHeaders() });
-    if (!res.ok) throw new Error('Não autorizado');
+    if (!res.ok) {
+      const err = new Error(msg('api.unauthorized'))
+      err.code = 'UNAUTHORIZED'
+      throw err
+    }
     return res.json();
   },
 
@@ -54,7 +64,7 @@ export const api = {
       method: 'PUT', headers: getHeaders(), body: JSON.stringify(dados)
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Erro ao atualizar perfil.');
+    if (!res.ok) throw new Error(data.detail || msg('api.profileFail'));
     return data;
   },
 
@@ -76,7 +86,7 @@ export const api = {
       method: 'POST', headers: getHeaders(),
       body: JSON.stringify({ equipmentId, ip, mode, config })
     });
-    if (!res.ok) throw new Error((await res.json()).detail || 'Falha no monitoramento');
+    if (!res.ok) throw new Error((await res.json()).detail || msg('api.monitorFail'));
     return res.json();
   },
 
@@ -84,13 +94,17 @@ export const api = {
     const res = await fetch(`${API_URL}/discovery/neighbors`, {
       method: 'POST', headers: getHeaders(), body: JSON.stringify({ ip, config })
     });
-    if (!res.ok) throw new Error((await res.json()).detail || 'Falha na descoberta');
+    if (!res.ok) throw new Error((await res.json()).detail || msg('api.discoveryFail'));
     return res.json();
   },
   
   async listarProjetos() {
     const res = await fetch(`${API_URL}/projetos`, { headers: getHeaders() });
-    if (res.status === 401) throw new Error('Não autorizado');
+    if (res.status === 401) {
+      const err = new Error(msg('api.unauthorized'))
+      err.code = 'UNAUTHORIZED'
+      throw err
+    }
     return res.json();
   },
   
@@ -125,7 +139,7 @@ export const api = {
 
   async health() {
     const res = await fetch(`${API_URL}/health`);
-    if (!res.ok) throw new Error(`API indisponível (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`${msg('api.apiDown')}${res.status})`);
     return res.json();
   }
 };

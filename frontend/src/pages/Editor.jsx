@@ -7,12 +7,15 @@ import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
 import SettingsModal from '../components/Modals/SettingsModal'
 import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import { api } from '../services/api'
+import { useLang, LangToggle } from '../i18n.jsx'
 
 export default function Editor() {
   const navigate = useNavigate()
   const { projectId } = useParams()
+  const { t } = useLang()
+
+  const [projectName, setProjectName] = useState(projectId === 'novo' ? t('editor.newMap') : t('editor.loadingProject'))
   
-  const [projectName, setProjectName] = useState(projectId === 'novo' ? 'Novo Mapa' : `Carregando...`)
   const [isEditingName, setIsEditingName] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [newEquipment, setNewEquipment] = useState(null)
@@ -64,7 +67,7 @@ export default function Editor() {
         setMapNodes(formattedNodes)
         setMapEdges(formattedEdges)
       } catch (error) {
-        toast.error('Erro ao carregar o projeto.')
+        toast.error(t('editor.loadError'))
         navigate('/');
       } finally {
         setIsLoadingData(false)
@@ -93,7 +96,7 @@ export default function Editor() {
     // Piscar o título da aba do navegador
     let isOriginalTitle = false;
     const interval = setInterval(() => {
-      document.title = isOriginalTitle ? '⚠️ QUEDA DETECTADA ⚠️' : 'NetCable';
+      document.title = isOriginalTitle ? t('editor.outageTitle') : 'NetCable';
       isOriginalTitle = !isOriginalTitle;
     }, 1000);
     
@@ -102,13 +105,13 @@ export default function Editor() {
     
     // Remove o alerta visual após 10 segundos
     setTimeout(() => setTemAlerta(false), 10000)
-  }, [])
+  }, [t])
 
   const handleSaveProject = async () => {
     if (isSaving) return
     setIsSaving(true)
     try {
-      if (projectId !== 'novo' && projectName !== `Carregando...`) {
+      if (projectId !== 'novo' && projectName !== t('editor.loadingProject')) {
         await api.editarNomeProjeto(projectId, projectName)
       }
       const equipamentosFormatados = currentNodes.current.map(node => ({
@@ -127,17 +130,17 @@ export default function Editor() {
       }
       const ok = await api.salvarMapa(idParaSalvar, equipamentosFormatados, conexoesFormatadas)
       if (ok) {
-        toast.success('Projeto salvo com sucesso!')
+        toast.success(t('editor.saveSuccess'))
         if (projectId === 'novo') navigate(`/editor/${idParaSalvar}`, { replace: true })
       }
-    } catch (error) { toast.error('Erro ao salvar o projeto.') } finally { setIsSaving(false) }
+    } catch (error) { toast.error(t('editor.saveError')) } finally { setIsSaving(false) }
   }
 
   const handleCopyLink = () => {
-    if (projectId === 'novo') { toast.error("Salve o projeto primeiro!"); return; }
+    if (projectId === 'novo') { toast.error(t('editor.saveFirst')); return; }
     const link = `${window.location.origin}/share/${projectId}`;
     navigator.clipboard.writeText(link);
-    toast.success('Link público copiado!');
+    toast.success(t('editor.linkCopied'));
     setShowConfigMenu(false);
   };
 
@@ -164,7 +167,7 @@ export default function Editor() {
     link.href = url
     link.download = `netcable_backup_${projectName.replace(/\s+/g, '_')}.json`
     link.click()
-    toast.success('Backup exportado!')
+    toast.success(t('editor.exportDone'))
   }
 
   const handleImport = (event) => {
@@ -177,15 +180,15 @@ export default function Editor() {
         if (importedData.equipamentos && importedData.conexoes) {
           setMapNodes(importedData.equipamentos)
           setMapEdges(importedData.conexoes)
-          toast.success('Backup importado!')
+          toast.success(t('editor.importDone'))
         }
-      } catch (err) { toast.error('Erro ao ler o arquivo JSON.') }
+      } catch (err) { toast.error(t('editor.importError')) }
     }
     reader.readAsText(file)
     event.target.value = null
   }
 
-  if (isLoadingData) return <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Loader2 className="spin" /> Carregando...</div>
+  if (isLoadingData) return <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Loader2 className="spin" /> {t('editor.loadingData')}</div>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#0f172a' }}>
@@ -206,9 +209,10 @@ export default function Editor() {
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          
+          <LangToggle />
+
           {/* ÍCONE DE ALERTA NO HEADER */}
-          <div title={temAlerta ? "Atenção: Queda detectada!" : "Sem alertas"} style={{ padding: '8px', backgroundColor: temAlerta ? '#ef4444' : 'transparent', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div title={temAlerta ? t('editor.alertOn') : t('editor.alertOff')} style={{ padding: '8px', backgroundColor: temAlerta ? '#ef4444' : 'transparent', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {temAlerta ? <AlertTriangle size={20} color="white" className="animate-pulse" /> : <Bell size={20} color="#64748b" />}
           </div>
 
@@ -219,15 +223,15 @@ export default function Editor() {
           </div>
 
           <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" style={{ display: 'none' }} />
-          <button onClick={() => fileInputRef.current.click()} title="Importar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>
-          <button onClick={handleExport} title="Exportar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
+          <button onClick={() => fileInputRef.current.click()} title={t('editor.importTitle')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>
+          <button onClick={handleExport} title={t('editor.exportTitle')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
           <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-            <Plus size={18} /> Adicionar
+            <Plus size={18} /> {t('editor.add')}
           </button>
-          
+
           <button onClick={handleSaveProject} disabled={isSaving} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
-            {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : 'Salvar'}
+            {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? t('editor.saving') : t('editor.save')}
           </button>
           
           <div style={{ position: 'relative' }}>
@@ -237,17 +241,17 @@ export default function Editor() {
             {showConfigMenu && (
               <div style={{ position: 'absolute', top: '110%', right: 0, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '5px', minWidth: '180px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100 }}>
                 <button onClick={() => { setShowConfigMenu(false); setIsSettingsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
-                  <UserCog size={16} color="#94a3b8"/> Editar Perfil
+                  <UserCog size={16} color="#94a3b8"/> {t('editor.editProfile')}
                 </button>
                 <button onClick={() => { setShowConfigMenu(false); setIsDiagnosticsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <Activity size={16} color="#10b981"/> Diagnóstico
+                  <Activity size={16} color="#10b981"/> {t('editor.diagnostics')}
                 </button>
                 <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
-                  <Share2 size={16} color="#3b82f6"/> Gerar Link Público
+                  <Share2 size={16} color="#3b82f6"/> {t('editor.publicLink')}
                 </button>
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
                 <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <LogOut size={16} /> Sair
+                  <LogOut size={16} /> {t('editor.logout')}
                 </button>
               </div>
             )}

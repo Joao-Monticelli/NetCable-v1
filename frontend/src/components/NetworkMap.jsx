@@ -7,13 +7,14 @@ import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
+import { useLang } from '../i18n.jsx'
 
 const CustomNode = memo(({ data, selected }) => {
   const getIcon = () => {
     switch (data.tipo) {
-      case 'Roteador': return <Wifi size={18} color="#3b82f6" />
-      case 'Firewall': return <Shield size={18} color="#f59e0b" />
-      case 'PC': return <Monitor size={18} color="#94a3b8" />
+      case 'router': case 'Roteador': return <Wifi size={18} color="#3b82f6" />
+      case 'firewall': case 'Firewall': return <Shield size={18} color="#f59e0b" />
+      case 'pc': case 'PC': return <Monitor size={18} color="#94a3b8" />
       default: return <Server size={18} color="#10b981" />
     }
   }
@@ -63,6 +64,7 @@ const calcularCorConexao = (sourceNode, targetNode) => {
 }
 
 function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false }) {
+  const { t } = useLang()
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -97,7 +99,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         const centerX = window.innerWidth / 2
         const centerY = window.innerHeight / 2
         posicaoNoMapa = screenToFlowPosition({ x: centerX, y: centerY })
-      } catch(e) { console.warn("Não foi possível centralizar o nó.") }
+      } catch(e) { console.warn(t('misc.centerNode')) }
 
       const newNode = {
         id: `node_${Date.now()}`, type: 'custom', position: posicaoNoMapa, style: { width: 200, height: 80 }, 
@@ -113,7 +115,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       if (nodes.length === 0) return
 
       const pingPromises = nodes.map(async (node) => {
-        if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
+        if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP' || node.data.ip === 'No IP') return null
         try {
           const data = await api.monitor(node.id, node.data.ip, node.data.monitorMode || 'ip', node.data.snmpConfig)
           return { id: node.id, nome: node.data.label, status: data.status, pingTime: data.tempo_ms }
@@ -133,10 +135,10 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
             if (statusAnterior.current[node.id] === 'online' && result.status === 'offline') {
               // Toca o som
               const audio = new Audio('/alert.mp3') // Vamos precisar de um mp3
-              audio.play().catch(e => console.log("Navegador bloqueou o som. Interaja com a página primeiro."))
+              audio.play().catch(e => console.log(t('misc.soundBlocked')))
               
               // Avisa o Editor para piscar o header
-              if (onAlertaQueda) onAlertaQueda(`O equipamento ${result.nome} caiu!`)
+              if (onAlertaQueda) onAlertaQueda(t('editor.deviceDown', { name: result.nome }))
             }
             
             // Atualiza a referência
