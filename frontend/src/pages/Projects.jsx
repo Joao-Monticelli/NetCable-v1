@@ -4,13 +4,15 @@ import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import SettingsModal from '../components/Modals/SettingsModal'
+import { useLang, LangToggle } from '../i18n.jsx'
 
 export default function Projects() {
   const navigate = useNavigate()
+  const { t } = useLang()
   const [projetos, setProjetos] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   
-  // Estados para o Menu de Configurações e Modal
+  // State for the settings menu and modal
   const [showConfigMenu, setShowConfigMenu] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
@@ -20,7 +22,7 @@ export default function Projects() {
       const data = await api.listarProjetos()
       setProjetos(data)
     } catch (error) {
-      if (error.message === 'Não autorizado') {
+      if (error.code === 'UNAUTHORIZED') {
         api.logout(); navigate('/');
       }
     } finally {
@@ -31,7 +33,7 @@ export default function Projects() {
   useEffect(() => {
     fetchProjetos()
     
-    // Busca os dados do usuário logado para preencher o Modal de Perfil
+    // Fetch the logged-in user data to fill the Profile modal
     const fetchMe = async () => {
       try {
         setCurrentUser(await api.me())
@@ -42,14 +44,14 @@ export default function Projects() {
 
   const handleDeleteProject = async (e, id, nome) => {
     e.stopPropagation() 
-    if (!window.confirm(`Excluir o projeto "${nome}"?`)) return
+    if (!window.confirm(t('projects.deleteConfirm', { name: nome }))) return
     try {
       const ok = await api.deletarProjeto(id)
       if (ok) {
         setProjetos(projetos.filter(p => p.id !== id))
-        toast.success('Projeto excluído com sucesso.')
+        toast.success(t('projects.deleted'))
       }
-    } catch (error) { toast.error('Erro ao excluir.') }
+    } catch (error) { toast.error(t('projects.deleteError')) }
   }
 
   const handleLogout = () => {
@@ -62,11 +64,12 @@ export default function Projects() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '1px solid #334155', paddingBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Network size={32} color="#3b82f6" />
-          <h1 style={{ fontSize: '24px' }}>Meus Projetos</h1>
+          <h1 style={{ fontSize: '24px' }}>{t('projects.title')}</h1>
         </div>
 
-        {/* LADO DIREITO: MENU DE CONFIGURAÇÕES */}
+        {/* RIGHT SIDE: SETTINGS MENU */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <LangToggle />
           <div style={{ position: 'relative' }}>
             <button 
               onClick={() => setShowConfigMenu(!showConfigMenu)} 
@@ -83,7 +86,7 @@ export default function Projects() {
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} 
                   className="hover:bg-slate-700"
                 >
-                  <UserCog size={16} color="#94a3b8"/> Editar Perfil
+                  <UserCog size={16} color="#94a3b8"/> {t('projects.editProfile')}
                 </button>
                 
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
@@ -92,7 +95,7 @@ export default function Projects() {
                   onClick={handleLogout} 
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}
                 >
-                  <LogOut size={16} /> Sair
+                  <LogOut size={16} /> {t('projects.logout')}
                 </button>
               </div>
             )}
@@ -101,11 +104,11 @@ export default function Projects() {
       </header>
 
       {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px', color: '#94a3b8' }}><Loader2 size={32} className="spin" style={{ marginRight: '10px' }} /> Carregando...</div>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px', color: '#94a3b8' }}><Loader2 size={32} className="spin" style={{ marginRight: '10px' }} /> {t('projects.loading')}</div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px' }}>
           <button onClick={() => navigate('/editor/novo')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '160px', backgroundColor: '#1e293b', border: '2px dashed #475569', borderRadius: '12px', color: '#94a3b8', cursor: 'pointer' }}>
-            <FolderPlus size={40} style={{ marginBottom: '10px' }} /><span>Criar Novo Projeto</span>
+            <FolderPlus size={40} style={{ marginBottom: '10px' }} /><span>{t('projects.newProject')}</span>
           </button>
           {projetos.map(proj => (
             <div key={proj.id} onClick={() => navigate(`/editor/${proj.id}`)} style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '160px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '20px', cursor: 'pointer', justifyContent: 'space-between' }}>

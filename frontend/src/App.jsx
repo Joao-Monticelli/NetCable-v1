@@ -13,7 +13,7 @@ const PrivateRoute = () => {
 function App() {
   return (
     <BrowserRouter>
-      {/* COMPONENTE DE NOTIFICAÇÃO GLOBAL */}
+      {/* GLOBAL NOTIFICATION COMPONENT */}
       <Toaster 
         position="top-right" 
         toastOptions={{

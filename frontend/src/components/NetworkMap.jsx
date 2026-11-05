@@ -2,18 +2,27 @@ import { useCallback, useState, useEffect, memo, useRef } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, HelpCircle, Smartphone, Laptop, Tv, Printer, Camera, Cpu, Router } from 'lucide-react'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
+import { useLang } from '../i18n.jsx'
 
 const CustomNode = memo(({ data, selected }) => {
   const getIcon = () => {
     switch (data.tipo) {
-      case 'Roteador': return <Wifi size={18} color="#3b82f6" />
-      case 'Firewall': return <Shield size={18} color="#f59e0b" />
-      case 'PC': return <Monitor size={18} color="#94a3b8" />
+      case 'router': case 'Roteador': return <Router size={18} color="#3b82f6" />
+      case 'mesh': return <Wifi size={18} color="#38bdf8" />
+      case 'firewall': case 'Firewall': return <Shield size={18} color="#f59e0b" />
+      case 'pc': case 'PC': return <Monitor size={18} color="#94a3b8" />
+      case 'laptop': return <Laptop size={18} color="#94a3b8" />
+      case 'phone': return <Smartphone size={18} color="#22d3ee" />
+      case 'tv': return <Tv size={18} color="#c084fc" />
+      case 'printer': return <Printer size={18} color="#94a3b8" />
+      case 'camera': return <Camera size={18} color="#f472b6" />
+      case 'iot': return <Cpu size={18} color="#4ade80" />
+      case 'unknown': return <HelpCircle size={18} color="#94a3b8" />
       default: return <Server size={18} color="#10b981" />
     }
   }
@@ -31,10 +40,13 @@ const CustomNode = memo(({ data, selected }) => {
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '10px' }}>
         <div style={{ fontWeight: 'bold', fontSize: '14px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{data.label}</div>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{data.ip}</div>
-        
-        {data.status === 'online' && data.pingTime && (
+        {data.mac && (
+          <div style={{ fontSize: '10px', color: '#64748b', fontFamily: 'monospace' }}>{data.mac}</div>
+        )}
+
+        {(data.status === 'online' && (data.pingTime || data.os)) && (
           <div style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
-            <Activity size={10} /> {data.pingTime}ms
+            <Activity size={10} /> {data.pingTime ? `${data.pingTime}ms` : ''}{data.pingTime && data.os ? ' · ' : ''}{data.os || ''}
           </div>
         )}
       </div>
@@ -62,7 +74,8 @@ const calcularCorConexao = (sourceNode, targetNode) => {
   return { stroke: '#10b981', color: '#10b981' };
 }
 
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, discoverBatch = null, onMapUpdate, onAlertaQueda, readOnly = false }) {
+  const { t } = useLang()
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -97,7 +110,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         const centerX = window.innerWidth / 2
         const centerY = window.innerHeight / 2
         posicaoNoMapa = screenToFlowPosition({ x: centerX, y: centerY })
-      } catch(e) { console.warn("Não foi possível centralizar o nó.") }
+      } catch(e) { console.warn(t('misc.centerNode')) }
 
       const newNode = {
         id: `node_${Date.now()}`, type: 'custom', position: posicaoNoMapa, style: { width: 200, height: 80 }, 
@@ -107,13 +120,62 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     }
   }, [newEquipment, screenToFlowPosition, getViewport, readOnly])
 
-  // Monitoramento Contínuo (Frontend) e Alerta
+  useEffect(() => {
+    if (discoverBatch && discoverBatch.devices && discoverBatch.devices.length && !readOnly) {
+      const gatewayIp = discoverBatch.gatewayIp || null
+      let base = { x: 250, y: 250 }
+      try {
+        const centerX = window.innerWidth / 2
+        const centerY = window.innerHeight / 2
+        base = screenToFlowPosition({ x: centerX, y: centerY })
+      } catch(e) { console.warn(t('misc.centerNode')) }
+      const perRow = 5, dx = 240, dy = 140
+      const existingIps = new Set(nodes.map(n => n.data.ip))
+      const fresh = discoverBatch.devices.filter(d => !existingIps.has(d.ip))
+      if (!fresh.length) return
+
+      // Tree root: reuse an existing router node, or create the gateway one.
+      let routerNode = nodes.find(n => n.data.tipo === 'router')
+        || (gatewayIp ? nodes.find(n => n.data.ip === gatewayIp) : null)
+      const gwEntry = gatewayIp ? fresh.find(d => d.ip === gatewayIp) : null
+      let gridDevices = fresh
+      let gatewayNodes = []
+      if (!routerNode && gatewayIp) {
+        routerNode = {
+          id: `node_${discoverBatch.id}_gw`, type: 'custom',
+          position: { x: base.x + (perRow * dx) / 2 - 100, y: base.y - 200 },
+          style: { width: 200, height: 80 },
+          data: { label: (gwEntry && (gwEntry.label || gwEntry.hostname)) || gatewayIp, ip: gatewayIp, tipo: 'router', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null, mac: (gwEntry && gwEntry.mac) || null, os: (gwEntry && gwEntry.os) || null },
+        }
+        gatewayNodes = [routerNode]
+        gridDevices = fresh.filter(d => d.ip !== gatewayIp)
+      }
+      if (!gridDevices.length && !gatewayNodes.length) return
+      const gridNodes = gridDevices.map((d, i) => ({
+        id: `node_${discoverBatch.id}_${i}`, type: 'custom',
+        position: { x: base.x + (i % perRow) * dx, y: base.y + Math.floor(i / perRow) * dy },
+        style: { width: 200, height: 80 },
+        data: { label: d.label || d.hostname || d.ip, ip: d.ip, tipo: d.tipo || 'unknown', status: 'online', pingTime: null, monitorMode: 'ip', snmpConfig: null, mac: d.mac || null, os: d.os || null }
+      }))
+      const edgeStyle = { stroke: '#3b82f6', strokeWidth: 2.5 }
+      const gridEdges = gridNodes.map((nn) => ({
+        id: `edge_${discoverBatch.id}_${nn.id}`, source: routerNode.id, target: nn.id,
+        type: 'smoothstep', animated: true, interactionWidth: 20,
+        style: { ...edgeStyle },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#3b82f6' },
+      }))
+      setNodes((nds) => [...nds, ...gatewayNodes, ...gridNodes])
+      setEdges((eds) => [...eds, ...gridEdges])
+    }
+  }, [discoverBatch, screenToFlowPosition, readOnly, t])
+
+  // Continuous monitoring (frontend) and alerting
   useEffect(() => {
     const interval = setInterval(async () => {
       if (nodes.length === 0) return
 
       const pingPromises = nodes.map(async (node) => {
-        if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
+        if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP' || node.data.ip === 'No IP') return null
         try {
           const data = await api.monitor(node.id, node.data.ip, node.data.monitorMode || 'ip', node.data.snmpConfig)
           return { id: node.id, nome: node.data.label, status: data.status, pingTime: data.tempo_ms }
@@ -129,17 +191,17 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           const result = results.find(r => r && r.id === node.id)
           
           if (result) {
-            // VERIFICA SE CAIU (Estava online, agora está offline)
+            // CHECK IF IT WENT DOWN (was online, now offline)
             if (statusAnterior.current[node.id] === 'online' && result.status === 'offline') {
               // Toca o som
               const audio = new Audio('/alert.mp3') // Vamos precisar de um mp3
-              audio.play().catch(e => console.log("Navegador bloqueou o som. Interaja com a página primeiro."))
+              audio.play().catch(e => console.log(t('misc.soundBlocked')))
               
               // Avisa o Editor para piscar o header
-              if (onAlertaQueda) onAlertaQueda(`O equipamento ${result.nome} caiu!`)
+              if (onAlertaQueda) onAlertaQueda(t('editor.deviceDown', { name: result.nome }))
             }
             
-            // Atualiza a referência
+            // Update the reference
             statusAnterior.current[node.id] = result.status
 
             if (result.status !== node.data.status) {

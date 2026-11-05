@@ -17,6 +17,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel
 from typing import List, Optional
 from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailableError
+from . import scan_service
 
 from . import models, crud
 from .database import engine, SessionLocal
@@ -30,6 +31,10 @@ with engine.begin() as connection:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_mode VARCHAR DEFAULT 'ip'")
     if "monitor_config" not in columns:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_config VARCHAR")
+    if "mac" not in columns:
+        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN mac VARCHAR")
+    if "os_info" not in columns:
+        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN os_info VARCHAR")
 
 app = FastAPI(title="NetCable API")
 
@@ -204,6 +209,18 @@ class DiscoveryRequest(BaseModel):
     ip: str
     config: dict
 
+
+class SubnetScanRequest(BaseModel):
+    subnet: Optional[str] = None
+
+
+@app.post("/api/discovery/subnet")
+def escanear_subrede(request: SubnetScanRequest, user: models.Usuario = Depends(get_current_user)):
+    try:
+        return scan_service.scan_subnet(request.subnet)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Falha no escaneamento: {exc}")
+
 @app.post("/api/discovery/neighbors")
 def descobrir_vizinhos(request: DiscoveryRequest, user: models.Usuario = Depends(get_current_user)):
     config = {**request.config, "host": request.ip}
@@ -245,6 +262,7 @@ class EquipamentoCreate(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
     pingTime: Optional[float] = None; posX: float; posY: float; width: float; height: float
     monitorMode: str = "ip"; monitorConfig: Optional[dict] = None
+    mac: Optional[str] = None; osInfo: Optional[str] = None
 
 class ConexaoCreate(BaseModel):
     id: str; source: str; target: str; label: Optional[str] = None
@@ -266,6 +284,7 @@ class EquipamentoBase(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
     ping_time: Optional[float] = None; pos_x: float; pos_y: float; width: float; height: float
     monitor_mode: str = "ip"; monitor_config: Optional[dict] = None
+    mac: Optional[str] = None; os_info: Optional[str] = None
     class Config: from_attributes = True
 
 class ConexaoBase(BaseModel):
@@ -286,7 +305,7 @@ def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db)):
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).all()
     equipamentos = []
     for equipamento in projeto.equipamentos:
-        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode')}
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'mac', 'os_info')}
         config = abrir_config(equipamento.monitor_config)
         item['monitor_config'] = {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
         equipamentos.append(item)
