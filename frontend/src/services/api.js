@@ -1,4 +1,4 @@
-import { getLang, tr } from '../i18n.jsx'
+import { getLang, tr, serverDetail } from '../i18n.jsx'
 
 // Em produção e no desenvolvimento o frontend usa o mesmo host do backend
 // através de proxy. VITE_API_URL continua disponível para instalações externas.
@@ -38,7 +38,7 @@ export const api = {
       let detail = `${msg('api.loginFail')}${res.status})`
       try {
         const body = await res.json()
-        if (body.detail) detail = body.detail
+        if (body.detail) detail = serverDetail(body.detail)
       } catch (error) {
         // Mantém a mensagem HTTP quando o backend não retorna JSON.
       }
@@ -64,7 +64,7 @@ export const api = {
       method: 'PUT', headers: getHeaders(), body: JSON.stringify(dados)
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || msg('api.profileFail'));
+    if (!res.ok) throw new Error(serverDetail(data.detail) || msg('api.profileFail'));
     return data;
   },
 
@@ -86,7 +86,7 @@ export const api = {
       method: 'POST', headers: getHeaders(),
       body: JSON.stringify({ equipmentId, ip, mode, config })
     });
-    if (!res.ok) throw new Error((await res.json()).detail || msg('api.monitorFail'));
+    if (!res.ok) throw new Error(serverDetail((await res.json()).detail) || msg('api.monitorFail'));
     return res.json();
   },
 
@@ -94,7 +94,7 @@ export const api = {
     const res = await fetch(`${API_URL}/discovery/neighbors`, {
       method: 'POST', headers: getHeaders(), body: JSON.stringify({ ip, config })
     });
-    if (!res.ok) throw new Error((await res.json()).detail || msg('api.discoveryFail'));
+    if (!res.ok) throw new Error(serverDetail((await res.json()).detail) || msg('api.discoveryFail'));
     return res.json();
   },
 

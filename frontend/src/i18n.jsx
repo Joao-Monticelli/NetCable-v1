@@ -167,6 +167,15 @@ const STRINGS = {
       soundBlocked: 'Browser blocked the sound. Interact with the page first.',
       noIpLabel: 'No IP',
     },
+    backend: {
+      badLogin: 'Incorrect username or password.',
+      badCredentials: 'Invalid credentials.',
+      wrongPassword: 'Current password is incorrect.',
+      noProject: 'Project not found.',
+      scanFail: 'Scan failed:',
+      discoveryFail: 'Discovery failed:',
+      snmpMissing: 'SNMPv3 unavailable.',
+    },
   },
   pt: {
     login: {
@@ -332,6 +341,15 @@ const STRINGS = {
       soundBlocked: 'Navegador bloqueou o som. Interaja com a página primeiro.',
       noIpLabel: 'Sem IP',
     },
+    backend: {
+      badLogin: 'Usuário ou senha incorretos.',
+      badCredentials: 'Credenciais inválidas.',
+      wrongPassword: 'Senha atual incorreta.',
+      noProject: 'Projeto não encontrado.',
+      scanFail: 'Falha no escaneamento:',
+      discoveryFail: 'Falha na descoberta:',
+      snmpMissing: 'SNMPv3 indisponível.',
+    },
   },
 }
 
@@ -341,6 +359,27 @@ export const LANG_KEY = 'netcable_lang'
 export function getLang() {
   const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(LANG_KEY) : null
   return saved === 'pt' || saved === 'en' ? saved : DEFAULT_LANG
+}
+
+// Maps known Portuguese backend error details to the current language.
+// Unknown/technical details pass through unchanged.
+const BACKEND_MAP = [
+  ['Usuário ou senha incorretos', 'backend.badLogin'],
+  ['Credenciais inválidas', 'backend.badCredentials'],
+  ['Senha atual incorreta.', 'backend.wrongPassword'],
+  ['Projeto não encontrado', 'backend.noProject'],
+  ['Falha no escaneamento:', 'backend.scanFail'],
+  ['Falha na descoberta:', 'backend.discoveryFail'],
+  ['SNMPv3 indisponível', 'backend.snmpMissing'],
+]
+
+export function serverDetail(detail) {
+  const lang = getLang()
+  if (!detail || typeof detail !== 'string') return detail
+  for (const [pt, key] of BACKEND_MAP) {
+    if (detail.startsWith(pt)) return tr(lang, key) + detail.slice(pt.length)
+  }
+  return detail
 }
 
 // Non-React helper (used by api.js): t('login.failed') with {var} interpolation.
