@@ -59,7 +59,9 @@ git clone https://github.com/Joao-Monticelli/NetCable-v1.git
 cd NetCable-v1
 # edite o docker-compose.yml com usuário, senha e caminho dos dados
 docker compose up -d
-Depois acesse http://localhost:<porta> no navegador.
+Depois acesse `http://localhost` no navegador. A porta 8000 do backend é
+interna e não precisa ser publicada no host; a API e sua documentação ficam
+acessíveis pelo frontend em `/api` e `/docs`.
 
 💡 O NetCable não exige TrueNAS. Ele roda em qualquer ambiente com Docker. O TrueNAS é apenas uma das formas de hospedar — veja abaixo.
 

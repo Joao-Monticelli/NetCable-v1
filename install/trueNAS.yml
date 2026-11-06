@@ -1,7 +1,6 @@
 services:
   backend:
     container_name: netcable_backend
-    network_mode: "host"
     environment:
       - PYTHONUNBUFFERED=1
       # =======================================================
