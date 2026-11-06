@@ -3,12 +3,13 @@ services:
     image: ghcr.io/joao-monticelli/netcable-backend:latest
     container_name: netcable_backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # A porta fica disponível apenas na rede interna do Compose.
     volumes:
-      - /mnt/ssd-apps/vm/netcable:/app
+      - /mnt/ssd-apps/vm/netcable:/app/data
     environment:
       - PYTHONUNBUFFERED=1
+      - ADMIN_USER=admin
+      - ADMIN_PASSWORD=altere_esta_senha
 
   frontend:
     image: ghcr.io/joao-monticelli/netcable-frontend:latest

@@ -32,7 +32,7 @@ Clique em Install.
 🌐 Passo 3: Acessar
 Frontend: http://IP_DO_TRUENAS:3080
 
-API (Documentação): http://IP_DO_TRUENAS:8000/docs
+API (Documentação): http://IP_DO_TRUENAS:3080/docs
 
 🔄 Como atualizar
 Sempre que houver uma atualização no código, o GitHub Actions constrói uma nova imagem. No TrueNAS, basta ir em Apps e clicar em Update no app netcable.
