@@ -5,6 +5,8 @@
 ![Python](https://img.shields.io/badge/Python-3.11-yellow)
 ![React](https://img.shields.io/badge/React-18-blue)
 
+<img width="1080" height="602" alt="image" src="https://github.com/user-attachments/assets/792717d9-2239-4b9a-9959-fdead1927bb7" />
+
 <img width="1678" height="894" alt="netcable2" src="https://github.com/user-attachments/assets/1267e35c-83bc-4099-a174-ea4889ac81d1" />
 
 <img width="1678" height="894" alt="netcable2" src="https://github.com/user-attachments/assets/8c297d1f-fed7-4df8-8d4c-0ecd2af1c5fa" />
