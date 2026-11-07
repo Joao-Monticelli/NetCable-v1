@@ -16,8 +16,7 @@ export default function SharedView() {
   useEffect(() => {
     const fetchProjeto = async () => {
       try {
-        const data = await api.obterProjeto(projectId)
-        if (data.detail || data.erro) throw new Error('Projeto não encontrado.')
+        const data = await api.obterProjeto(projectId, true)
         setProjectName(data.nome)
         const formattedNodes = data.equipamentos.map(eq => ({
           id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },

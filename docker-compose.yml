@@ -10,6 +10,10 @@ services:
       - PYTHONUNBUFFERED=1
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=altere_esta_senha
+      - SECRET_KEY=altere_esta_chave_por_uma_string_longa_e_aleatoria
+      - ALLOWED_ORIGINS=http://localhost
+      # Opcional: URL que receberá alertas quando um equipamento ficar offline.
+      # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
 
   frontend:
     image: ghcr.io/joao-monticelli/netcable-frontend:latest
