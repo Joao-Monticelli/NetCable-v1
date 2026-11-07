@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -13,6 +13,8 @@ import os
 import json
 import base64
 import hashlib
+import logging
+from collections import defaultdict
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel
 from typing import List, Optional
@@ -30,18 +32,34 @@ with engine.begin() as connection:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_mode VARCHAR DEFAULT 'ip'")
     if "monitor_config" not in columns:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_config VARCHAR")
+    project_columns = {column[1] for column in connection.exec_driver_sql("PRAGMA table_info(projetos)")}
+    if "user_id" not in project_columns:
+        connection.exec_driver_sql("ALTER TABLE projetos ADD COLUMN user_id INTEGER")
 
-app = FastAPI(title="NetCable API")
+app = FastAPI(title="NetCable API", version=os.getenv("APP_VERSION", "dev"))
+
+ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS or ["http://localhost", "http://localhost:3080", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-SECRET_KEY = "sua_chave_secreta_super_segura_aqui_mude_em_producao"
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-this-secret")
+ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "").strip()
+ALERT_WEBHOOK_TIMEOUT = float(os.getenv("ALERT_WEBHOOK_TIMEOUT", "3"))
+logger = logging.getLogger("netcable")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
@@ -89,9 +107,14 @@ def health_check(db: Session = Depends(get_db)):
     return {
         "status": "ok" if database_ok else "degraded",
         "api": "online",
+        "version": app.version,
         "database": {"connected": database_ok, "error": database_error},
         "snmp": snmp,
         "database_path": str(engine.url.database),
+        "security": {
+            "secret_key_configured": SECRET_KEY != "dev-only-change-this-secret",
+            "default_admin_password": ADMIN_PASSWORD in {"admin", "altere_esta_senha"},
+        },
     }
 
 def verificar_senha(senha_plana, senha_hash):
@@ -124,13 +147,27 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 db_init = SessionLocal()
 if not crud.get_usuario(db_init, ADMIN_USER):
     crud.criar_usuario(db_init, ADMIN_USER, pwd_context.hash(ADMIN_PASSWORD), "admin@netcable.local")
+admin_user = crud.get_usuario(db_init, ADMIN_USER)
+db_init.query(models.Projeto).filter(models.Projeto.user_id.is_(None)).update({"user_id": admin_user.id})
+db_init.commit()
 db_init.close()
+
+login_failures = defaultdict(list)
+LOGIN_WINDOW_SECONDS = 300
+LOGIN_MAX_FAILURES = 5
 
 @app.post("/api/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    now = time.monotonic()
+    failures = [timestamp for timestamp in login_failures[form_data.username] if now - timestamp < LOGIN_WINDOW_SECONDS]
+    login_failures[form_data.username] = failures
+    if len(failures) >= LOGIN_MAX_FAILURES:
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
     user = crud.get_usuario(db, form_data.username)
     if not user or not verificar_senha(form_data.password, user.password_hash):
+        login_failures[form_data.username].append(now)
         raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
+    login_failures.pop(form_data.username, None)
     access_token = criar_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -147,6 +184,8 @@ class PerfilUpdate(BaseModel):
 def atualizar_perfil_usuario(dados: PerfilUpdate, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     nova_hash = None
     if dados.nova_senha:
+        if len(dados.nova_senha) < 8:
+            raise HTTPException(status_code=400, detail="A nova senha precisa ter pelo menos 8 caracteres.")
         if not dados.senha_atual or not verificar_senha(dados.senha_atual, user.password_hash):
             raise HTTPException(status_code=400, detail="Senha atual incorreta.")
         nova_hash = pwd_context.hash(dados.nova_senha)
@@ -160,19 +199,22 @@ def atualizar_perfil_usuario(dados: PerfilUpdate, db: Session = Depends(get_db),
 
 @app.get("/api/projetos")
 def listar_projetos(db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
-    return crud.get_projetos(db)
+    return crud.get_projetos(db, user.id)
 
 @app.post("/api/projetos")
 def novo_projeto(nome: str, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
-    return crud.criar_projeto(db, nome)
+    return crud.criar_projeto(db, nome, user.id)
 
 @app.put("/api/projetos/{projeto_id}")
 def editar_nome_projeto(projeto_id: int, novo_nome: str, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
-    return crud.atualizar_projeto_nome(db, projeto_id, novo_nome)
+    projeto = crud.atualizar_projeto_nome(db, projeto_id, novo_nome, user.id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return projeto
 
 @app.delete("/api/projetos/{projeto_id}")
 def deletar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
-    if crud.deletar_projeto(db, projeto_id):
+    if crud.deletar_projeto(db, projeto_id, user.id):
         return {"status": "sucesso"}
     raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
@@ -183,10 +225,35 @@ class MonitorRequest(BaseModel):
     mode: str = "ip"
     config: Optional[dict] = None
 
+def registrar_monitoramento(db: Session, equipamento, resultado):
+    if not equipamento:
+        return
+    _, mudou, status_anterior = crud.registrar_status(
+        db, equipamento.id, resultado.get("status", "offline"), resultado.get("tempo_ms")
+    )
+    if mudou and resultado.get("status") == "offline" and ALERT_WEBHOOK_URL:
+        try:
+            requests.post(ALERT_WEBHOOK_URL, json={
+                "evento": "equipamento_offline",
+                "equipamento": equipamento.nome,
+                "ip": equipamento.ip,
+                "status_anterior": status_anterior,
+                "status": "offline",
+            }, timeout=ALERT_WEBHOOK_TIMEOUT)
+        except Exception as exc:
+            logger.warning("Falha ao enviar alerta webhook: %s", exc)
+
 @app.post("/api/monitor")
 def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    equipment = None
+    if request.equipmentId:
+        equipment = crud.get_equipamento_do_usuario(db, request.equipmentId, user.id)
+        if not equipment:
+            raise HTTPException(status_code=404, detail="Equipamento não encontrado")
     if request.mode != "snmpv3":
-        return ping_equipamento(request.ip)
+        result = ping_equipamento(request.ip)
+        registrar_monitoramento(db, equipment, result)
+        return result
     config = request.config or {}
     if request.equipmentId and not config.get("authPassword"):
         equipment = db.query(models.Equipamento).filter(models.Equipamento.id == request.equipmentId).first()
@@ -194,11 +261,15 @@ def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), 
     config.update({"host": request.ip})
     try:
         result = snmp_test(config)
-        return {"ip": request.ip, "status": "online", "tempo_ms": None, **result}
+        result = {"ip": request.ip, "status": "online", "tempo_ms": None, **result}
+        registrar_monitoramento(db, equipment, result)
+        return result
     except SNMPUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     except Exception as exc:
-        return {"ip": request.ip, "status": "offline", "tempo_ms": None, "error": str(exc)}
+        result = {"ip": request.ip, "status": "offline", "tempo_ms": None, "error": str(exc)}
+        registrar_monitoramento(db, equipment, result)
+        return result
 
 class DiscoveryRequest(BaseModel):
     ip: str
@@ -260,7 +331,10 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
     for eq in eq_dict:
         eq['monitorConfig'] = proteger_config(eq.get('monitorConfig'))
     conn_dict = [conn.dict() for conn in mapa.conexoes]
-    return crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict)
+    result = crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict, user.id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return result
 
 class EquipamentoBase(BaseModel):
     id: str; nome: str; ip: str; tipo: str; status: str
@@ -278,9 +352,7 @@ class ProjetoResponse(BaseModel):
     equipamentos: List[EquipamentoBase]; conexoes: List[ConexaoBase]
     class Config: from_attributes = True
 
-@app.get("/api/projetos/{projeto_id}/dados", response_model=ProjetoResponse)
-def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db)):
-    projeto = db.query(models.Projeto).filter(models.Projeto.id == projeto_id).first()
+def _obter_dados_projeto(projeto_id: int, db: Session, projeto, publico: bool = False):
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).all()
@@ -288,6 +360,33 @@ def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db)):
     for equipamento in projeto.equipamentos:
         item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode')}
         config = abrir_config(equipamento.monitor_config)
-        item['monitor_config'] = {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
+        item['monitor_config'] = {} if publico else {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
         equipamentos.append(item)
     return {"id": projeto.id, "nome": projeto.nome, "equipamentos": equipamentos, "conexoes": conexoes}
+
+@app.get("/api/projetos/{projeto_id}/dados", response_model=ProjetoResponse)
+def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    projeto = crud.get_projeto(db, projeto_id, user.id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return _obter_dados_projeto(projeto_id, db, projeto)
+
+@app.get("/api/public/projetos/{projeto_id}/dados", response_model=ProjetoResponse)
+def obter_dados_projeto_publico(projeto_id: int, db: Session = Depends(get_db)):
+    projeto = db.query(models.Projeto).filter(models.Projeto.id == projeto_id).first()
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return _obter_dados_projeto(projeto_id, db, projeto, publico=True)
+
+@app.get("/api/projetos/{projeto_id}/historico")
+def historico_projeto(projeto_id: int, limite: int = 100, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    limite = max(1, min(limite, 500))
+    historico = crud.get_historico(db, projeto_id, user.id, limite)
+    if historico is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return [{
+        "equipamento_id": item.equipamento_id,
+        "status": item.status,
+        "tempo_ms": item.tempo_ms,
+        "criado_em": item.criado_em.isoformat() if item.criado_em else None,
+    } for item in historico]

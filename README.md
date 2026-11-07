@@ -49,6 +49,14 @@ O NetCable recebeu uma primeira evolução no monitoramento e na integração co
 
 ✅ **Mensagens de erro mais claras** — falhas de conexão, API e monitoramento agora são exibidas com mais detalhes.
 
+✅ **Projetos separados por usuário** — cada usuário autenticado só acessa os próprios mapas.
+
+✅ **Configuração mais segura** — chave JWT, CORS e credenciais administrativas podem ser definidos por ambiente, com proteção contra tentativas repetidas de login.
+
+✅ **Backups validados** — arquivos JSON muito grandes ou fora do formato esperado são rejeitados antes de alterar o mapa.
+
+✅ **Diagnóstico ampliado** — a tela de diagnóstico informa a versão da API e alerta configurações inseguras.
+
 ✅ **Compatibilidade com bancos existentes** — novas configurações de monitoramento são adicionadas automaticamente sem apagar os projetos atuais.
 
 Esses recursos estão em validação com switches, firewalls e outros equipamentos reais. A criação automática de nós e conexões a partir da descoberta, além da coleta detalhada de interfaces, CPU e memória, permanece planejada para as próximas versões.
@@ -59,7 +67,7 @@ A forma mais simples de rodar o NetCable é via Docker Compose, em qualquer máq
 bash
 git clone https://github.com/Joao-Monticelli/NetCable-v1.git
 cd NetCable-v1
-# edite o docker-compose.yml com usuário, senha e caminho dos dados
+# edite o docker-compose.yml com usuário, senha, chave secreta e caminho dos dados
 docker compose up -d
 Depois acesse `http://localhost` no navegador. A porta 8000 do backend é
 interna e não precisa ser publicada no host; a API e sua documentação ficam

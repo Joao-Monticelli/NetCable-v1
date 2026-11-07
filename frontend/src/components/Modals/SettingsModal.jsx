@@ -17,7 +17,7 @@ export default function SettingsModal({ onClose, currentUser }) {
       toast.success('Perfil atualizado com sucesso!')
       onClose()
     } catch (error) {
-      toast.error('Erro de comunicação com o servidor.')
+      toast.error(error.message || 'Erro de comunicação com o servidor.')
     } finally {
       setIsSaving(false)
     }
@@ -58,7 +58,7 @@ export default function SettingsModal({ onClose, currentUser }) {
           
           <div>
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>Nova Senha</label>
-            <input type="password" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="Digite a nova senha" style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
+            <input type="password" minLength={8} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="Mínimo de 8 caracteres" style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
           </div>
 
           <button type="submit" disabled={isSaving} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: isSaving ? '#475569' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer', marginTop: '10px' }}>

@@ -70,6 +70,18 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   
   const { screenToFlowPosition, getViewport } = useReactFlow()
   const statusAnterior = useRef({}) // Guarda o status anterior para saber se caiu
+  const nodesRef = useRef(initialNodes)
+  const monitoringRef = useRef(false)
+
+  useEffect(() => { nodesRef.current = nodes }, [nodes])
+
+  // Permite atualizar o mapa depois de importar um backup.
+  useEffect(() => {
+    setNodes(initialNodes)
+    nodesRef.current = initialNodes
+  }, [initialNodes])
+
+  useEffect(() => { setEdges(initialEdges) }, [initialEdges])
 
   useEffect(() => {
     if (onMapUpdate) onMapUpdate(nodes, edges)
@@ -110,9 +122,11 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   // Monitoramento Contínuo (Frontend) e Alerta
   useEffect(() => {
     const interval = setInterval(async () => {
-      if (nodes.length === 0) return
+      const currentNodes = nodesRef.current
+      if (currentNodes.length === 0 || readOnly || monitoringRef.current) return
+      monitoringRef.current = true
 
-      const pingPromises = nodes.map(async (node) => {
+      const pingPromises = currentNodes.map(async (node) => {
         if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
         try {
           const data = await api.monitor(node.id, node.data.ip, node.data.monitorMode || 'ip', node.data.snmpConfig)
@@ -150,10 +164,11 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           return node
         })
       )
+      monitoringRef.current = false
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [nodes, onAlertaQueda])
+  }, [onAlertaQueda, readOnly])
 
   const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
   const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [])

@@ -24,25 +24,61 @@ def atualizar_perfil(db: Session, user_id: int, novo_email: str = None, nova_sen
     return db_user
 
 # --- PROJETOS ---
-def get_projetos(db: Session):
-    return db.query(models.Projeto).all()
+def get_projetos(db: Session, user_id: int):
+    return db.query(models.Projeto).filter(models.Projeto.user_id == user_id).all()
 
-def criar_projeto(db: Session, nome: str):
-    db_projeto = models.Projeto(nome=nome)
+def criar_projeto(db: Session, nome: str, user_id: int):
+    db_projeto = models.Projeto(nome=nome, user_id=user_id)
     db.add(db_projeto)
     db.commit()
     db.refresh(db_projeto)
     return db_projeto
 
-def atualizar_projeto_nome(db: Session, projeto_id: int, novo_nome: str):
-    db_projeto = db.query(models.Projeto).filter(models.Projeto.id == projeto_id).first()
+def get_projeto(db: Session, projeto_id: int, user_id: int):
+    return db.query(models.Projeto).filter(
+        models.Projeto.id == projeto_id, models.Projeto.user_id == user_id
+    ).first()
+
+def get_equipamento_do_usuario(db: Session, equipamento_id: str, user_id: int):
+    return db.query(models.Equipamento).join(models.Projeto).filter(
+        models.Equipamento.id == equipamento_id,
+        models.Projeto.user_id == user_id,
+    ).first()
+
+def registrar_status(db: Session, equipamento_id: str, status: str, tempo_ms=None):
+    ultimo = db.query(models.HistoricoStatus).filter(
+        models.HistoricoStatus.equipamento_id == equipamento_id
+    ).order_by(models.HistoricoStatus.criado_em.desc()).first()
+    if ultimo and ultimo.status == status and ultimo.criado_em:
+        from datetime import datetime
+        if (datetime.utcnow() - ultimo.criado_em).total_seconds() < 60:
+            return ultimo, False, ultimo.status
+    mudou = ultimo is not None and ultimo.status != status
+    registro = models.HistoricoStatus(
+        equipamento_id=equipamento_id, status=status, tempo_ms=tempo_ms
+    )
+    db.add(registro)
+    db.commit()
+    return registro, mudou, ultimo.status if ultimo else None
+
+def get_historico(db: Session, projeto_id: int, user_id: int, limite: int = 100):
+    if not get_projeto(db, projeto_id, user_id):
+        return None
+    return db.query(models.HistoricoStatus).join(models.Equipamento).filter(
+        models.Equipamento.projeto_id == projeto_id
+    ).order_by(models.HistoricoStatus.criado_em.desc()).limit(limite).all()
+
+def atualizar_projeto_nome(db: Session, projeto_id: int, novo_nome: str, user_id: int):
+    db_projeto = get_projeto(db, projeto_id, user_id)
     if db_projeto:
         db_projeto.nome = novo_nome
         db.commit()
         db.refresh(db_projeto)
     return db_projeto
 
-def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list):
+def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list, user_id: int):
+    if not get_projeto(db, projeto_id, user_id):
+        return None
     previous_configs = {
         item.id: item.monitor_config
         for item in db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).all()
@@ -76,8 +112,8 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
     db.commit()
     return {"status": "sucesso"}
 
-def deletar_projeto(db: Session, projeto_id: int):
-    db_projeto = db.query(models.Projeto).filter(models.Projeto.id == projeto_id).first()
+def deletar_projeto(db: Session, projeto_id: int, user_id: int):
+    db_projeto = get_projeto(db, projeto_id, user_id)
     if db_projeto:
         db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).delete()
         db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).delete()

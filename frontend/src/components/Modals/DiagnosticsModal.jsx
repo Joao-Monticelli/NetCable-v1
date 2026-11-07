@@ -28,6 +28,9 @@ export default function DiagnosticsModal({ onClose }) {
         <Status ok={data.api === 'online'}>API: {data.api}</Status>
         <Status ok={data.database?.connected}>Banco de dados: {data.database?.connected ? 'conectado' : data.database?.error}</Status>
         <Status ok={data.snmp?.installed}>PySNMP: {data.snmp?.status}{data.snmp?.detail ? ` — ${data.snmp.detail}` : ''}</Status>
+        <Status ok={data.security?.secret_key_configured}>Chave JWT: {data.security?.secret_key_configured ? 'configurada' : 'padrão de desenvolvimento'}</Status>
+        <Status ok={!data.security?.default_admin_password}>Senha administrativa: {data.security?.default_admin_password ? 'altere imediatamente' : 'personalizada'}</Status>
+        <div style={{ color: '#94a3b8', fontSize: '12px' }}>Versão da API: {data.version || 'desconhecida'}</div>
         <div style={{ color: '#94a3b8', fontSize: '12px', wordBreak: 'break-all' }}>Banco: {data.database_path}</div>
       </div>}
       <button onClick={load} disabled={loading} style={{ marginTop: '22px', width: '100%', padding: '10px', background: '#334155', color: 'white', border: 0, borderRadius: '6px', cursor: loading ? 'wait' : 'pointer' }}>Verificar novamente</button>

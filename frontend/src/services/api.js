@@ -110,12 +110,21 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ equipamentos, conexoes })
     });
-    return res.ok;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Erro ao salvar o mapa.');
+    }
+    return true;
   },
   
-  async obterProjeto(projetoId) {
-    const res = await fetch(`${API_URL}/projetos/${projetoId}/dados`, { headers: getHeaders() });
-    return res.json();
+  async obterProjeto(projetoId, publico = false) {
+    const endpoint = publico
+      ? `${API_URL}/public/projetos/${projetoId}/dados`
+      : `${API_URL}/projetos/${projetoId}/dados`;
+    const res = await fetch(endpoint, { headers: publico ? {} : getHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Projeto não encontrado');
+    return data;
   },
   
   async deletarProjeto(projetoId) {
@@ -127,5 +136,12 @@ export const api = {
     const res = await fetch(`${API_URL}/health`);
     if (!res.ok) throw new Error(`API indisponível (HTTP ${res.status})`);
     return res.json();
+  },
+
+  async historicoProjeto(projetoId, limite = 100) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/historico?limite=${limite}`, { headers: getHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Não foi possível carregar o histórico.');
+    return data;
   }
 };

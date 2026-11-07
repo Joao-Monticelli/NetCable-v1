@@ -8,6 +8,8 @@ services:
       # =======================================================
       - ADMIN_USER=seu_usuario_aqui
       - ADMIN_PASSWORD=sua_senha_forte_aqui
+      - SECRET_KEY=gere_uma_chave_longa_e_aleatoria_aqui
+      - ALLOWED_ORIGINS=http://IP_DO_TRUENAS:3080
     image: ghcr.io/joao-monticelli/netcable-backend:latest
     restart: unless-stopped
     volumes:

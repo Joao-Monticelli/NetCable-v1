@@ -6,6 +6,7 @@ import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
 import SettingsModal from '../components/Modals/SettingsModal'
 import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
+import HistoryModal from '../components/Modals/HistoryModal'
 import { api } from '../services/api'
 
 export default function Editor() {
@@ -26,6 +27,7 @@ export default function Editor() {
   
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState(false)
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
 
   // Estado do Alerta
@@ -136,8 +138,7 @@ export default function Editor() {
   const handleCopyLink = () => {
     if (projectId === 'novo') { toast.error("Salve o projeto primeiro!"); return; }
     const link = `${window.location.origin}/share/${projectId}`;
-    navigator.clipboard.writeText(link);
-    toast.success('Link público copiado!');
+    navigator.clipboard.writeText(link).then(() => toast.success('Link público copiado!')).catch(() => toast.error('Não foi possível copiar o link.'));
     setShowConfigMenu(false);
   };
 
@@ -157,13 +158,14 @@ export default function Editor() {
         } : null
       } : node.data
     }))
-    const dataToExport = { projeto: projectName, equipamentos: equipamentosSeguros, conexoes: currentEdges.current }
+    const dataToExport = { versao: 1, projeto: projectName, equipamentos: equipamentosSeguros, conexoes: currentEdges.current }
     const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = `netcable_backup_${projectName.replace(/\s+/g, '_')}.json`
     link.click()
+    URL.revokeObjectURL(url)
     toast.success('Backup exportado!')
   }
 
@@ -173,12 +175,14 @@ export default function Editor() {
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
+        if (file.size > 2 * 1024 * 1024) throw new Error('O arquivo excede o limite de 2 MB.')
         const importedData = JSON.parse(e.target.result)
-        if (importedData.equipamentos && importedData.conexoes) {
-          setMapNodes(importedData.equipamentos)
-          setMapEdges(importedData.conexoes)
-          toast.success('Backup importado!')
-        }
+        const validNodes = Array.isArray(importedData.equipamentos) && importedData.equipamentos.every(node => node?.id && node?.data)
+        const validEdges = Array.isArray(importedData.conexoes) && importedData.conexoes.every(edge => edge?.id && edge?.source && edge?.target)
+        if (!validNodes || !validEdges) throw new Error('Formato de backup inválido.')
+        setMapNodes(importedData.equipamentos)
+        setMapEdges(importedData.conexoes)
+        toast.success('Backup importado!')
       } catch (err) { toast.error('Erro ao ler o arquivo JSON.') }
     }
     reader.readAsText(file)
@@ -242,6 +246,9 @@ export default function Editor() {
                 <button onClick={() => { setShowConfigMenu(false); setIsDiagnosticsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#10b981"/> Diagnóstico
                 </button>
+                <button onClick={() => { setShowConfigMenu(false); setIsHistoryModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Activity size={16} color="#f59e0b"/> Histórico
+                </button>
                 <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
                   <Share2 size={16} color="#3b82f6"/> Gerar Link Público
                 </button>
@@ -262,6 +269,7 @@ export default function Editor() {
       {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} />}
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} />}
       {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
+      {isHistoryModalOpen && <HistoryModal projectId={projectId} onClose={() => setIsHistoryModalOpen(false)} />}
     </div>
   )
 }

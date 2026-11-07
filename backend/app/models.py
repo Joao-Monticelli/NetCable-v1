@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
+from datetime import datetime
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -8,11 +9,14 @@ class Usuario(Base):
     username = Column(String, unique=True, index=True)
     password_hash = Column(String)
     email = Column(String, nullable=True)
+    projetos = relationship("Projeto", back_populates="usuario")
 
 class Projeto(Base):
     __tablename__ = "projetos"
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, index=True)
+    user_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
+    usuario = relationship("Usuario", back_populates="projetos")
     equipamentos = relationship("Equipamento", back_populates="projeto")
 
 class Equipamento(Base):
@@ -41,3 +45,11 @@ class Conexao(Base):
     label = Column(String, nullable=True)
     source_handle = Column(String, nullable=True) 
     target_handle = Column(String, nullable=True)
+
+class HistoricoStatus(Base):
+    __tablename__ = "historico_status"
+    id = Column(Integer, primary_key=True, index=True)
+    equipamento_id = Column(String, ForeignKey("equipamentos.id"), index=True)
+    status = Column(String, nullable=False)
+    tempo_ms = Column(Float, nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
