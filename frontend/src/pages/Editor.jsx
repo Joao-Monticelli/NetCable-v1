@@ -144,6 +144,11 @@ export default function Editor() {
 
   const handleLogout = () => { api.logout(); navigate('/'); };
   const handleAddEquipment = (equipamento) => { setNewEquipment({ ...equipamento, id: Date.now() }); setIsAddModalOpen(false) }
+  const handleAddNeighbors = (neighbors) => {
+    setNewEquipment(neighbors.map((neighbor, index) => ({ ...neighbor, id: `${Date.now()}_${index}` })))
+    setIsAddModalOpen(false)
+    toast.success(`${neighbors.length} vizinho(s) adicionado(s) ao mapa. Salve o projeto para manter as alterações.`)
+  }
 
   const handleExport = () => {
     const equipamentosSeguros = currentNodes.current.map(node => ({
@@ -266,7 +271,7 @@ export default function Editor() {
         <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} />
       </div>
 
-      {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} />}
+      {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} />}
       {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
       {isHistoryModalOpen && <HistoryModal projectId={projectId} onClose={() => setIsHistoryModalOpen(false)} />}
