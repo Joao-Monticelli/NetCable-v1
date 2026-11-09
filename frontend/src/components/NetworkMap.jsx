@@ -111,11 +111,24 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         posicaoNoMapa = screenToFlowPosition({ x: centerX, y: centerY })
       } catch(e) { console.warn("Não foi possível centralizar o nó.") }
 
-      const newNode = {
-        id: `node_${Date.now()}`, type: 'custom', position: posicaoNoMapa, style: { width: 200, height: 80 }, 
-        data: { label: newEquipment.nome, ip: newEquipment.ip, tipo: newEquipment.tipo, status: newEquipment.status || 'offline', pingTime: newEquipment.pingTime, monitorMode: newEquipment.monitorMode || 'ip', snmpConfig: newEquipment.snmpConfig || {} }
-      }
-      setNodes((nds) => [...nds, newNode])
+      const equipmentList = Array.isArray(newEquipment) ? newEquipment : [newEquipment]
+      const timestamp = Date.now()
+      const newNodes = equipmentList.map((equipment, index) => ({
+        id: `node_${equipment.id || `${timestamp}_${index}`}`,
+        type: 'custom',
+        position: { x: posicaoNoMapa.x + (index % 3) * 230, y: posicaoNoMapa.y + Math.floor(index / 3) * 110 },
+        style: { width: 200, height: 80 },
+        data: {
+          label: equipment.nome,
+          ip: equipment.ip,
+          tipo: equipment.tipo,
+          status: equipment.status || 'offline',
+          pingTime: equipment.pingTime,
+          monitorMode: equipment.monitorMode || 'ip',
+          snmpConfig: equipment.snmpConfig || {}
+        }
+      }))
+      setNodes((nds) => [...nds, ...newNodes])
     }
   }, [newEquipment, screenToFlowPosition, getViewport, readOnly])
 

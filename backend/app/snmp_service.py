@@ -104,8 +104,15 @@ def discover_neighbors(config):
                 lexicographicMode=False,
             )
             for error_indication, error_status, error_index, var_binds in iterator:
-                if error_indication or error_status:
-                    break
+                if error_indication:
+                    raise RuntimeError(
+                        f"Falha ao consultar a tabela {protocol} ({field}): {error_indication}"
+                    )
+                if error_status:
+                    raise RuntimeError(
+                        f"Falha ao consultar a tabela {protocol} ({field}): "
+                        f"{error_status.prettyPrint()}"
+                    )
                 for name, value in var_binds:
                     text_name = str(name)
                     if not text_name.startswith(oid + "."):

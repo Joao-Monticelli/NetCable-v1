@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network } from 'lucide-react'
 import { api } from '../../services/api' // IMPORTANDO A API
 
-export default function AddEquipmentModal({ onClose, onAdd }) {
+export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
   const [nome, setNome] = useState('')
   const [ip, setIp] = useState('')
   const [tipo, setTipo] = useState('Roteador')
@@ -10,6 +10,8 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   const [monitorMode, setMonitorMode] = useState('ip')
   const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161 })
   const [neighbors, setNeighbors] = useState(null)
+  const [selectedNeighbors, setSelectedNeighbors] = useState(new Set())
+  const [discoveryError, setDiscoveryError] = useState('')
   const [isDiscovering, setIsDiscovering] = useState(false)
   
   const [tipos, setTipos] = useState([
@@ -57,14 +59,31 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
   const handleDiscovery = async () => {
     if (!ip || !snmpConfig.username) return
     setIsDiscovering(true)
+    setNeighbors(null)
+    setDiscoveryError('')
     try {
       const data = await api.discoverNeighbors(ip, snmpConfig)
       setNeighbors(data.neighbors || [])
+      setSelectedNeighbors(new Set())
     } catch (error) {
-      setNeighbors([])
+      setDiscoveryError(error.message || 'Falha ao consultar vizinhos LLDP/CDP.')
     } finally {
       setIsDiscovering(false)
     }
+  }
+
+  const handleAddSelectedNeighbors = () => {
+    const selected = neighbors.filter((neighbor) => selectedNeighbors.has(`${neighbor.protocol}:${neighbor.index}`))
+    if (!selected.length) return
+
+    onAddNeighbors(selected.map((neighbor) => ({
+      nome: [neighbor.name || neighbor.platform || `Vizinho ${neighbor.protocol}`, neighbor.port].filter(Boolean).join(' - '),
+      ip: 'Sem IP',
+      tipo: neighbor.platform || 'Vizinho de rede',
+      status: 'visual',
+      monitorMode: 'visual',
+      snmpConfig: null
+    })))
   }
 
   const handleAdd = async () => {
@@ -132,7 +151,30 @@ export default function AddEquipmentModal({ onClose, onAdd }) {
             <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.privProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, privProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>AES</option><option>DES</option><option>3DES</option></select><input type="password" value={snmpConfig.privPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, privPassword: e.target.value })} placeholder="Senha de privacidade" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
             <input type="number" min="1" max="65535" value={snmpConfig.port} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder="Porta SNMP (padrão 161)" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
             <button onClick={handleDiscovery} disabled={isDiscovering || !ip || !snmpConfig.username} style={{ padding: '9px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: isDiscovering ? 'wait' : 'pointer' }}>{isDiscovering ? 'Consultando vizinhos...' : 'Descobrir vizinhos LLDP/CDP'}</button>
-            {neighbors && <div style={{ fontSize: '12px', color: neighbors.length ? '#10b981' : '#f59e0b' }}>{neighbors.length ? `${neighbors.length} vizinho(s) encontrado(s): ${neighbors.map(item => item.name || item.port || 'sem nome').join(', ')}` : 'Nenhum vizinho LLDP/CDP encontrado.'}</div>}
+            {discoveryError && <div role="alert" style={{ fontSize: '12px', color: '#ef4444' }}>Falha na descoberta: {discoveryError}. Verifique as credenciais SNMPv3, a porta e se LLDP/CDP está habilitado no equipamento.</div>}
+            {neighbors && (neighbors.length ? <div style={{ display: 'grid', gap: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#10b981' }}>{neighbors.length} vizinho(s) encontrado(s). Selecione os que deseja incluir no mapa:</span>
+              <div style={{ display: 'grid', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
+                {neighbors.map((neighbor) => {
+                  const key = `${neighbor.protocol}:${neighbor.index}`
+                  return <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', color: '#cbd5e1', fontSize: '12px' }}>
+                    <input type="checkbox" checked={selectedNeighbors.has(key)} onChange={(event) => {
+                      setSelectedNeighbors((current) => {
+                        const next = new Set(current)
+                        if (event.target.checked) next.add(key)
+                        else next.delete(key)
+                        return next
+                      })
+                    }} />
+                    <span>{neighbor.name || neighbor.platform || `Vizinho ${neighbor.protocol}`} — {neighbor.protocol}{neighbor.port ? ` · porta ${neighbor.port}` : ''}{neighbor.platform ? ` · ${neighbor.platform}` : ''}</span>
+                  </label>
+                })}
+              </div>
+              <button onClick={handleAddSelectedNeighbors} disabled={selectedNeighbors.size === 0} style={{ padding: '9px', backgroundColor: selectedNeighbors.size ? '#2563eb' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: selectedNeighbors.size ? 'pointer' : 'not-allowed' }}>
+                Adicionar {selectedNeighbors.size} selecionado(s) ao mapa
+              </button>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Serão criados como itens visuais sem IP; você poderá editar os dados depois.</span>
+            </div> : <div style={{ fontSize: '12px', color: '#f59e0b' }}>Nenhum vizinho LLDP/CDP encontrado.</div>)}
           </div>}
 
           <div>
