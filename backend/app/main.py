@@ -14,6 +14,10 @@ import json
 import base64
 import hashlib
 import logging
+import secrets
+import threading
+import requests
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel
@@ -35,6 +39,9 @@ with engine.begin() as connection:
     project_columns = {column[1] for column in connection.exec_driver_sql("PRAGMA table_info(projetos)")}
     if "user_id" not in project_columns:
         connection.exec_driver_sql("ALTER TABLE projetos ADD COLUMN user_id INTEGER")
+    if "share_token" not in project_columns:
+        connection.exec_driver_sql("ALTER TABLE projetos ADD COLUMN share_token VARCHAR")
+        connection.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ix_projetos_share_token ON projetos (share_token)")
 
 app = FastAPI(title="NetCable API", version=os.getenv("APP_VERSION", "dev"))
 
@@ -60,6 +67,9 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-this-secret")
 ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "").strip()
 ALERT_WEBHOOK_TIMEOUT = float(os.getenv("ALERT_WEBHOOK_TIMEOUT", "3"))
 logger = logging.getLogger("netcable")
+# Intervalo (s) do monitoramento em segundo plano no backend. 0 desativa.
+MONITOR_INTERVAL = int(os.getenv("MONITOR_INTERVAL", "30"))
+MONITOR_WORKERS = int(os.getenv("MONITOR_WORKERS", "16"))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
@@ -228,6 +238,7 @@ class MonitorRequest(BaseModel):
 def registrar_monitoramento(db: Session, equipamento, resultado):
     if not equipamento:
         return
+    crud.atualizar_status_equipamento(db, equipamento.id, resultado.get("status", "offline"), resultado.get("tempo_ms"))
     _, mudou, status_anterior = crud.registrar_status(
         db, equipamento.id, resultado.get("status", "offline"), resultado.get("tempo_ms")
     )
@@ -243,6 +254,19 @@ def registrar_monitoramento(db: Session, equipamento, resultado):
         except Exception as exc:
             logger.warning("Falha ao enviar alerta webhook: %s", exc)
 
+def checar_equipamento(ip: str, mode: str = "ip", config: Optional[dict] = None):
+    """Verifica um equipamento por ping/TCP ou SNMPv3.
+    Propaga SNMPUnavailableError quando o pysnmp não está instalado."""
+    if mode != "snmpv3":
+        return ping_equipamento(ip)
+    config = {**(config or {}), "host": ip}
+    try:
+        return {"ip": ip, "status": "online", "tempo_ms": None, **snmp_test(config)}
+    except SNMPUnavailableError:
+        raise
+    except Exception as exc:
+        return {"ip": ip, "status": "offline", "tempo_ms": None, "error": str(exc)}
+
 @app.post("/api/monitor")
 def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     equipment = None
@@ -250,26 +274,73 @@ def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), 
         equipment = crud.get_equipamento_do_usuario(db, request.equipmentId, user.id)
         if not equipment:
             raise HTTPException(status_code=404, detail="Equipamento não encontrado")
-    if request.mode != "snmpv3":
-        result = ping_equipamento(request.ip)
-        registrar_monitoramento(db, equipment, result)
-        return result
     config = request.config or {}
-    if request.equipmentId and not config.get("authPassword"):
-        equipment = db.query(models.Equipamento).filter(models.Equipamento.id == request.equipmentId).first()
-        config = abrir_config(equipment.monitor_config if equipment else None)
-    config.update({"host": request.ip})
+    if request.mode == "snmpv3" and equipment and not config.get("authPassword"):
+        config = abrir_config(equipment.monitor_config)
     try:
-        result = snmp_test(config)
-        result = {"ip": request.ip, "status": "online", "tempo_ms": None, **result}
-        registrar_monitoramento(db, equipment, result)
-        return result
+        result = checar_equipamento(request.ip, request.mode, config)
     except SNMPUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
+    registrar_monitoramento(db, equipment, result)
+    return result
+
+# --- MONITORAMENTO EM SEGUNDO PLANO ---
+# Mantém o status no banco atualizado mesmo sem nenhum Editor aberto,
+# para que o link público (ex.: TV do NOC) mostre dados reais.
+_monitor_stop = threading.Event()
+
+def _equipamento_monitoravel(eq):
+    return eq.monitor_mode != "visual" and eq.status != "visual" and eq.ip and eq.ip != "Sem IP"
+
+def _checar_seguro(alvo):
+    eq_id, ip, mode, config = alvo
+    try:
+        return eq_id, checar_equipamento(ip, mode, config)
     except Exception as exc:
-        result = {"ip": request.ip, "status": "offline", "tempo_ms": None, "error": str(exc)}
-        registrar_monitoramento(db, equipment, result)
-        return result
+        logger.warning("Monitor: falha ao verificar %s (%s): %s", ip, mode, exc)
+        return eq_id, None
+
+def executar_ciclo_monitoramento():
+    db = SessionLocal()
+    try:
+        alvos = [
+            (eq.id, eq.ip, eq.monitor_mode or "ip", abrir_config(eq.monitor_config) if eq.monitor_mode == "snmpv3" else None)
+            for eq in db.query(models.Equipamento).all() if _equipamento_monitoravel(eq)
+        ]
+    finally:
+        db.close()
+    if not alvos:
+        return
+    with ThreadPoolExecutor(max_workers=max(1, MONITOR_WORKERS)) as pool:
+        resultados = list(pool.map(_checar_seguro, alvos))
+    db = SessionLocal()
+    try:
+        for eq_id, resultado in resultados:
+            if resultado is None:
+                continue
+            # Recarrega: o mapa pode ter sido salvo (e o equipamento removido) durante o ciclo.
+            equipamento = db.query(models.Equipamento).filter(models.Equipamento.id == eq_id).first()
+            if equipamento:
+                registrar_monitoramento(db, equipamento, resultado)
+    finally:
+        db.close()
+
+def _loop_monitoramento():
+    logger.info("Monitoramento em segundo plano ativo (intervalo: %ss)", MONITOR_INTERVAL)
+    while not _monitor_stop.wait(MONITOR_INTERVAL):
+        try:
+            executar_ciclo_monitoramento()
+        except Exception:
+            logger.exception("Erro no ciclo de monitoramento")
+
+@app.on_event("startup")
+def iniciar_monitoramento():
+    if MONITOR_INTERVAL > 0:
+        threading.Thread(target=_loop_monitoramento, name="netcable-monitor", daemon=True).start()
+
+@app.on_event("shutdown")
+def parar_monitoramento():
+    _monitor_stop.set()
 
 class DiscoveryRequest(BaseModel):
     ip: str
@@ -371,12 +442,36 @@ def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db), user: mo
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     return _obter_dados_projeto(projeto_id, db, projeto)
 
-@app.get("/api/public/projetos/{projeto_id}/dados", response_model=ProjetoResponse)
-def obter_dados_projeto_publico(projeto_id: int, db: Session = Depends(get_db)):
-    projeto = db.query(models.Projeto).filter(models.Projeto.id == projeto_id).first()
+# --- LINK PÚBLICO (token aleatório, revogável) ---
+@app.get("/api/projetos/{projeto_id}/compartilhar")
+def status_compartilhamento(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    projeto = crud.get_projeto(db, projeto_id, user.id)
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    return _obter_dados_projeto(projeto_id, db, projeto, publico=True)
+    return {"token": projeto.share_token}
+
+@app.post("/api/projetos/{projeto_id}/compartilhar")
+def gerar_link_publico(projeto_id: int, regenerar: bool = False, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    projeto = crud.get_projeto(db, projeto_id, user.id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    if projeto.share_token and not regenerar:
+        return {"token": projeto.share_token}
+    projeto = crud.definir_share_token(db, projeto_id, user.id, secrets.token_urlsafe(24))
+    return {"token": projeto.share_token}
+
+@app.delete("/api/projetos/{projeto_id}/compartilhar")
+def revogar_link_publico(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    if not crud.definir_share_token(db, projeto_id, user.id, None):
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return {"status": "sucesso"}
+
+@app.get("/api/public/mapas/{token}/dados", response_model=ProjetoResponse)
+def obter_dados_projeto_publico(token: str, db: Session = Depends(get_db)):
+    projeto = crud.get_projeto_por_token(db, token)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Link inválido ou revogado")
+    return _obter_dados_projeto(projeto.id, db, projeto, publico=True)
 
 @app.get("/api/projetos/{projeto_id}/historico")
 def historico_projeto(projeto_id: int, limite: int = 100, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):

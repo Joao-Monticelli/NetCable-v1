@@ -62,7 +62,9 @@ const calcularCorConexao = (sourceNode, targetNode) => {
   return { stroke: '#10b981', color: '#10b981' };
 }
 
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false }) {
+// readOnly: trava a edição e esconde os pontos de conexão (modo visualização / TV).
+// monitor: faz os pings pelo frontend (requer login). A página pública passa false.
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true }) {
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -136,7 +138,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   useEffect(() => {
     const interval = setInterval(async () => {
       const currentNodes = nodesRef.current
-      if (currentNodes.length === 0 || readOnly || monitoringRef.current) return
+      if (currentNodes.length === 0 || !monitor || monitoringRef.current) return
       monitoringRef.current = true
 
       const pingPromises = currentNodes.map(async (node) => {
@@ -181,7 +183,16 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [onAlertaQueda, readOnly])
+  }, [onAlertaQueda, monitor])
+
+  // Ao entrar no modo visualização, limpa seleção e fecha modais abertos.
+  useEffect(() => {
+    if (!readOnly) return
+    setSelectedNode(null)
+    setSelectedEdge(null)
+    setNodes((nds) => nds.some(n => n.selected) ? nds.map(n => n.selected ? { ...n, selected: false } : n) : nds)
+    setEdges((eds) => eds.some(e => e.selected) ? eds.map(e => e.selected ? { ...e, selected: false } : e) : eds)
+  }, [readOnly])
 
   const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
   const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [])
@@ -203,8 +214,8 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edge) }
   const onReconnect = useCallback((oldEdge, newConnection) => { if (!readOnly) setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds)) }, [readOnly])
   
-  const onEdgeMouseEnter = (event, edge) => setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 4 } } : e))
-  const onEdgeMouseLeave = (event, edge) => setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 2.5 } } : e))
+  const onEdgeMouseEnter = (event, edge) => !readOnly && setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 4 } } : e))
+  const onEdgeMouseLeave = (event, edge) => !readOnly && setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 2.5 } } : e))
 
   const handleUpdateNode = (id, newData) => { if (!readOnly) { setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: { ...node.data, ...newData } } : node)); setSelectedNode(null) } }
   const handleDeleteNode = (id) => { if (!readOnly) { setNodes((nds) => nds.filter((node) => node.id !== id)); setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id)); setSelectedNode(null) } }
@@ -227,15 +238,17 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   return (
     <>
       <ReactFlow
+        className={readOnly ? 'netmap-readonly' : ''}
         nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         defaultEdgeOptions={defaultEdgeOptions} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
         onReconnect={onReconnect} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
+        elementsSelectable={!readOnly} edgesUpdatable={!readOnly} deleteKeyCode={readOnly ? null : 'Backspace'}
         reconnectRadius={20} connectionMode="loose" fitView
       >
         <Background />
-        <Controls />
+        <Controls showInteractive={!readOnly} />
       </ReactFlow>
 
       {selectedNode && <EquipmentModal node={selectedNode} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}

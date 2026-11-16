@@ -27,11 +27,25 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo) e alerta sonoro
 
-🔗 Link público — compartilhe o diagrama em modo somente leitura
+🔗 Link público — compartilhe o diagrama em modo somente leitura, com link secreto revogável e atualização automática
+
+📺 Modo visualização / TV de NOC — esconde os pontos de conexão e trava a edição, com tela cheia na página pública
 
 💾 Exportar/Importar JSON — faça backup e restaure seu diagrama facilmente
 
 ## 🔧 Atualizações recentes
+
+✅ **Monitoramento em segundo plano no backend** — o status dos equipamentos é atualizado no servidor mesmo sem nenhum navegador aberto (intervalo configurável por `MONITOR_INTERVAL`, padrão 30 s; `0` desativa).
+
+✅ **Modo visualização (somente leitura)** — botão no editor que esconde os pontos de conexão e bloqueia edições, ideal para telas de NOC.
+
+✅ **Link público mais seguro** — o link agora usa um token aleatório (não mais o ID do projeto) e pode ser regenerado ou revogado. Links antigos no formato `/share/<id>` deixam de funcionar: gere um novo pelo menu ⚙️.
+
+✅ **Página pública para TV** — atualização automática a cada 10 s, indicador da última atualização e botão de tela cheia.
+
+✅ **Correção: copiar link público em HTTP** — o botão agora funciona ao acessar o NetCable por `http://IP` (homelab), sem exigir HTTPS.
+
+✅ **Correção: alertas por webhook** — o envio para `ALERT_WEBHOOK_URL` não estava sendo realizado.
 
 O NetCable recebeu uma primeira evolução no monitoramento e na integração com redes reais:
 
@@ -104,7 +118,6 @@ O projeto está em beta e as seguintes melhorias estão planejadas:
 □ Histórico de status dos dispositivos (uptime/downtime)
 □ Notificações externas (e-mail, webhook, Telegram/Discord)
 □ Suporte a PostgreSQL como alternativa ao SQLite
-□ Melhorias de performance no monitoramento (fila/agendamento)
 □ Testes automatizados (backend e frontend)
 □ Documentação de API (OpenAPI/Swagger)
 □ Temas claro/escuro

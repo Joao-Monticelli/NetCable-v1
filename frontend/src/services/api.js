@@ -117,14 +117,36 @@ export const api = {
     return true;
   },
   
-  async obterProjeto(projetoId, publico = false) {
-    const endpoint = publico
-      ? `${API_URL}/public/projetos/${projetoId}/dados`
-      : `${API_URL}/projetos/${projetoId}/dados`;
-    const res = await fetch(endpoint, { headers: publico ? {} : getHeaders() });
+  async obterProjeto(projetoId) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/dados`, { headers: getHeaders() });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Projeto não encontrado');
     return data;
+  },
+
+  // Visualização pública: acessa o mapa pelo token do link (sem login).
+  async obterMapaPublico(token) {
+    const res = await fetch(`${API_URL}/public/mapas/${encodeURIComponent(token)}/dados`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.detail || 'Link inválido ou revogado');
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
+
+  async gerarLinkPublico(projetoId, regenerar = false) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/compartilhar?regenerar=${regenerar}`, { method: 'POST', headers: getHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Não foi possível gerar o link público.');
+    return data.token;
+  },
+
+  async revogarLinkPublico(projetoId) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/compartilhar`, { method: 'DELETE', headers: getHeaders() });
+    if (!res.ok) throw new Error('Não foi possível revogar o link público.');
+    return true;
   },
   
   async deletarProjeto(projetoId) {

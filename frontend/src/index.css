@@ -36,3 +36,14 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
   border: 2px solid #1e293b;
   z-index: 10;
 }
+/* Modo visualização (somente leitura / TV de NOC):
+   os pontos de conexão continuam no DOM (o React Flow usa a posição deles
+   para desenhar as linhas), mas ficam invisíveis e sem interação. */
+.netmap-readonly .react-flow__handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.netmap-readonly .react-flow__edge,
+.netmap-readonly .react-flow__node {
+  cursor: default !important;
+}

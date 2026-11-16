@@ -45,6 +45,26 @@ def get_equipamento_do_usuario(db: Session, equipamento_id: str, user_id: int):
         models.Projeto.user_id == user_id,
     ).first()
 
+def atualizar_status_equipamento(db: Session, equipamento_id: str, status: str, tempo_ms=None):
+    """Atualiza o status atual do equipamento (o que a visualização pública lê).
+    Não faz commit: é persistido junto com o histórico em registrar_status."""
+    db.query(models.Equipamento).filter(models.Equipamento.id == equipamento_id).update(
+        {"status": status, "ping_time": tempo_ms}, synchronize_session=False
+    )
+
+def get_projeto_por_token(db: Session, token: str):
+    if not token:
+        return None
+    return db.query(models.Projeto).filter(models.Projeto.share_token == token).first()
+
+def definir_share_token(db: Session, projeto_id: int, user_id: int, token):
+    db_projeto = get_projeto(db, projeto_id, user_id)
+    if db_projeto:
+        db_projeto.share_token = token
+        db.commit()
+        db.refresh(db_projeto)
+    return db_projeto
+
 def registrar_status(db: Session, equipamento_id: str, status: str, tempo_ms=None):
     ultimo = db.query(models.HistoricoStatus).filter(
         models.HistoricoStatus.equipamento_id == equipamento_id
@@ -52,6 +72,7 @@ def registrar_status(db: Session, equipamento_id: str, status: str, tempo_ms=Non
     if ultimo and ultimo.status == status and ultimo.criado_em:
         from datetime import datetime
         if (datetime.utcnow() - ultimo.criado_em).total_seconds() < 60:
+            db.commit()  # persiste eventual atualização pendente do status atual
             return ultimo, False, ultimo.status
     mudou = ultimo is not None and ultimo.status != status
     registro = models.HistoricoStatus(

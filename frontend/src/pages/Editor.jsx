@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
@@ -29,6 +29,7 @@ export default function Editor() {
   const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState(false)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
+  const [modoVisualizacao, setModoVisualizacao] = useState(false)
 
   // Estado do Alerta
   const [temAlerta, setTemAlerta] = useState(false)
@@ -135,11 +136,50 @@ export default function Editor() {
     } catch (error) { toast.error('Erro ao salvar o projeto.') } finally { setIsSaving(false) }
   }
 
-  const handleCopyLink = () => {
-    if (projectId === 'novo') { toast.error("Salve o projeto primeiro!"); return; }
-    const link = `${window.location.origin}/share/${projectId}`;
-    navigator.clipboard.writeText(link).then(() => toast.success('Link público copiado!')).catch(() => toast.error('Não foi possível copiar o link.'));
+  // navigator.clipboard só existe em contexto seguro (HTTPS ou localhost).
+  // Em homelab acessado via http://IP ele é undefined, então usamos fallbacks.
+  const copiarTexto = async (texto) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(texto); return true } catch { /* tenta o fallback */ }
+    }
+    const textarea = document.createElement('textarea')
+    textarea.value = texto
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    let ok = false
+    try { ok = document.execCommand('copy') } catch { ok = false }
+    document.body.removeChild(textarea)
+    return ok
+  }
+
+  const handleCopyLink = async (regenerar = false) => {
     setShowConfigMenu(false);
+    if (projectId === 'novo') { toast.error("Salve o projeto primeiro!"); return; }
+    if (regenerar && !window.confirm('Gerar um novo link? O link atual deixará de funcionar (inclusive em TVs já abertas).')) return;
+    let token
+    try {
+      token = await api.gerarLinkPublico(projectId, regenerar)
+    } catch (error) { toast.error(error.message); return }
+    const link = `${window.location.origin}/share/${token}`;
+    if (await copiarTexto(link)) {
+      toast.success(regenerar ? 'Novo link público copiado!' : 'Link público copiado!')
+    } else {
+      // Último recurso: mostra o link para o usuário copiar manualmente.
+      window.prompt('Copie o link público (Ctrl+C):', link)
+    }
+  };
+
+  const handleRevogarLink = async () => {
+    setShowConfigMenu(false);
+    if (projectId === 'novo') return;
+    if (!window.confirm('Revogar o link público? Quem estiver com ele aberto perderá o acesso.')) return;
+    try {
+      await api.revogarLinkPublico(projectId)
+      toast.success('Link público revogado.')
+    } catch (error) { toast.error(error.message) }
   };
 
   const handleLogout = () => { api.logout(); navigate('/'); };
@@ -227,13 +267,19 @@ export default function Editor() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><MinusCircle size={16} color="#64748b" /> <span style={{ color: '#64748b', fontWeight: 'bold' }}>{stats.visual}</span></div>
           </div>
 
+          <button onClick={() => setModoVisualizacao(v => !v)} title={modoVisualizacao ? 'Voltar ao modo edição' : 'Modo visualização (somente leitura)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: modoVisualizacao ? '#3b82f6' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+            {modoVisualizacao ? <><Pencil size={18} /> Editar</> : <Eye size={18} />}
+          </button>
+
           <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" style={{ display: 'none' }} />
-          <button onClick={() => fileInputRef.current.click()} title="Importar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>
+          {!modoVisualizacao && <button onClick={() => fileInputRef.current.click()} title="Importar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
           <button onClick={handleExport} title="Exportar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
-          <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-            <Plus size={18} /> Adicionar
-          </button>
+          {!modoVisualizacao && (
+            <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+              <Plus size={18} /> Adicionar
+            </button>
+          )}
           
           <button onClick={handleSaveProject} disabled={isSaving} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
             {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : 'Salvar'}
@@ -254,8 +300,14 @@ export default function Editor() {
                 <button onClick={() => { setShowConfigMenu(false); setIsHistoryModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#f59e0b"/> Histórico
                 </button>
-                <button onClick={handleCopyLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
-                  <Share2 size={16} color="#3b82f6"/> Gerar Link Público
+                <button onClick={() => handleCopyLink(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
+                  <Share2 size={16} color="#3b82f6"/> Copiar Link Público
+                </button>
+                <button onClick={() => handleCopyLink(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <RefreshCw size={16} color="#94a3b8"/> Gerar Novo Link
+                </button>
+                <button onClick={handleRevogarLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Link2Off size={16} color="#f59e0b"/> Revogar Link Público
                 </button>
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
                 <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
@@ -268,7 +320,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={modoVisualizacao} />
       </div>
 
       {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
