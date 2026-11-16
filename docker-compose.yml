@@ -14,6 +14,8 @@ services:
       - ALLOWED_ORIGINS=http://localhost
       # Opcional: URL que receberá alertas quando um equipamento ficar offline.
       # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
+      # Opcional: intervalo (s) do monitoramento em segundo plano. 0 desativa.
+      # - MONITOR_INTERVAL=30
 
   frontend:
     image: ghcr.io/joao-monticelli/netcable-frontend:latest

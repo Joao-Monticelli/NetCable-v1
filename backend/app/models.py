@@ -16,6 +16,8 @@ class Projeto(Base):
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, index=True)
     user_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
+    # Token aleatório do link público; None = compartilhamento desativado.
+    share_token = Column(String, nullable=True, unique=True, index=True)
     usuario = relationship("Usuario", back_populates="projetos")
     equipamentos = relationship("Equipamento", back_populates="projeto")
 

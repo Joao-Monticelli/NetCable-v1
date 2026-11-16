@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle } from 'lucide-react'
+import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Maximize, Minimize } from 'lucide-react'
 import NetworkMap from '../components/NetworkMap'
 import { api } from '../services/api'
 
+const REFRESH_MS = 10000
+
 export default function SharedView() {
-  const { projectId } = useParams()
+  const { token } = useParams()
   const [projectName, setProjectName] = useState('Carregando...')
   const [mapNodes, setMapNodes] = useState([])
   const [mapEdges, setMapEdges] = useState([])
@@ -13,32 +15,57 @@ export default function SharedView() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    const fetchProjeto = async () => {
-      try {
-        const data = await api.obterProjeto(projectId, true)
-        setProjectName(data.nome)
-        const formattedNodes = data.equipamentos.map(eq => ({
-          id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
-          style: { width: eq.width, height: eq.height },
-          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time }
-        }))
-        const formattedEdges = data.conexoes.map(conn => ({
-          id: conn.id, source: conn.source, target: conn.target, label: conn.label,
-          sourceHandle: conn.source_handle, targetHandle: conn.target_handle,
-          type: 'smoothstep', animated: true, interactionWidth: 20,
-          style: { stroke: '#3b82f6', strokeWidth: 2.5 }, markerEnd: { type: 'arrowclosed', color: '#3b82f6' }
-        }))
-        setMapNodes(formattedNodes)
-        setMapEdges(formattedEdges)
-      } catch (err) {
-        setError("Não foi possível conectar ao servidor do NetCable ou o link é inválido.")
-      } finally {
-        setIsLoading(false)
-      }
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null)
+  const [falhaAtualizacao, setFalhaAtualizacao] = useState(false)
+  const [telaCheia, setTelaCheia] = useState(false)
+
+  const carregarProjeto = useCallback(async (inicial = false) => {
+    try {
+      const data = await api.obterMapaPublico(token)
+      setProjectName(data.nome)
+      const formattedNodes = data.equipamentos.map(eq => ({
+        id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
+        style: { width: eq.width, height: eq.height },
+        data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time }
+      }))
+      const formattedEdges = data.conexoes.map(conn => ({
+        id: conn.id, source: conn.source, target: conn.target, label: conn.label,
+        sourceHandle: conn.source_handle, targetHandle: conn.target_handle,
+        type: 'smoothstep', animated: true, interactionWidth: 20,
+        style: { stroke: '#3b82f6', strokeWidth: 2.5 }, markerEnd: { type: 'arrowclosed', color: '#3b82f6' }
+      }))
+      setMapNodes(formattedNodes)
+      setMapEdges(formattedEdges)
+      setUltimaAtualizacao(new Date())
+      setFalhaAtualizacao(false)
+    } catch (err) {
+      // Link revogado: tira o mapa do ar mesmo numa TV já aberta.
+      // Falha de rede numa atualização: mantém o último estado e sinaliza.
+      if (err.status === 404) setError("Este link público é inválido ou foi revogado pelo dono do mapa.")
+      else if (inicial) setError("Não foi possível conectar ao servidor do NetCable.")
+      else setFalhaAtualizacao(true)
+    } finally {
+      if (inicial) setIsLoading(false)
     }
-    fetchProjeto()
-  }, [projectId])
+  }, [token])
+
+  useEffect(() => {
+    carregarProjeto(true)
+    // Atualização automática para exibição contínua (ex.: TV do NOC).
+    const interval = setInterval(() => carregarProjeto(false), REFRESH_MS)
+    return () => clearInterval(interval)
+  }, [carregarProjeto])
+
+  useEffect(() => {
+    const onChange = () => setTelaCheia(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const alternarTelaCheia = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.()
+    else document.documentElement.requestFullscreen?.().catch(() => {})
+  }
 
   const handleMapUpdate = useCallback((nodes) => {
     const counts = nodes.reduce((acc, node) => {
@@ -72,15 +99,23 @@ export default function SharedView() {
           <span style={{ fontWeight: 'bold' }}>{projectName} (Visualização Pública)</span>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {ultimaAtualizacao && (
+            <span title={falhaAtualizacao ? 'Falha na última atualização — exibindo dados anteriores' : 'Atualiza automaticamente'} style={{ fontSize: '12px', color: falhaAtualizacao ? '#f59e0b' : '#64748b' }}>
+              {falhaAtualizacao && '⚠ '}Atualizado às {ultimaAtualizacao.toLocaleTimeString()}
+            </span>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0f172a', padding: '6px 15px', borderRadius: '8px', border: '1px solid #334155' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><CheckCircle2 size={16} color="#10b981" /> <span style={{ color: '#10b981', fontWeight: 'bold' }}>{stats.online}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><XCircle size={16} color="#ef4444" /> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{stats.offline}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><MinusCircle size={16} color="#64748b" /> <span style={{ color: '#64748b', fontWeight: 'bold' }}>{stats.visual}</span></div>
           </div>
+          <button onClick={alternarTelaCheia} title={telaCheia ? 'Sair da tela cheia' : 'Tela cheia (TV / NOC)'} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+            {telaCheia ? <Minimize size={18} /> : <Maximize size={18} />}
+          </button>
         </div>
       </div>
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} onMapUpdate={handleMapUpdate} readOnly={true} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} onMapUpdate={handleMapUpdate} readOnly={true} monitor={false} />
       </div>
     </div>
   )

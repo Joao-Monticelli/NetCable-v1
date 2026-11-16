@@ -25,7 +25,7 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/share/:projectId" element={<SharedView />} />
+        <Route path="/share/:token" element={<SharedView />} />
         
         <Route element={<PrivateRoute />}>
           <Route path="/projects" element={<Projects />} />
