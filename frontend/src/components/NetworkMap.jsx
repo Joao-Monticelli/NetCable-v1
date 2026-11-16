@@ -244,7 +244,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
         onReconnect={onReconnect} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
-        elementsSelectable={!readOnly} edgesUpdatable={!readOnly} deleteKeyCode={readOnly ? null : 'Backspace'}
+        elementsSelectable={!readOnly} edgesUpdatable={!readOnly} nodesFocusable={!readOnly} edgesFocusable={!readOnly} deleteKeyCode={readOnly ? null : 'Backspace'}
         reconnectRadius={20} connectionMode="loose" fitView
       >
         <Background />
