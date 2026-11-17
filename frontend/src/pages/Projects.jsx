@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes } from 'lucide-react'
+import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes, Upload, Download, Archive } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import SettingsModal from '../components/Modals/SettingsModal'
 import UsersModal from '../components/Modals/UsersModal'
 import EmailConfigModal from '../components/Modals/EmailConfigModal'
 import ModelosModal from '../components/Modals/ModelosModal'
+import BackupModal from '../components/Modals/BackupModal'
 import { t, useI18n, SeletorIdioma, getIdioma } from '../i18n'
 
 const itemMenu = { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }
@@ -67,6 +68,24 @@ export default function Projects() {
 
   const abrir = (qual) => { setShowConfigMenu(false); setModal(qual) }
 
+  const arquivoRef = useRef(null)
+  const [importando, setImportando] = useState(false)
+  const importar = async (e) => {
+    const arquivo = e.target.files[0]
+    e.target.value = null
+    if (!arquivo) return
+    setImportando(true)
+    try {
+      const importados = await api.importarArquivo(arquivo)
+      toast.success(t('{n} mapa(s) importado(s) como projeto novo.', { n: importados.length }))
+      fetchProjetos()
+    } catch (err) { toast.error(err.message, { duration: 7000 }) } finally { setImportando(false) }
+  }
+  const exportar = (e, proj) => {
+    e.stopPropagation()
+    api.exportarProjeto(proj.id, proj.nome).catch(err => toast.error(err.message))
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', padding: '40px' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '1px solid #334155', paddingBottom: '20px' }}>
@@ -76,6 +95,12 @@ export default function Projects() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {podeEditar && <>
+            <input type="file" ref={arquivoRef} onChange={importar} accept=".json,.zip" style={{ display: 'none' }} />
+            <button onClick={() => arquivoRef.current.click()} disabled={importando} title={t('Importar mapa ou backup (.json / .zip)')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+              {importando ? <Loader2 size={16} className="spin" /> : <Upload size={16} />} {t('Importar')}
+            </button>
+          </>}
           <SeletorIdioma compacto onChange={(i) => api.atualizarPerfil({ idioma: i }).catch(() => {})} />
           {currentUser && (
             <span style={{ fontSize: '13px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -98,6 +123,7 @@ export default function Projects() {
                 {isAdmin && <>
                   <button onClick={() => abrir('usuarios')} style={itemMenu}><Users size={16} color="#3b82f6"/> {t('Usuários')}</button>
                   <button onClick={() => abrir('email')} style={itemMenu}><Mail size={16} color="#f59e0b"/> {t('E-mail (SMTP)')}</button>
+                  <button onClick={() => abrir('backup')} style={itemMenu}><Archive size={16} color="#10b981"/> {t('Backup')}</button>
                 </>}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
                 <button onClick={handleLogout} style={{ ...itemMenu, color: '#ef4444' }}><LogOut size={16} /> {t('Sair')}</button>
@@ -127,7 +153,10 @@ export default function Projects() {
                     {proj.criado_por && <span style={{ fontSize: '11px', color: '#64748b' }}>{t('criado por {nome}', { nome: proj.criado_por })}</span>}
                   </div>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <button onClick={(e) => exportar(e, proj)} title={t('Exportar mapa (.json)')} aria-label={t('Exportar mapa (.json)')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '5px' }}><Download size={18} /></button>
                 {podeEditar && <button onClick={(e) => handleDeleteProject(e, proj.id, proj.nome)} title={t('Excluir projeto')} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '5px' }}><Trash2 size={18} /></button>}
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px' }}>
                 <span title={t('Online')} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981' }}><CheckCircle2 size={15} /> {proj.online ?? 0}</span>
@@ -143,6 +172,7 @@ export default function Projects() {
       {modal === 'perfil' && <SettingsModal onClose={() => setModal(null)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {modal === 'usuarios' && <UsersModal onClose={() => setModal(null)} currentUser={currentUser} />}
       {modal === 'modelos' && <ModelosModal podeEditar={podeEditar} onClose={() => setModal(null)} />}
+      {modal === 'backup' && <BackupModal onClose={() => setModal(null)} />}
       {modal === 'email' && <EmailConfigModal onClose={() => setModal(null)} currentUser={currentUser} />}
     </div>
   )

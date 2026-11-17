@@ -30,7 +30,10 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal, DATA_DIR, DB_PATH
-from . import migracoes
+from . import migracoes, backup
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
+import zipfile
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -569,6 +572,33 @@ def deletar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: m
     raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
 
+# --- EXPORTAR / IMPORTAR MAPAS ---
+LIMITE_IMPORTACAO = 50 * 1024 * 1024
+
+
+@app.get("/api/projetos/{projeto_id}/exportar")
+def exportar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    projeto = crud.get_projeto(db, projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return backup.exportar_projeto(db, projeto, abrir_config, app.version)
+
+
+@app.post("/api/projetos/importar")
+async def importar_projeto_rota(arquivo: UploadFile = File(...), db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    conteudo = await arquivo.read(LIMITE_IMPORTACAO + 1)
+    if len(conteudo) > LIMITE_IMPORTACAO:
+        raise HTTPException(status_code=413, detail="Arquivo grande demais.")
+    try:
+        importados = backup.importar_arquivo(db, conteudo, user.id, proteger_config)
+    except (ValueError, KeyError, TypeError, AttributeError, zipfile.BadZipFile) as exc:
+        legivel = isinstance(exc, ValueError) and not isinstance(exc, json.JSONDecodeError)
+        detalhe = str(exc) if legivel else "Arquivo de mapa inválido."
+        raise HTTPException(status_code=400, detail=detalhe)
+    logger.info("%s importou %d mapa(s)", user.username, len(importados))
+    return {"importados": importados}
+
+
 # --- MONITORAMENTO E DESCOBERTA ---
 class MonitorRequest(BaseModel):
     equipmentId: Optional[str] = None
@@ -757,12 +787,132 @@ def verificar_relatorios_agendados(agora_utc: datetime = None):
         db.close()
 
 
+# --- BACKUP AUTOMÁTICO ---
+BACKUP_DIR_PADRAO = os.path.join(DATA_DIR, "backups")
+_trava_backup = threading.Lock()
+_falha_backup = {"momento": -1e9}
+
+
+def get_backup_config(db: Session):
+    c = crud.get_configuracoes(db, "backup.")
+    try:
+        manter = max(1, int(c.get("backup.manter") or 7))
+    except ValueError:
+        manter = 7
+    return {
+        "ativo": c.get("backup.ativo", "1") == "1",
+        "diretorio": c.get("backup.diretorio") or BACKUP_DIR_PADRAO,
+        "horario": c.get("backup.horario") or "03:00",
+        "manter": manter,
+        "ultimo": c.get("backup.ultimo") or None,
+        "ultimo_erro": c.get("backup.ultimo_erro") or None,
+    }
+
+
+def fazer_backup(db: Session, agora_utc: datetime = None):
+    cfg = get_backup_config(db)
+    with _trava_backup:
+        caminho = backup.criar_backup(db, DB_PATH, cfg["diretorio"], abrir_config, app.version)
+        backup.limpar_antigos(cfg["diretorio"], cfg["manter"])
+    momento = (agora_utc or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(tzinfo=None)
+    crud.salvar_configuracoes(db, {"backup.ultimo": iso_utc(momento), "backup.ultimo_erro": ""})
+    logger.info("Backup criado: %s", caminho)
+    return caminho
+
+
+def verificar_backup_agendado(agora_utc: datetime = None):
+    """Um backup por dia, a partir do horário escolhido (no fuso configurado)."""
+    db = SessionLocal()
+    try:
+        cfg = get_backup_config(db)
+        if not cfg["ativo"] or not crud.listar_usuarios(db):
+            return
+        fuso = get_fuso(db)
+        agora_local = (agora_utc or datetime.now(timezone.utc)).astimezone(fuso)
+        if agora_local.strftime("%H:%M") < cfg["horario"]:
+            return
+        if cfg["ultimo"]:
+            ultimo = datetime.fromisoformat(cfg["ultimo"].replace("Z", "+00:00"))
+            if ultimo.tzinfo is None:
+                ultimo = ultimo.replace(tzinfo=timezone.utc)
+            if ultimo.astimezone(fuso).date() == agora_local.date():
+                return
+        if time.monotonic() - _falha_backup["momento"] < 1800:
+            return
+        try:
+            fazer_backup(db, agora_utc)
+        except Exception as exc:
+            _falha_backup["momento"] = time.monotonic()
+            crud.salvar_configuracoes(db, {"backup.ultimo_erro": f"{iso_utc(datetime.utcnow())} {exc}"})
+            logger.warning("Falha no backup automático: %s", exc)
+    finally:
+        db.close()
+
+
+class BackupConfigIn(BaseModel):
+    ativo: bool = True
+    diretorio: Optional[str] = None
+    horario: str = "03:00"
+    manter: int = 7
+
+
+@app.get("/api/backup")
+def obter_backup(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    cfg = get_backup_config(db)
+    return {**cfg, "diretorio_padrao": BACKUP_DIR_PADRAO, "arquivos": backup.listar_backups(cfg["diretorio"])}
+
+
+@app.put("/api/backup")
+def salvar_backup_config(dados: BackupConfigIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", dados.horario or ""):
+        raise HTTPException(status_code=400, detail="Horário inválido (use HH:MM).")
+    if not 1 <= dados.manter <= 365:
+        raise HTTPException(status_code=400, detail="Quantidade de backups deve ser entre 1 e 365.")
+    diretorio = (dados.diretorio or "").strip() or BACKUP_DIR_PADRAO
+    if not os.path.isabs(diretorio):
+        raise HTTPException(status_code=400, detail="Use um caminho absoluto para a pasta de backup.")
+    try:
+        backup.testar_diretorio(diretorio)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"Não foi possível gravar na pasta: {exc}")
+    crud.salvar_configuracoes(db, {
+        "backup.ativo": "1" if dados.ativo else "0",
+        "backup.diretorio": "" if diretorio == BACKUP_DIR_PADRAO else diretorio,
+        "backup.horario": dados.horario, "backup.manter": str(dados.manter),
+    })
+    return obter_backup(db, admin)
+
+
+@app.post("/api/backup/agora")
+def backup_agora(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    try:
+        caminho = fazer_backup(db)
+    except Exception as exc:
+        crud.salvar_configuracoes(db, {"backup.ultimo_erro": f"{iso_utc(datetime.utcnow())} {exc}"})
+        raise HTTPException(status_code=500, detail=f"Falha no backup: {exc}")
+    return {"arquivo": os.path.basename(caminho), **obter_backup(db, admin)}
+
+
+@app.get("/api/backup/arquivo/{nome}")
+def baixar_backup(nome: str, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    if not backup.PADRAO_ARQUIVO.match(nome):
+        raise HTTPException(status_code=404, detail="Backup não encontrado")
+    caminho = os.path.join(get_backup_config(db)["diretorio"], nome)
+    if not os.path.isfile(caminho):
+        raise HTTPException(status_code=404, detail="Backup não encontrado")
+    return FileResponse(caminho, media_type="application/zip", filename=nome)
+
+
 def _loop_relatorios():
     while not _monitor_stop.wait(60):
         try:
             verificar_relatorios_agendados()
         except Exception:
             logger.exception("Erro ao verificar relatórios agendados")
+        try:
+            verificar_backup_agendado()
+        except Exception:
+            logger.exception("Erro ao verificar o backup agendado")
 
 
 @app.on_event("startup")
