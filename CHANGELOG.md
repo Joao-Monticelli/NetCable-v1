@@ -9,6 +9,8 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 - **Maintenance windows** for a whole map (toolbar 🔧) or a single device (1–24 h, up to 30 days via API). Alerts are muted; monitoring and history continue. Shown on the map, in the editor and on the public/TV page.
 - **Alert channels in the UI** (⚙️ → Alert channels): Discord, ntfy, Telegram and JSON webhook, with test buttons; secrets stored encrypted. New env vars `DISCORD_WEBHOOK_URL`, `NTFY_URL`, `NTFY_TOKEN`.
 - Map export/import keeps the uplinks.
+- **Network discovery:** scan a private range (CIDR, start-end or single IP, up to 1024 addresses) from the editor; results show reverse-DNS name, open ports, suggested type and whether the IP is already on a map; add the selected ones in one click.
+- New device types: Access Point, Printer and Camera.
 
 ### Security
 - Alert channel errors no longer echo tokens or secret URLs (the Telegram token is part of its URL).

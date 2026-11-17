@@ -18,6 +18,7 @@ Roda em **um único container Docker** em qualquer lugar: mini PC, VM, NAS, Rasp
 
 ## Funcionalidades
 
+- 📡 **Descoberta da rede** — varre uma faixa (ex.: `192.168.1.0/24`), mostra quem respondeu com nome, portas abertas e tipo sugerido, e adiciona ao mapa num clique.
 - 🗺️ **Mapa visual** — arrastar e soltar, cabos com rótulo, busca (`Ctrl+K`) e destaque ao passar o mouse.
 - 🗄️ **Racks realistas** — de 4U a 48U; switches, servidores, NAS, patch panels, nobreaks… encaixando por U.
 - 🧩 **Biblioteca de modelos** — cadastre seus equipamentos reais (ex.: “4 RJ45 + 2 SFP, 1U”) e a frente é desenhada com essas portas.
@@ -65,6 +66,17 @@ Imagens para **amd64** e **arm64** (Raspberry Pi 4/5). Para atualizar de forma c
 
 Tudo é opcional. E-mail (SMTP), usuários, backup e idioma ficam na interface (menu ⚙️). As variáveis de
 ambiente estão na tabela do [README em inglês](README.md#configuration) e comentadas no `docker-compose.yml`.
+
+## Descoberta da rede
+
+No editor, clique no botão 📡 (radar), informe a faixa (`192.168.1.0/24`, `10.0.0.10-10.0.0.60` ou um IP) e clique em **Varrer**.
+O servidor do NetCable pinga cada endereço e testa portas comuns (SSH, HTTP/S, SMB, RDP, DNS, impressoras, câmeras, Proxmox, Synology)
+e lista quem respondeu, com o nome DNS reverso e um tipo sugerido. O que já está em algum mapa aparece marcado e desmarcado.
+Escolha, ajuste nomes/tipos, clique em **Adicionar ao mapa** e salve.
+
+- Só faixas privadas (10/8, 172.16/12, 192.168/16, 100.64/10) de até 1024 endereços. `DISCOVERY_ALLOW_PUBLIC=1` libera faixas públicas (laboratório).
+- No Docker, a rede bridge padrão alcança a LAN, então a varredura funciona. O MAC só aparece com `network_mode: host` (Linux).
+- Editores e admins podem varrer; visualizadores não.
 
 ## Alertas inteligentes
 

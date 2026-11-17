@@ -30,7 +30,7 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal, DATA_DIR, DB_PATH
-from . import migracoes, backup, regras_alerta
+from . import migracoes, backup, regras_alerta, descoberta
 from fastapi import UploadFile, File
 from fastapi.responses import FileResponse
 import zipfile
@@ -1026,6 +1026,52 @@ def descobrir_vizinhos(request: DiscoveryRequest, user: models.Usuario = Depends
         raise HTTPException(status_code=501, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Falha na descoberta: {exc}")
+
+
+# --- DESCOBERTA DA REDE (varredura de faixa) ---
+class VarreduraIn(BaseModel):
+    faixa: str
+
+
+def _job_publico(db: Session, job):
+    # Marca IPs que já estão em algum mapa (para não duplicar).
+    no_mapa = {}
+    for eq in db.query(models.Equipamento).filter(models.Equipamento.ip.in_([r["ip"] for r in job["resultados"]])).all():
+        no_mapa.setdefault(eq.ip, set()).add(eq.projeto.nome if eq.projeto else "?")
+    return {
+        "id": job["id"], "status": job["status"], "fase": job["fase"], "total": job["total"], "verificados": job["verificados"],
+        "erro": job["erro"], "duracao_s": round((job["fim"] or time.time()) - job["inicio"], 1),
+        "resultados": [{**r, "no_mapa": sorted(no_mapa.get(r["ip"], []))} for r in job["resultados"]],
+    }
+
+
+@app.post("/api/descoberta")
+def iniciar_descoberta(dados: VarreduraIn, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    try:
+        ips = descoberta.validar_faixa(dados.faixa)
+        job = descoberta.iniciar(ips, user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    logger.info("%s iniciou varredura de %s (%d endereços)", user.username, dados.faixa, len(ips))
+    return _job_publico(db, job)
+
+
+@app.get("/api/descoberta/{job_id}")
+def status_descoberta(job_id: str, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    job = descoberta.obter(job_id, user.id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Varredura não encontrada.")
+    return _job_publico(db, job)
+
+
+@app.delete("/api/descoberta/{job_id}")
+def cancelar_descoberta(job_id: str, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    job = descoberta.cancelar(job_id, user.id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Varredura não encontrada.")
+    return _job_publico(db, job)
 
 
 # --- FUNÇÃO DE PING (TCP + ICMP com medição de tempo) ---

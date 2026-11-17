@@ -61,6 +61,11 @@ export const api = {
     salvarArquivo(await res.blob(), nome)
   },
 
+  // --- Descoberta da rede ---
+  iniciarDescoberta(faixa) { return requisicao('/descoberta', { method: 'POST', body: JSON.stringify({ faixa }) }, t('Não foi possível iniciar a varredura.')) },
+  statusDescoberta(id) { return requisicao(`/descoberta/${id}`, {}, t('Não foi possível consultar a varredura.')) },
+  cancelarDescoberta(id) { return requisicao(`/descoberta/${id}`, { method: 'DELETE' }, t('Não foi possível parar a varredura.')) },
+
   // --- Manutenção e canais de alerta ---
   iniciarManutencao(projetoId, dados) { return requisicao(`/projetos/${projetoId}/manutencao`, { method: 'POST', body: JSON.stringify(dados) }, t('Não foi possível iniciar a manutenção.')) },
   encerrarManutencao(projetoId, equipamentoId = null) {
