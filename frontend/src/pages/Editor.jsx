@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug, Radar } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
@@ -10,6 +10,7 @@ import HistoryModal from '../components/Modals/HistoryModal'
 import ModelosModal from '../components/Modals/ModelosModal'
 import BuscaEquipamento from '../components/BuscaEquipamento'
 import ManutencaoProjeto from '../components/ManutencaoProjeto'
+import DescobertaModal from '../components/Modals/DescobertaModal'
 import { usePreferenciaCabos, useResumoMapa } from '../components/visaoMapa'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
@@ -56,6 +57,7 @@ export default function Editor() {
   const { itens: itensBusca, cabosPorta, atualizar: atualizarResumo } = useResumoMapa()
   const [foco, setFoco] = useState(null)
   const [manutencaoAte, setManutencaoAte] = useState(null)
+  const [descobertaAberta, setDescobertaAberta] = useState(false)
   const handleStatusProjeto = useCallback((s) => setManutencaoAte(s.manutencao_ate || null), [])
   // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
   const somenteLeitura = currentUser?.papel === 'visualizador'
@@ -254,6 +256,12 @@ export default function Editor() {
   }
 
   // Exporta o mapa SALVO (com os modelos do catálogo usados nele; senhas SNMP ficam de fora).
+  const handleAdicionarDescobertos = (lista) => {
+    setNewEquipment(lista.map((eq, i) => ({ ...eq, id: `${Date.now()}_d${i}` })))
+    setDescobertaAberta(false)
+    toast.success(t('{n} equipamento(s) adicionado(s). Salve o projeto para começar a monitorar.', { n: lista.length }))
+  }
+
   const handleExport = async () => {
     try {
       if (projectId === 'novo') { toast.error(t('Salve o projeto antes de exportar.')); return }
@@ -329,6 +337,11 @@ export default function Editor() {
           <button onClick={handleExport} title={t('Exportar mapa (.json)')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
           {!leitura && (
+            <button onClick={() => setDescobertaAberta(true)} title={t('Descobrir equipamentos na rede')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+              <Radar size={18} />
+            </button>
+          )}
+          {!leitura && (
             <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
               <Plus size={18} /> {t('Adicionar')}
             </button>
@@ -381,6 +394,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
+        {descobertaAberta && <DescobertaModal nodes={currentNodes.current} onClose={() => setDescobertaAberta(false)} onAdicionar={handleAdicionarDescobertos} />}
         <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} onStatusProjeto={handleStatusProjeto} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>
 

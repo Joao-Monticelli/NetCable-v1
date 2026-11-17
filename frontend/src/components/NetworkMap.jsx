@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower } from 'lucide-react'
 import { classeStatus, dadosDeAlerta, calcularUplinks } from '../utils/mapa'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
@@ -25,6 +25,9 @@ const CustomNode = memo(({ data, selected }) => {
       case 'Roteador': return <Wifi size={18} color="#3b82f6" />
       case 'Firewall': return <Shield size={18} color="#f59e0b" />
       case 'PC': return <Monitor size={18} color="#94a3b8" />
+      case 'Access Point': return <RadioTower size={18} color="#22d3ee" />
+      case 'Impressora': return <Printer size={18} color="#a78bfa" />
+      case 'Câmera': return <Cctv size={18} color="#f472b6" />
       default: return <Server size={18} color="#10b981" />
     }
   }

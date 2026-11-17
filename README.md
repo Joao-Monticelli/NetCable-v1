@@ -22,6 +22,7 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 
 ## Features
 
+- 📡 **Network discovery** — scan a range (e.g. `192.168.1.0/24`), see who answered with hostname, open ports and a suggested type, and add them to the map in one click.
 - 🗺️ **Visual map** — drag & drop devices, draw cables, labels, search (`Ctrl+K`) and hover highlighting.
 - 🗄️ **Realistic racks** — 4U to 48U racks; switches, servers, NAS, patch panels, UPS… snap to U positions.
 - 🧩 **Device model library** — register your real gear (e.g. “4× RJ45 + 2× SFP, 1U”) and its front panel is drawn with exactly those ports.
@@ -92,6 +93,19 @@ Everything is optional. Email (SMTP), users, backups and languages are configure
 Values set in the UI take precedence over the environment variables.
 | `ADMIN_USER` / `ADMIN_PASSWORD` | — | Create or recover an admin from the environment (instead of the first-run screen) |
 | `SECRET_KEY` | auto | Overrides the key stored in `data/secret.key` |
+| `DISCOVERY_ALLOW_PUBLIC` | — | `1` allows network discovery on public IP ranges |
+| `DISCOVERY_TIMEOUT` / `DISCOVERY_WORKERS` | `0.8` / `128` | Per-probe timeout (s) and parallel probes during discovery |
+
+## Network discovery
+
+Click the 📡 radar button in the editor toolbar, enter a range (`192.168.1.0/24`, `10.0.0.10-10.0.0.60` or a single IP) and **Scan**.
+The NetCable server pings every address and checks common ports (SSH, HTTP/S, SMB, RDP, DNS, printers, cameras, Proxmox, Synology),
+then lists what answered with its reverse-DNS name and a suggested type. Devices already on a map are flagged and unchecked.
+Pick what you want, adjust names/types and click **Add to the map**, then save.
+
+- Only private ranges (10/8, 172.16/12, 192.168/16, 100.64/10) of up to 1024 addresses are allowed. Set `DISCOVERY_ALLOW_PUBLIC=1` to scan public ranges in a lab.
+- In Docker the default bridge network can reach your LAN, so scanning works. MAC addresses are only shown with `network_mode: host` (Linux).
+- Editors and admins can scan; viewers cannot.
 
 ## Smart alerts
 

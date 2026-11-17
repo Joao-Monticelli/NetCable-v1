@@ -458,6 +458,28 @@ async function roteiros() {
     }
   })
 
+  await cenario('Descoberta da rede', async ({ page, ok }) => {
+    await restaurarMapa()
+    await entrar(page); await abrirEditor(page)
+    await page.click('button[title="Descobrir equipamentos na rede"]')
+    await ok(await existe(page, '[role=dialog] input[aria-label="Faixa de IPs"]'), 'tela de descoberta abre')
+    await page.fill('input[aria-label="Faixa de IPs"]', '8.8.8.0/24')
+    await page.click('[role=dialog] button[type=submit]')
+    await ok(await existe(page, 'text=/redes privadas/'), 'recusa faixa pública')
+    // Loopback: rápido e sempre local (o resultado depende do sistema; o fluxo é o que importa).
+    await page.fill('input[aria-label="Faixa de IPs"]', '127.0.0.1-127.0.0.4')
+    await page.click('[role=dialog] button[type=submit]')
+    await ok(await existe(page, 'text=/encontrado\\(s\\) em|Nenhum equipamento respondeu/', 20000), 'varredura termina')
+    const linhas = await page.locator('[role=dialog] tbody tr').count()
+    if (linhas > 0) {
+      const antes = await page.locator('.react-flow__node').count()
+      await page.locator('[role=dialog] thead input[type=checkbox]').check()
+      await page.locator('[role=dialog] button:has-text("ao mapa")').click()
+      await page.waitForTimeout(600)
+      await ok(await page.locator('.react-flow__node').count() === antes + linhas, `${linhas} equipamento(s) descoberto(s) adicionados ao mapa`)
+    }
+  })
+
   await cenario('Histórico, latência e diagnóstico', async ({ page, ok }) => {
     await entrar(page); await abrirEditor(page)
     await page.locator('button:has(svg.lucide-settings)').click()
