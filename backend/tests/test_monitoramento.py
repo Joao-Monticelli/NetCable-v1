@@ -90,3 +90,24 @@ def test_mensagem_de_alerta():
     assert volta["evento"] == "equipamento_online"
     assert "OFFLINE" in alerts.formatar_mensagem(queda) and "Mapa: Rack" in alerts.formatar_mensagem(queda)
     assert "3.2 ms" in alerts.formatar_mensagem(volta)
+
+
+def test_ping_paralelo_e_rapido(monkeypatch):
+    import time as _t
+    from app import main
+    # Todas as sondas falham devagar: o resultado deve sair em ~1 timeout, não na soma deles.
+    monkeypatch.setattr(main, "_sonda_tcp", lambda ip, porta: (_t.sleep(0.3), None)[1])
+    monkeypatch.setattr(main, "_sonda_icmp", lambda ip: (_t.sleep(0.3), None)[1])
+    inicio = _t.perf_counter()
+    assert main.ping_equipamento("10.255.255.1")["status"] == "offline"
+    assert _t.perf_counter() - inicio < 0.9  # sequencial levaria 1.2 s
+
+    # Basta uma sonda responder (aqui só a porta 443).
+    monkeypatch.setattr(main, "_sonda_tcp", lambda ip, porta: 4.2 if porta == 443 else None)
+    assert main.ping_equipamento("10.0.0.1") == {"ip": "10.0.0.1", "status": "online", "tempo_ms": 4.2}
+
+
+def test_icmp_com_erro_nao_conta_como_online(monkeypatch):
+    from app import main
+    monkeypatch.setattr(main.ping3, "ping", lambda ip, timeout: False)  # ping3 devolve False em erro
+    assert main._sonda_icmp("10.0.0.1") is None
