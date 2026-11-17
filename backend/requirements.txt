@@ -12,3 +12,4 @@ pytest
 pysnmp==4.4.12
 pyasn1<0.6
 tzdata
+httpx

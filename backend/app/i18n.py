@@ -44,6 +44,7 @@ EN = {
     "Usuário ou senha incorretos": "Incorrect username or password",
     "Você não pode excluir o seu próprio usuário.": "You can't delete your own user.",
     "Idioma inválido (use en ou pt).": "Invalid language (use en or pt).",
+    "O NetCable já foi configurado.": "NetCable has already been set up.",
     "Servidor SMTP não configurado.": "SMTP server not configured.",
     "Nenhum destinatário com e-mail cadastrado.": "No recipient with a registered email.",
 

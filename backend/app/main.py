@@ -29,44 +29,13 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
-from .database import engine, SessionLocal
+from .database import engine, SessionLocal, DATA_DIR, DB_PATH
+from . import migracoes
 
 models.Base.metadata.create_all(bind=engine)
 
-# Compatibilidade com bancos SQLite criados por versões anteriores.
-with engine.begin() as connection:
-    def _colunas(tabela):
-        return {column[1] for column in connection.exec_driver_sql(f"PRAGMA table_info({tabela})")}
-
-    columns = _colunas("equipamentos")
-    if "monitor_mode" not in columns:
-        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_mode VARCHAR DEFAULT 'ip'")
-    if "monitor_config" not in columns:
-        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_config VARCHAR")
-    if "notificar" not in columns:
-        connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN notificar BOOLEAN NOT NULL DEFAULT 1")
-    for coluna, ddl in [("rack_id", "VARCHAR"), ("rack_u", "INTEGER"), ("altura_u", "INTEGER"), ("modelo_id", "INTEGER")]:
-        if coluna not in columns:
-            connection.exec_driver_sql(f"ALTER TABLE equipamentos ADD COLUMN {coluna} {ddl}")
-    project_columns = _colunas("projetos")
-    if "user_id" not in project_columns:
-        connection.exec_driver_sql("ALTER TABLE projetos ADD COLUMN user_id INTEGER")
-    if "share_token" not in project_columns:
-        connection.exec_driver_sql("ALTER TABLE projetos ADD COLUMN share_token VARCHAR")
-        connection.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ix_projetos_share_token ON projetos (share_token)")
-    user_columns = _colunas("usuarios")
-    # Usuários que já existiam (antes do modelo de equipe) viram admin.
-    for coluna, ddl in [
-        ("papel", "VARCHAR NOT NULL DEFAULT 'admin'"),
-        ("ativo", "BOOLEAN NOT NULL DEFAULT 1"),
-        ("receber_alertas", "BOOLEAN NOT NULL DEFAULT 0"),
-        ("relatorio_diario", "BOOLEAN NOT NULL DEFAULT 0"),
-        ("relatorio_horario", "VARCHAR NOT NULL DEFAULT '08:00'"),
-        ("ultimo_relatorio", "VARCHAR"),
-        ("idioma", "VARCHAR NOT NULL DEFAULT 'en'"),
-    ]:
-        if coluna not in user_columns:
-            connection.exec_driver_sql(f"ALTER TABLE usuarios ADD COLUMN {coluna} {ddl}")
+# Atualiza bancos de versões anteriores (com cópia de segurança antes de migrar).
+migracoes.aplicar(engine, DB_PATH)
 
 app = FastAPI(title="NetCable API", version=os.getenv("APP_VERSION", "dev"))
 
@@ -96,7 +65,30 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "same-origin"
     return response
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-this-secret")
+CHAVE_DEV = "dev-only-change-this-secret"  # usada por versões antigas quando SECRET_KEY não era definida
+
+
+def carregar_chave_secreta():
+    """SECRET_KEY do ambiente; senão, a chave guardada em <dados>/secret.key (criada na 1ª execução).
+    Retorna (chave, criada_agora)."""
+    do_ambiente = os.getenv("SECRET_KEY", "").strip()
+    if do_ambiente:
+        return do_ambiente, False
+    arquivo = os.path.join(DATA_DIR, "secret.key")
+    if os.path.exists(arquivo):
+        with open(arquivo, encoding="utf-8") as f:
+            return f.read().strip(), False
+    nova = secrets.token_urlsafe(48)
+    with open(arquivo, "w", encoding="utf-8") as f:
+        f.write(nova)
+    try:
+        os.chmod(arquivo, 0o600)
+    except OSError:
+        pass
+    return nova, True
+
+
+SECRET_KEY, CHAVE_CRIADA_AGORA = carregar_chave_secreta()
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("netcable")
 # Intervalo (s) do monitoramento em segundo plano no backend. 0 desativa.
@@ -117,8 +109,33 @@ def iso_utc(momento):
     return momento.isoformat() + "Z" if momento else None
 
 
-_fernet_key = base64.urlsafe_b64encode(hashlib.sha256(SECRET_KEY.encode()).digest())
-fernet = Fernet(_fernet_key)
+def _fernet_de(chave):
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(chave.encode()).digest()))
+
+
+fernet = _fernet_de(SECRET_KEY)
+
+
+def _recifrar_segredos_antigos():
+    """Instalações antigas cifravam senhas (SNMP/SMTP) com a chave de desenvolvimento.
+    Ao gerar a chave nova, re-cifra o que ainda estiver na chave antiga para não perder nada."""
+    antiga = _fernet_de(CHAVE_DEV)
+    total = 0
+    with engine.begin() as conexao:
+        for tabela, chave_col, valor_col in (("equipamentos", "id", "monitor_config"), ("configuracoes", "chave", "valor")):
+            for ident, valor in conexao.exec_driver_sql(f"SELECT {chave_col}, {valor_col} FROM {tabela} WHERE {valor_col} IS NOT NULL").fetchall():
+                try:
+                    claro = antiga.decrypt(valor.encode())
+                except (InvalidToken, ValueError, TypeError, AttributeError):
+                    continue
+                conexao.exec_driver_sql(f"UPDATE {tabela} SET {valor_col} = ? WHERE {chave_col} = ?", (fernet.encrypt(claro).decode(), ident))
+                total += 1
+    return total
+
+
+if CHAVE_CRIADA_AGORA:
+    recifrados = _recifrar_segredos_antigos()
+    logging.getLogger("netcable").info("Chave secreta gerada em %s (%s segredo(s) re-cifrado(s))", os.path.join(DATA_DIR, "secret.key"), recifrados)
 
 
 def proteger_config(config):
@@ -198,8 +215,8 @@ def health_check(db: Session = Depends(get_db)):
         "alerts": alerts.canais_configurados(get_smtp_config(db)) if database_ok else {},
         "history_retention_days": HISTORY_RETENTION_DAYS,
         "security": {
-            "secret_key_configured": SECRET_KEY != "dev-only-change-this-secret",
-            "default_admin_password": ADMIN_PASSWORD in {"admin", "altere_esta_senha"},
+            "secret_key_configured": SECRET_KEY != CHAVE_DEV,
+            "default_admin_password": (ADMIN_PASSWORD or "") in {"admin", "altere_esta_senha"},
         },
     }
 
@@ -243,19 +260,59 @@ def requer_admin(user: models.Usuario = Depends(get_current_user)):
     return user
 
 
-# --- USUÁRIO ADMIN INICIAL (VARIÁVEIS DE AMBIENTE) ---
-# O usuário definido em ADMIN_USER é sempre garantido como admin ativo: serve
-# também para recuperar o acesso caso alguém desative todos os administradores.
-ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+# --- USUÁRIO ADMIN INICIAL ---
+# Com ADMIN_PASSWORD definido, o usuário ADMIN_USER é criado/garantido como admin ativo
+# (útil para automação e para recuperar o acesso). Sem ele, a primeira pessoa que abrir
+# o NetCable cria a conta de administrador pelo assistente de primeiro acesso.
+ADMIN_USER = os.getenv("ADMIN_USER", "admin").strip() or "admin"
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD") or None
 
-db_init = SessionLocal()
-admin_user = crud.get_usuario(db_init, ADMIN_USER)
-if not admin_user:
-    crud.criar_usuario(db_init, ADMIN_USER, pwd_context.hash(ADMIN_PASSWORD), None, papel="admin")
-elif admin_user.papel != "admin" or not admin_user.ativo:
-    crud.atualizar_usuario(db_init, admin_user.id, papel="admin", ativo=True)
-db_init.close()
+if ADMIN_PASSWORD:
+    db_init = SessionLocal()
+    admin_user = crud.get_usuario(db_init, ADMIN_USER)
+    if not admin_user:
+        crud.criar_usuario(db_init, ADMIN_USER, pwd_context.hash(ADMIN_PASSWORD), None, papel="admin")
+    elif admin_user.papel != "admin" or not admin_user.ativo:
+        crud.atualizar_usuario(db_init, admin_user.id, papel="admin", ativo=True)
+    db_init.close()
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{3,50}$")
+_trava_setup = threading.Lock()
+
+
+def precisa_de_setup(db: Session):
+    return db.query(models.Usuario).count() == 0
+
+
+class SetupIn(BaseModel):
+    username: str
+    senha: str
+    email: Optional[str] = None
+    idioma: Optional[str] = None
+
+
+@app.get("/api/setup")
+def status_setup(db: Session = Depends(get_db)):
+    return {"necessario": precisa_de_setup(db), "versao": app.version}
+
+
+@app.post("/api/setup")
+def concluir_setup(dados: SetupIn, db: Session = Depends(get_db)):
+    """Cria a primeira conta (admin). Só funciona enquanto não existir nenhum usuário."""
+    with _trava_setup:
+        if not precisa_de_setup(db):
+            raise HTTPException(status_code=409, detail="O NetCable já foi configurado.")
+        username = dados.username.strip()
+        if not USERNAME_RE.match(username):
+            raise HTTPException(status_code=400, detail="Usuário inválido: use de 3 a 50 letras, números ou . _ @ -")
+        if len(dados.senha) < 8:
+            raise HTTPException(status_code=400, detail="A senha precisa ter pelo menos 8 caracteres.")
+        admin = crud.criar_usuario(db, username, pwd_context.hash(dados.senha), (dados.email or "").strip() or None, papel="admin")
+        if dados.idioma in IDIOMAS:
+            crud.atualizar_usuario(db, admin.id, idioma=dados.idioma)
+    logger.info("Primeiro acesso concluído: administrador '%s' criado", username)
+    return {"access_token": criar_token(data={"sub": username}), "token_type": "bearer"}
+
 
 login_failures = defaultdict(list)
 LOGIN_WINDOW_SECONDS = 300
@@ -294,7 +351,6 @@ def read_users_me(current_user: models.Usuario = Depends(get_current_user)):
 
 
 HORARIO_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{3,50}$")
 
 
 class PerfilUpdate(BaseModel):
