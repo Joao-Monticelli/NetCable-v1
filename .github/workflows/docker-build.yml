@@ -90,7 +90,8 @@ jobs:
           retention-days: 14
 
   docker:
-    needs: [ backend-tests, qa-robot ]
+    # A imagem depende dos testes do backend; o robô de QA roda em paralelo e aparece no Actions.
+    needs: [ backend-tests ]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
