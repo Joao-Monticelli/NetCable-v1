@@ -2,7 +2,8 @@ import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, BellOff } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench } from 'lucide-react'
+import { classeStatus, dadosDeAlerta, calcularUplinks } from '../utils/mapa'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
@@ -35,8 +36,11 @@ const CustomNode = memo(({ data, selected }) => {
       <Handle type="source" position={Position.Top} id="top" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
       <Handle type="source" position={Position.Left} id="left" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
       
-      <div className={`status-dot ${data.status === 'visual' ? 'status-visual' : (data.status === 'online' ? 'status-online' : 'status-offline')}`} />
-      {data.notificar === false && data.status !== 'visual' && (
+      <div className={`status-dot status-${classeStatus(data)}`}
+        title={data.inalcancavelPor ? t('Inalcançável: {nome} (uplink) está offline', { nome: data.inalcancavelNome }) : undefined} />
+      {data.manutencaoAte ? (
+        <span className="node-sem-alerta node-manutencao" title={t('Em manutenção até {hora} (alertas silenciados)', { hora: new Date(data.manutencaoAte).toLocaleString() })}><Wrench size={12} /></span>
+      ) : data.notificar === false && data.status !== 'visual' && (
         <span className="node-sem-alerta" title={t('Notificações desligadas para este equipamento')}><BellOff size={12} /></span>
       )}
       
@@ -77,7 +81,7 @@ const calcularCorConexao = (sourceNode, targetNode) => {
 
 // readOnly: trava a edição e esconde os pontos de conexão (modo visualização / TV).
 // monitor: consulta o status mantido pelo backend (requer login e projectId). A página pública passa false.
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true, mostrarCabosPorta = true, foco = null }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, onStatusProjeto, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true, mostrarCabosPorta = true, foco = null }) {
   const mapaModelos = useMemo(() => new Map(modelos.map(m => [m.id, m])), [modelos])
   const alturaDoEquipamento = (data) => mapaModelos.get(data.modeloId)?.altura_u || alturaPadrao(data.tipo)
   const [nodes, setNodes] = useState(initialNodes)
@@ -183,15 +187,19 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       if (monitoringRef.current) return
       monitoringRef.current = true
       try {
-        const { equipamentos = [] } = await api.statusProjeto(projectId)
+        const resposta = await api.statusProjeto(projectId)
+        const { equipamentos = [] } = resposta
         if (!ativo) return
+        if (onStatusProjeto) onStatusProjeto(resposta)
         const porId = new Map(equipamentos.map(e => [e.id, e]))
+        const nomePorId = new Map(nodesRef.current.map(n => [n.id, n.data?.label]))
         // Detecta quedas fora do updater do setState (que deve ser puro).
         const quedas = []
         for (const node of nodesRef.current) {
           const atual = porId.get(node.id)
           if (!atual) continue
-          if (statusAnterior.current[node.id] === 'online' && atual.status === 'offline') quedas.push(node.data.label)
+          // Inalcançáveis (uplink caiu) e equipamentos em manutenção não tocam o alarme.
+          if (statusAnterior.current[node.id] === 'online' && atual.status === 'offline' && !atual.inalcancavel_por && !atual.manutencao_ate && !resposta.manutencao_ate) quedas.push(node.data.label)
           statusAnterior.current[node.id] = atual.status
         }
         setNodes((currentNodes) => {
@@ -199,9 +207,11 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           const proximos = currentNodes.map(node => {
             const atual = porId.get(node.id)
             if (!atual) return node // equipamento ainda não salvo
-            if (atual.status === node.data.status && atual.ping_time === node.data.pingTime) return node
+            const alerta = dadosDeAlerta(atual, nomePorId)
+            if (atual.status === node.data.status && atual.ping_time === node.data.pingTime &&
+                alerta.inalcancavelPor === (node.data.inalcancavelPor || null) && alerta.manutencaoAte === (node.data.manutencaoAte || null)) return node
             mudou = true
-            return { ...node, data: { ...node.data, status: atual.status, pingTime: atual.ping_time } }
+            return { ...node, data: { ...node.data, status: atual.status, pingTime: atual.ping_time, ...alerta } }
           })
           return mudou ? proximos : currentNodes
         })
@@ -218,7 +228,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     atualizar()
     const interval = setInterval(atualizar, 5000)
     return () => { ativo = false; clearInterval(interval) }
-  }, [onAlertaQueda, monitor, projectId])
+  }, [onAlertaQueda, onStatusProjeto, monitor, projectId])
 
   // Ao entrar no modo visualização, limpa seleção e fecha modais abertos.
   useEffect(() => {
@@ -390,6 +400,18 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     })
     setSelectedNode(null)
   }
+  // Define o uplink de todos os equipamentos percorrendo os cabos a partir da raiz escolhida.
+  const handleCalcularUplinks = (raizId) => {
+    if (readOnly) return
+    const pais = calcularUplinks(nodesRef.current, edges, raizId)
+    const definidos = [...pais.values()].filter(Boolean).length
+    if (!definidos) { toast.error(t('Nenhum equipamento ligado por cabo a este.')); return }
+    const semCaminho = nodesRef.current.filter(n => n.type !== 'rack' && !pais.has(n.id)).length
+    if (!window.confirm(t('Definir o uplink de {n} equipamento(s) a partir dos cabos? Os uplinks atuais deles serão substituídos.', { n: definidos }))) return
+    setNodes((nds) => nds.map(n => pais.has(n.id) ? { ...n, data: { ...n.data, dependeDe: pais.get(n.id) } } : n))
+    setSelectedNode(null)
+    toast.success(t('{n} uplink(s) definidos. Salve o mapa para aplicar.', { n: definidos }) + (semCaminho ? ' ' + t('{n} equipamento(s) sem cabo até a raiz ficaram como estavam.', { n: semCaminho }) : ''), { duration: 6000 })
+  }
   const handleDeleteNode = (id) => {
     if (readOnly) return
     // Excluir um rack exclui também os equipamentos montados nele.
@@ -435,7 +457,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         <Controls showInteractive={!readOnly} />
       </ReactFlow>
 
-      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} modelos={modelos} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
+      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} modelos={modelos} projectId={projectId} onCalcularUplinks={handleCalcularUplinks} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
       {selectedEdge && <EdgeModal edge={selectedEdge} nodes={nodes} edges={edges} modelos={mapaModelos} onClose={() => setSelectedEdge(null)} onUpdate={handleUpdateEdge} onDelete={handleDeleteEdge} />}
     </ModelosContext.Provider>
   )

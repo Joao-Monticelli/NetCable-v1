@@ -30,7 +30,7 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal, DATA_DIR, DB_PATH
-from . import migracoes, backup
+from . import migracoes, backup, regras_alerta
 from fastapi import UploadFile, File
 from fastapi.responses import FileResponse
 import zipfile
@@ -225,7 +225,7 @@ def health_check(db: Session = Depends(get_db)):
             "last_cycle_seconds": _ultimo_ciclo["duracao"],
             "equipments": _ultimo_ciclo["equipamentos"],
         },
-        "alerts": alerts.canais_configurados(get_smtp_config(db)) if database_ok else {},
+        "alerts": alerts.canais_configurados(get_smtp_config(db), get_canais_config(db)) if database_ok else {},
         "history_retention_days": HISTORY_RETENTION_DAYS,
         "security": {
             "secret_key_configured": SECRET_KEY != CHAVE_DEV,
@@ -545,6 +545,88 @@ def testar_email(dados: EmailTeste, db: Session = Depends(get_db), admin: models
     return {"status": "enviado", "para": destino}
 
 
+# --- CANAIS DE ALERTA (Telegram, Discord, ntfy, webhook) ---
+CAMPOS_CANAIS = ("telegram_token", "telegram_chat", "discord_url", "ntfy_url", "ntfy_token", "webhook_url")
+CAMPOS_SECRETOS = ("telegram_token", "discord_url", "ntfy_token", "webhook_url")
+
+
+def _canais_salvos(db: Session):
+    cfg = crud.get_configuracoes(db, "alertas.")
+    salvos = {}
+    for campo in CAMPOS_CANAIS:
+        valor = cfg.get(f"alertas.{campo}") or ""
+        if valor and campo in CAMPOS_SECRETOS:
+            valor = abrir_config(valor).get("v", "")
+        salvos[campo] = valor
+    salvos["idioma"] = cfg.get("alertas.idioma") or ""
+    return salvos
+
+
+def get_canais_config(db: Session):
+    """Configuração da interface; campos vazios usam as variáveis de ambiente."""
+    salvos, ambiente = _canais_salvos(db), alerts.canais_do_ambiente()
+    return {campo: salvos.get(campo) or ambiente.get(campo, "") for campo in (*CAMPOS_CANAIS, "idioma")}
+
+
+class CanaisIn(BaseModel):
+    # Campos secretos: None mantém o valor atual; "" apaga.
+    telegram_token: Optional[str] = None
+    telegram_chat: Optional[str] = None
+    discord_url: Optional[str] = None
+    ntfy_url: Optional[str] = None
+    ntfy_token: Optional[str] = None
+    webhook_url: Optional[str] = None
+    idioma: Optional[str] = None
+
+
+@app.get("/api/config/alertas")
+def obter_canais(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    salvos, ambiente, efetivo = _canais_salvos(db), alerts.canais_do_ambiente(), get_canais_config(db)
+    resposta = {"idioma": efetivo["idioma"] or "en", "ativos": alerts.canais_configurados(None, efetivo)}
+    for campo in CAMPOS_CANAIS:
+        if campo in CAMPOS_SECRETOS:
+            resposta[f"{campo}_definido"] = bool(salvos[campo])
+        else:
+            resposta[campo] = salvos[campo]
+        resposta[f"{campo}_ambiente"] = bool(ambiente.get(campo)) and not salvos[campo]
+    return resposta
+
+
+@app.put("/api/config/alertas")
+def salvar_canais(dados: CanaisIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    valores = {}
+    for campo in CAMPOS_CANAIS:
+        valor = getattr(dados, campo)
+        if valor is None:
+            continue
+        valor = valor.strip()
+        if campo.endswith("_url") and valor and not re.match(r"^https?://", valor, re.I):
+            raise HTTPException(status_code=400, detail="Use um endereço que comece com http:// ou https://.")
+        valores[f"alertas.{campo}"] = proteger_config({"v": valor}) if (valor and campo in CAMPOS_SECRETOS) else valor
+    if dados.idioma is not None:
+        if dados.idioma not in IDIOMAS:
+            raise HTTPException(status_code=400, detail="Idioma inválido (use en ou pt).")
+        valores["alertas.idioma"] = dados.idioma
+    crud.salvar_configuracoes(db, valores)
+    return obter_canais(db, admin)
+
+
+class CanalTeste(BaseModel):
+    canal: str
+
+
+@app.post("/api/config/alertas/teste")
+def testar_canal(dados: CanalTeste, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    cfg = get_canais_config(db)
+    if not alerts.canais_configurados(None, cfg).get(dados.canal):
+        raise HTTPException(status_code=400, detail="Canal não configurado.")
+    try:
+        alerts.testar_canal(dados.canal, cfg)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Falha no envio: {alerts.erro_seguro(exc, cfg)}")
+    return {"status": "enviado"}
+
+
 # --- PROJETOS ---
 @app.get("/api/projetos")
 def listar_projetos(db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
@@ -631,7 +713,7 @@ def enviar_alertas(db: Session, eventos):
     por_idioma = {}
     for u in crud.usuarios_para_alertas(db):
         por_idioma.setdefault(normalizar(u.idioma), []).append(u.email)
-    alerts.notificar(eventos, get_smtp_config(db), por_idioma)
+    alerts.notificar(eventos, get_smtp_config(db), por_idioma, get_canais_config(db))
 
 
 def checar_equipamento(ip: str, mode: str = "ip", config: Optional[dict] = None):
@@ -663,7 +745,7 @@ def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), 
     except SNMPUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc))
     evento = registrar_monitoramento(db, equipment, result)
-    enviar_alertas(db, [evento] if evento else [])
+    enviar_alertas(db, regras_alerta.aplicar(db, [evento] if evento else []))
     return result
 
 
@@ -725,8 +807,11 @@ def executar_ciclo_monitoramento():
             evento = registrar_monitoramento(db, equipamento, resultado)
             if evento:
                 eventos.append(evento)
-        # Um único alerta por ciclo, mesmo que vários equipamentos mudem juntos.
-        enviar_alertas(db, eventos)
+        # Um único alerta por ciclo, mesmo que vários equipamentos mudem juntos; quedas "em cascata"
+        # (uplink offline) e equipamentos em manutenção não geram alerta próprio.
+        enviar_alertas(db, regras_alerta.aplicar(db, eventos))
+        if time.monotonic() - _ultima_limpeza["momento"] > 3600:
+            regras_alerta.limpar_manutencoes_vencidas(db)
         if HISTORY_RETENTION_DAYS > 0 and time.monotonic() - _ultima_limpeza["momento"] > 3600:
             _ultima_limpeza["momento"] = time.monotonic()
             apagados = crud.limpar_historico(db, HISTORY_RETENTION_DAYS)
@@ -1001,6 +1086,7 @@ class EquipamentoCreate(BaseModel):
     notificar: bool = True
     rackId: Optional[str] = None; rackU: Optional[int] = None; alturaU: Optional[int] = None
     modeloId: Optional[int] = None
+    dependeDe: Optional[str] = None
 
 
 class ConexaoCreate(BaseModel):
@@ -1031,8 +1117,12 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     configs_anteriores = {eq.id: eq.monitor_config for eq in projeto.equipamentos}
     eq_dict = [eq.dict() for eq in mapa.equipamentos]
+    ids_mapa = {eq['id'] for eq in eq_dict}
     for eq in eq_dict:
         eq['monitorConfig'] = mesclar_config_snmp(eq, configs_anteriores.get(eq['id']))
+        # Uplink precisa ser outro equipamento deste mesmo mapa.
+        if eq.get('dependeDe') not in ids_mapa or eq.get('dependeDe') == eq['id']:
+            eq['dependeDe'] = None
     erro = crud.validar_racks(eq_dict)
     if erro:
         raise HTTPException(status_code=400, detail=erro)
@@ -1050,6 +1140,9 @@ class EquipamentoBase(BaseModel):
     notificar: bool = True
     rack_id: Optional[str] = None; rack_u: Optional[int] = None; altura_u: Optional[int] = None
     modelo_id: Optional[int] = None
+    depende_de: Optional[str] = None
+    inalcancavel_por: Optional[str] = None  # uplink offline que explica a queda
+    manutencao_ate: Optional[str] = None
     class Config: from_attributes = True
 
 
@@ -1069,6 +1162,7 @@ class ProjetoResponse(BaseModel):
     id: int; nome: str
     equipamentos: List[EquipamentoBase]; conexoes: List[ConexaoBase]
     modelos: List[ModeloBase] = []  # modelos usados neste mapa
+    manutencao_ate: Optional[str] = None  # manutenção do projeto inteiro
     class Config: from_attributes = True
 
 
@@ -1076,15 +1170,18 @@ def _obter_dados_projeto(projeto_id: int, db: Session, projeto, publico: bool = 
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).all()
+    extras = _estado_alertas(db, projeto_id, projeto.equipamentos)
     equipamentos = []
     for equipamento in projeto.equipamentos:
-        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u', 'modelo_id')}
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u', 'modelo_id', 'depende_de')}
+        item.update(extras["por_equipamento"].get(equipamento.id, {}))
         config = abrir_config(equipamento.monitor_config)
         item['monitor_config'] = {} if publico else {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
         equipamentos.append(item)
     ids_modelos = {eq.modelo_id for eq in projeto.equipamentos if eq.modelo_id}
     modelos_usados = [m for m in crud.listar_modelos(db) if m.id in ids_modelos]
-    return {"id": projeto.id, "nome": projeto.nome, "equipamentos": equipamentos, "conexoes": conexoes, "modelos": modelos_usados}
+    return {"id": projeto.id, "nome": projeto.nome, "equipamentos": equipamentos, "conexoes": conexoes, "modelos": modelos_usados,
+            "manutencao_ate": extras["manutencao_ate"]}
 
 
 @app.get("/api/projetos/{projeto_id}/dados", response_model=ProjetoResponse)
@@ -1217,11 +1314,71 @@ def status_projeto(projeto_id: int, db: Session = Depends(get_db), user: models.
     linhas = crud.get_status_projeto(db, projeto_id)
     if linhas is None:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    extras = _estado_alertas(db, projeto_id)
     return {
         "monitor_ativo": MONITOR_INTERVAL > 0,
         "ultimo_ciclo": iso_utc(_ultimo_ciclo["fim"]),
-        "equipamentos": [{"id": eq_id, "status": status, "ping_time": ping} for eq_id, status, ping in linhas],
+        "manutencao_ate": extras["manutencao_ate"],
+        "equipamentos": [{"id": eq_id, "status": status, "ping_time": ping, **extras["por_equipamento"].get(eq_id, {})}
+                         for eq_id, status, ping in linhas],
     }
+
+
+def _estado_alertas(db: Session, projeto_id: int, equipamentos=None):
+    """Inalcançáveis (uplink offline) e janelas de manutenção ativas de um projeto."""
+    if equipamentos is None:
+        equipamentos = db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).all()
+    projetos, por_eq = regras_alerta.manutencoes_ativas(db)
+    extras = {}
+    for eq_id, causa in regras_alerta.inalcancaveis(equipamentos).items():
+        extras.setdefault(eq_id, {})["inalcancavel_por"] = causa
+    for e in equipamentos:
+        if e.id in por_eq:
+            extras.setdefault(e.id, {})["manutencao_ate"] = iso_utc(por_eq[e.id])
+    return {"manutencao_ate": iso_utc(projetos.get(projeto_id)), "por_equipamento": extras}
+
+
+class ManutencaoIn(BaseModel):
+    horas: Optional[float] = None       # duração a partir de agora
+    ate: Optional[datetime] = None      # ou um horário final (ISO)
+    equipamento_id: Optional[str] = None
+    motivo: Optional[str] = None
+
+
+@app.get("/api/projetos/{projeto_id}/manutencao")
+def listar_manutencao(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    if not crud.get_projeto(db, projeto_id):
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return [{"id": m.id, "equipamento_id": m.equipamento_id, "ate": iso_utc(m.ate), "motivo": m.motivo}
+            for m in regras_alerta.listar_manutencoes(db, projeto_id)]
+
+
+@app.post("/api/projetos/{projeto_id}/manutencao")
+def iniciar_manutencao(projeto_id: int, dados: ManutencaoIn, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    if not crud.get_projeto(db, projeto_id):
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    agora = datetime.utcnow()
+    if dados.ate:
+        ate = dados.ate.astimezone(timezone.utc).replace(tzinfo=None) if dados.ate.tzinfo else dados.ate
+    elif dados.horas:
+        ate = agora + timedelta(hours=dados.horas)
+    else:
+        raise HTTPException(status_code=400, detail="Informe a duração da manutenção.")
+    if not agora < ate <= agora + timedelta(days=30):
+        raise HTTPException(status_code=400, detail="A manutenção deve terminar no futuro e durar no máximo 30 dias.")
+    if dados.equipamento_id:
+        eq = crud.get_equipamento(db, dados.equipamento_id)
+        if not eq or eq.projeto_id != projeto_id:
+            raise HTTPException(status_code=404, detail="Equipamento não encontrado")
+    m = regras_alerta.criar_manutencao(db, projeto_id, ate, dados.equipamento_id, (dados.motivo or "").strip()[:200] or None, user.id)
+    logger.info("%s iniciou manutenção (projeto %s, equipamento %s) até %s", user.username, projeto_id, dados.equipamento_id, ate)
+    return {"id": m.id, "equipamento_id": m.equipamento_id, "ate": iso_utc(m.ate), "motivo": m.motivo}
+
+
+@app.delete("/api/projetos/{projeto_id}/manutencao")
+def encerrar_manutencao(projeto_id: int, equipamento_id: Optional[str] = None, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    regras_alerta.cancelar_manutencao(db, projeto_id, equipamento_id)
+    return {"status": "ok"}
 
 
 @app.get("/api/projetos/{projeto_id}/disponibilidade")

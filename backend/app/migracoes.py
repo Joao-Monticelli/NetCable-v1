@@ -45,8 +45,14 @@ def _m1(conexao):
     ])
 
 
+def _m2(conexao):
+    """Uplink de cada equipamento (alertas por dependência). A tabela de manutenções é criada pelo create_all."""
+    _adicionar(conexao, "equipamentos", [("depende_de", "VARCHAR")])
+
+
 MIGRACOES = [
     (1, "colunas de versões anteriores ao sistema de migrações", _m1),
+    (2, "uplink dos equipamentos (alertas por dependência)", _m2),
 ]
 
 

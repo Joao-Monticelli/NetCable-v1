@@ -2,6 +2,17 @@
 
 All notable changes to NetCable. Versions follow [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Smart alerts by dependency:** each device can have an uplink ("depends on"), set by hand or computed from the cables starting at a root device. When the uplink is down, devices behind it show as *unreachable* (amber), send no alert of their own and are listed in the uplink's alert; recovery is grouped the same way.
+- **Maintenance windows** for a whole map (toolbar 🔧) or a single device (1–24 h, up to 30 days via API). Alerts are muted; monitoring and history continue. Shown on the map, in the editor and on the public/TV page.
+- **Alert channels in the UI** (⚙️ → Alert channels): Discord, ntfy, Telegram and JSON webhook, with test buttons; secrets stored encrypted. New env vars `DISCORD_WEBHOOK_URL`, `NTFY_URL`, `NTFY_TOKEN`.
+- Map export/import keeps the uplinks.
+
+### Security
+- Alert channel errors no longer echo tokens or secret URLs (the Telegram token is part of its URL).
+
 ## [1.0.0] — 2026-11
 
 First stable release: one Docker image, first-run setup and automatic backups.

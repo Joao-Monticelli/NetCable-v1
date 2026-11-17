@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { X, Trash2, Save, Minimize, Bell, BellOff, Server } from 'lucide-react'
+import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2 } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { api } from '../../services/api'
 import { TIPOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre, ocupados } from '../rack/rackUtils'
 import { t, useI18n } from '../../i18n'
 
@@ -65,13 +67,53 @@ function RackModal({ node, nodes, onClose, onUpdate, onDelete }) {
 }
 
 // ---------------------------------------------------------- Equipamento
-export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete }) {
+export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete, projectId, onCalcularUplinks }) {
   useI18n()
   if (node.type === 'rack') return <RackModal node={node} nodes={nodes} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
-  return <EquipamentoModal node={node} nodes={nodes} modelos={modelos} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
+  return <EquipamentoModal node={node} nodes={nodes} modelos={modelos} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} projectId={projectId} onCalcularUplinks={onCalcularUplinks} />
 }
 
-function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete }) {
+const DURACOES = [[1, '1 h'], [4, '4 h'], [8, '8 h'], [24, '24 h']]
+
+// Silenciar alertas deste equipamento por um tempo (o monitoramento continua).
+function Manutencao({ node, projectId }) {
+  const [ate, setAte] = useState(node.data.manutencaoAte || null)
+  const [horas, setHoras] = useState(4)
+  const [enviando, setEnviando] = useState(false)
+  if (!projectId || projectId === 'novo') return null
+  const iniciar = async () => {
+    setEnviando(true)
+    try {
+      const r = await api.iniciarManutencao(projectId, { horas: Number(horas), equipamento_id: node.id })
+      setAte(r.ate)
+      toast.success(t('Alertas de {nome} silenciados até {hora}.', { nome: node.data.label, hora: new Date(r.ate).toLocaleString() }))
+    } catch (err) { toast.error(err.message) } finally { setEnviando(false) }
+  }
+  const encerrar = async () => {
+    setEnviando(true)
+    try { await api.encerrarManutencao(projectId, node.id); setAte(null); toast.success(t('Manutenção encerrada.')) }
+    catch (err) { toast.error(err.message) } finally { setEnviando(false) }
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#cbd5e1', flexWrap: 'wrap' }}>
+      <Wrench size={14} color="#38bdf8" />
+      {ate ? <>
+        <span>{t('Em manutenção até {hora}', { hora: new Date(ate).toLocaleString() })}</span>
+        <button type="button" onClick={encerrar} disabled={enviando} style={{ ...botaoPequeno, background: '#334155' }}>{t('Encerrar')}</button>
+      </> : <>
+        <span>{t('Manutenção: silenciar por')}</span>
+        <select aria-label={t('Duração da manutenção')} value={horas} onChange={e => setHoras(e.target.value)} style={{ ...campo, marginTop: 0, width: 'auto', padding: '5px' }}>
+          {DURACOES.map(([h, rotuloH]) => <option key={h} value={h}>{rotuloH}</option>)}
+        </select>
+        <button type="button" onClick={iniciar} disabled={enviando} style={{ ...botaoPequeno, background: '#0369a1' }}>{t('Silenciar')}</button>
+      </>}
+    </div>
+  )
+}
+
+const botaoPequeno = { padding: '5px 10px', border: 0, borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px' }
+
+function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, projectId, onCalcularUplinks }) {
   const [modeloId, setModeloId] = useState(node.data.modeloId || '')
   const modelo = modelos.find(m => m.id === Number(modeloId))
   const [nome, setNome] = useState(node.data.label || '')
@@ -81,6 +123,8 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete })
   const [monitorMode, setMonitorMode] = useState(node.data.monitorMode === 'visual' ? 'ip' : (node.data.monitorMode || 'ip'))
   const [notificar, setNotificar] = useState(node.data.notificar !== false)
   const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161, ...(node.data.snmpConfig || {}) })
+  const [dependeDe, setDependeDe] = useState(node.data.dependeDe || '')
+  const candidatosUplink = nodes.filter(n => n.type !== 'rack' && n.id !== node.id).sort((a, b) => String(a.data.label).localeCompare(String(b.data.label)))
 
   const racks = nodes.filter(n => n.type === 'rack')
   const [rackId, setRackId] = useState(node.parentNode || '')
@@ -120,7 +164,7 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete })
   const handleSave = () => {
     const ipFinal = semIp ? 'Sem IP' : ip.trim()
     const dados = {
-      label: nome, ip: ipFinal, tipo, notificar, modeloId: modelo ? modelo.id : null,
+      label: nome, ip: ipFinal, tipo, notificar, modeloId: modelo ? modelo.id : null, dependeDe: dependeDe || null,
       monitorMode: semIp ? 'visual' : monitorMode,
       snmpConfig: !semIp && monitorMode === 'snmpv3' ? snmpConfig : null,
       rackId: rack ? rack.id : null, rackU: rack ? Number(rackU) : null, alturaU: rack ? Number(alturaU) : null,
@@ -180,6 +224,22 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete })
           {notificar ? <Bell size={15} color="#f59e0b" /> : <BellOff size={15} color="#64748b" />} {t('Notificar quando cair ou voltar')}
         </label>
       </>}
+
+      <div style={caixa}>
+        <span style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}><GitBranch size={14} /> {t('Depende de (uplink)')}</span>
+        <select aria-label={t('Depende de (uplink)')} value={dependeDe} onChange={e => setDependeDe(e.target.value)} style={{ ...campo, marginTop: 0 }}>
+          <option value="">{t('Nenhum (equipamento independente)')}</option>
+          {candidatosUplink.map(n => <option key={n.id} value={n.id}>{n.data.label}{n.data.ip && n.data.ip !== 'Sem IP' ? ` — ${n.data.ip}` : ''}</option>)}
+        </select>
+        <span style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>{t('Se o uplink cair, este equipamento aparece como inalcançável (âmbar) e entra no alerta do uplink, em vez de gerar um alerta próprio.')}</span>
+        {onCalcularUplinks && (
+          <button type="button" onClick={() => onCalcularUplinks(node.id)} title={t('Percorre os cabos a partir deste equipamento e define o uplink de todos os outros.')}
+            style={{ ...botaoPequeno, background: '#334155', display: 'flex', alignItems: 'center', gap: '6px', width: 'fit-content' }}>
+            <Wand2 size={13} /> {t('Usar como raiz e calcular uplinks pelos cabos')}
+          </button>
+        )}
+        {!semIp && <Manutencao node={node} projectId={projectId} />}
+      </div>
 
       {!semIp && monitorMode === 'snmpv3' && <div style={caixa}>
         <span style={{ fontSize: '13px', color: '#94a3b8' }}>{t('Credenciais SNMPv3 (deixe as senhas vazias para manter as atuais)')}</span>

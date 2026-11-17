@@ -27,7 +27,8 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 - 🧩 **Device model library** — register your real gear (e.g. “4× RJ45 + 2× SFP, 1U”) and its front panel is drawn with exactly those ports.
 - 🔌 **Port-to-port cables** — connect switch port 12 to firewall eth3; ports show as in use with tooltips.
 - 📡 **Server-side monitoring** — TCP (80/443/22) + ICMP in parallel, or SNMPv3; works with no browser open.
-- 🚨 **Alerts** — email, Telegram and webhook on down/up, grouped per cycle, per-device on/off.
+- 🚨 **Alerts** — email, Discord, ntfy, Telegram and webhook on down/up, grouped per cycle, per-device on/off.
+- 🧠 **Smart alerts** — set each device's uplink (or compute them from the cables): when a switch dies you get **one** alert listing what is behind it, and those devices turn amber (*unreachable*) on the map. **Maintenance windows** mute a device or a whole map for a while.
 - 📊 **Uptime & latency** — availability %, outages, latency chart (24 h / 7 d / 30 d) and a daily email report.
 - 👥 **Team roles** — Admin, Editor and Viewer (great for a NOC TV).
 - 📺 **Public link & TV mode** — read-only, auto-refreshing, full screen, revocable secret link.
@@ -82,11 +83,25 @@ Everything is optional. Email (SMTP), users, backups and languages are configure
 | `MONITOR_INTERVAL` | `15` | Seconds between monitoring cycles (`0` disables) |
 | `MONITOR_FAILURE_THRESHOLD` | `2` | Consecutive failures before a device is marked offline |
 | `HISTORY_RETENTION_DAYS` | `30` | Days of history kept (`0` = forever) |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Telegram alerts |
-| `ALERT_LANGUAGE` | `en` | Language of Telegram/webhook alerts (`en` or `pt`) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | Telegram alerts (also configurable in ⚙️ → Alert channels) |
+| `DISCORD_WEBHOOK_URL` | — | Discord channel webhook |
+| `NTFY_URL` / `NTFY_TOKEN` | — | ntfy topic (e.g. `https://ntfy.sh/my-secret-topic`) and optional token |
 | `ALERT_WEBHOOK_URL` | — | Receives a JSON POST on down/up |
+| `ALERT_LANGUAGE` | `en` | Language of the channel messages (`en` or `pt`) |
+
+Values set in the UI take precedence over the environment variables.
 | `ADMIN_USER` / `ADMIN_PASSWORD` | — | Create or recover an admin from the environment (instead of the first-run screen) |
 | `SECRET_KEY` | auto | Overrides the key stored in `data/secret.key` |
+
+## Smart alerts
+
+- **Uplink (depends on):** open a device and pick the device it depends on (e.g. the switch it is plugged into).
+  Faster: open your gateway/firewall and click **Use as root and compute uplinks from cables** — NetCable walks the cables and fills in every uplink. Save the map.
+- When an uplink goes down, devices behind it are shown in **amber (unreachable)**, don't send their own alert and are listed in the uplink's alert
+  (*"Core switch OFFLINE — 12 devices behind it unreachable: …"*). When it comes back, one recovery alert lists them too.
+- **Maintenance:** 🔧 in the toolbar mutes the whole map for 1–24 h; inside a device you can mute just that device.
+  Monitoring and history keep running; devices that went down during maintenance don't send a "back online" alert afterwards.
+- **Channels:** ⚙️ → **Alert channels** (admins) for Discord, ntfy (push notifications on your phone), Telegram and a generic JSON webhook, each with a *Test* button. Tokens and URLs are stored encrypted.
 
 ## Backups & restore
 

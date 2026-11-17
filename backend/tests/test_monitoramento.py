@@ -83,7 +83,7 @@ def test_salvar_mapa_preserva_status_do_monitor():
 
 
 def test_mensagem_de_alerta():
-    eq = SimpleNamespace(nome="Core SW", ip="10.0.0.1")
+    eq = SimpleNamespace(id="sw", projeto_id=1, nome="Core SW", ip="10.0.0.1")
     queda = alerts.montar_evento(eq, "Rack", "offline", "online")
     volta = alerts.montar_evento(eq, "Rack", "online", "offline", 3.2)
     assert queda["evento"] == "equipamento_offline"

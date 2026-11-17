@@ -56,3 +56,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 /* Equipamento encontrado pela busca: pisca algumas vezes */
 .react-flow__node.no-destaque > * { animation: pisca-destaque .65s ease-in-out 4; }
 @keyframes pisca-destaque { 50% { box-shadow: 0 0 0 4px #fbbf24, 0 0 22px #fbbf24; } }
+
+/* Inalcançável: offline porque o uplink (do qual depende) caiu — âmbar, sem alarme próprio */
+.status-inalcancavel { background-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .25); }
+.node-manutencao { color: #38bdf8; }
