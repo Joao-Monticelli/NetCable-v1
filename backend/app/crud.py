@@ -288,6 +288,25 @@ def get_status_projeto(db: Session, projeto_id: int):
     ).all()
 
 
+TIPOS_NAO_CONTADOS = ("Rack", "Atalho de mapa")
+
+
+def resumo_por_projeto(db: Session, ids):
+    """{projeto_id: {"id", "nome", "online", "offline", "visual"}} — usado pelos atalhos entre mapas."""
+    ids = [i for i in set(ids) if i]
+    if not ids:
+        return {}
+    resumo = {p.id: {"id": p.id, "nome": p.nome, "online": 0, "offline": 0, "visual": 0}
+              for p in db.query(models.Projeto).filter(models.Projeto.id.in_(ids)).all()}
+    linhas = db.query(models.Equipamento.projeto_id, models.Equipamento.status, func.count()).filter(
+        models.Equipamento.projeto_id.in_(list(resumo)), models.Equipamento.tipo.notin_(TIPOS_NAO_CONTADOS),
+    ).group_by(models.Equipamento.projeto_id, models.Equipamento.status).all()
+    for projeto_id, status, quantidade in linhas:
+        if status in ("online", "offline", "visual"):
+            resumo[projeto_id][status] = quantidade
+    return resumo
+
+
 def resumo_projetos(db: Session):
     """Lista os projetos com a contagem de equipamentos por status."""
     projetos = get_projetos(db)
@@ -295,7 +314,7 @@ def resumo_projetos(db: Session):
     if projetos:
         linhas = db.query(models.Equipamento.projeto_id, models.Equipamento.status, func.count()).filter(
             models.Equipamento.projeto_id.in_([p.id for p in projetos]),
-            models.Equipamento.tipo != "Rack",  # o gabinete em si não é um equipamento monitorável
+            models.Equipamento.tipo.notin_(TIPOS_NAO_CONTADOS),  # gabinete e atalhos não são equipamentos monitoráveis
         ).group_by(models.Equipamento.projeto_id, models.Equipamento.status).all()
         for projeto_id, status, quantidade in linhas:
             contagens.setdefault(projeto_id, {})[status] = quantidade
@@ -372,6 +391,7 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
             notificar=eq.get('notificar', True) is not False,
             rack_id=eq.get('rackId'), rack_u=eq.get('rackU'), altura_u=eq.get('alturaU'),
             modelo_id=eq.get('modeloId'), depende_de=eq.get('dependeDe') or None,
+            mapa_destino_id=eq.get('mapaDestinoId') or None,
         ))
 
     for conn in conexoes:

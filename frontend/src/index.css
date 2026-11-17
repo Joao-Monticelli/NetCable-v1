@@ -61,3 +61,7 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .status-inalcancavel { background-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .25); }
 .node-manutencao { color: #38bdf8; }
 .metrica-no { display: flex; align-items: center; gap: 2px; color: #cbd5e1; }
+
+/* Atalho para outro mapa */
+.custom-node.no-atalho { border-style: dashed; border-color: #6366f1; cursor: pointer; }
+.custom-node.no-atalho.atalho-alerta { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, .25); }

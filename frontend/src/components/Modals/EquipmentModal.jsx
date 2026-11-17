@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { TIPOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre, ocupados } from '../rack/rackUtils'
@@ -66,10 +66,39 @@ function RackModal({ node, nodes, onClose, onUpdate, onDelete }) {
   )
 }
 
+// ---------------------------------------------------------- Atalho para outro mapa
+function AtalhoModal({ node, projectId, onClose, onUpdate, onDelete, onAbrir }) {
+  const [nome, setNome] = useState(node.data.label || '')
+  const [destino, setDestino] = useState(node.data.mapaDestinoId ? String(node.data.mapaDestinoId) : '')
+  const [projetos, setProjetos] = useState([])
+  useEffect(() => { api.listarProjetos().then(l => setProjetos((l || []).filter(p => String(p.id) !== String(projectId)))).catch(() => {}) }, [projectId])
+  const r = node.data.resumoMapa
+  return (
+    <Moldura titulo={t('Editar atalho')} onClose={onClose}
+      rodape={<><BotaoExcluir onClick={() => onDelete(node.id)} /><BotaoSalvar onClick={() => onUpdate(node.id, { label: nome, mapaDestinoId: destino ? Number(destino) : null })} /></>}>
+      <div><label style={rotulo}>{t('Nome do atalho')}</label><input value={nome} onChange={e => setNome(e.target.value)} style={campo} /></div>
+      <div>
+        <label style={rotulo}>{t('Mapa de destino')}</label>
+        <select aria-label={t('Mapa de destino')} value={destino} onChange={e => setDestino(e.target.value)} style={campo}>
+          <option value="">{t('Escolha um mapa...')}</option>
+          {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
+      </div>
+      {r && !r.removido && <div style={{ ...caixa, fontSize: '13px', color: '#cbd5e1' }}>{t('{on} online · {off} offline · {vis} só visual', { on: r.online, off: r.offline, vis: r.visual })}</div>}
+      {node.data.mapaDestinoId && (
+        <button type="button" onClick={() => onAbrir?.(node)} style={{ ...botaoPequeno, background: '#4338ca', display: 'flex', alignItems: 'center', gap: '6px', width: 'fit-content', padding: '8px 12px' }}>
+          <ExternalLink size={14} /> {t('Abrir mapa')}
+        </button>
+      )}
+    </Moldura>
+  )
+}
+
 // ---------------------------------------------------------- Equipamento
-export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete, projectId, onCalcularUplinks, onAbrirMetricas }) {
+export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete, projectId, onCalcularUplinks, onAbrirMetricas, onAbrirAtalho }) {
   useI18n()
   if (node.type === 'rack') return <RackModal node={node} nodes={nodes} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
+  if (node.data?.tipo === 'Atalho de mapa') return <AtalhoModal node={node} projectId={projectId} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} onAbrir={onAbrirAtalho} />
   return <EquipamentoModal node={node} nodes={nodes} modelos={modelos} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} projectId={projectId} onCalcularUplinks={onCalcularUplinks} onAbrirMetricas={onAbrirMetricas} />
 }
 

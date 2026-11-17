@@ -1244,6 +1244,7 @@ class EquipamentoCreate(BaseModel):
     rackId: Optional[str] = None; rackU: Optional[int] = None; alturaU: Optional[int] = None
     modeloId: Optional[int] = None
     dependeDe: Optional[str] = None
+    mapaDestinoId: Optional[int] = None
 
 
 class ConexaoCreate(BaseModel):
@@ -1275,7 +1276,11 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
     configs_anteriores = {eq.id: eq.monitor_config for eq in projeto.equipamentos}
     eq_dict = [eq.dict() for eq in mapa.equipamentos]
     ids_mapa = {eq['id'] for eq in eq_dict}
+    projetos_existentes = {p.id for p in crud.get_projetos(db)}
     for eq in eq_dict:
+        # Atalho só pode apontar para outro mapa que existe.
+        if eq.get('mapaDestinoId') not in projetos_existentes or eq.get('mapaDestinoId') == projeto_id:
+            eq['mapaDestinoId'] = None
         eq['monitorConfig'] = mesclar_config_snmp(eq, configs_anteriores.get(eq['id']))
         # Uplink precisa ser outro equipamento deste mesmo mapa.
         if eq.get('dependeDe') not in ids_mapa or eq.get('dependeDe') == eq['id']:
@@ -1298,6 +1303,8 @@ class EquipamentoBase(BaseModel):
     rack_id: Optional[str] = None; rack_u: Optional[int] = None; altura_u: Optional[int] = None
     modelo_id: Optional[int] = None
     depende_de: Optional[str] = None
+    mapa_destino_id: Optional[int] = None
+    resumo_mapa: Optional[dict] = None  # atalho: online/offline do mapa de destino
     inalcancavel_por: Optional[str] = None  # uplink offline que explica a queda
     manutencao_ate: Optional[str] = None
     snmp: Optional[dict] = None  # métricas SNMP compactas (CPU, memória, temperatura, portas)
@@ -1331,7 +1338,7 @@ def _obter_dados_projeto(projeto_id: int, db: Session, projeto, publico: bool = 
     extras = _estado_alertas(db, projeto_id, projeto.equipamentos)
     equipamentos = []
     for equipamento in projeto.equipamentos:
-        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u', 'modelo_id', 'depende_de')}
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u', 'modelo_id', 'depende_de', 'mapa_destino_id')}
         item.update(extras["por_equipamento"].get(equipamento.id, {}))
         config = abrir_config(equipamento.monitor_config)
         item['monitor_config'] = {} if publico else {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
@@ -1495,6 +1502,11 @@ def _estado_alertas(db: Session, projeto_id: int, equipamentos=None):
             extras.setdefault(e.id, {})["manutencao_ate"] = iso_utc(por_eq[e.id])
         if e.id in _metricas:
             extras.setdefault(e.id, {})["snmp"] = _metricas_compactas(_metricas[e.id])
+    atalhos = [e for e in equipamentos if e.mapa_destino_id]
+    if atalhos:
+        resumos = crud.resumo_por_projeto(db, [e.mapa_destino_id for e in atalhos])
+        for e in atalhos:
+            extras.setdefault(e.id, {})["resumo_mapa"] = resumos.get(e.mapa_destino_id) or {"id": e.mapa_destino_id, "removido": True}
     return {"manutencao_ate": iso_utc(projetos.get(projeto_id)), "por_equipamento": extras}
 
 

@@ -510,6 +510,32 @@ async function roteiros() {
     await restaurarMapa()
   })
 
+  await cenario('Atalhos entre mapas', async ({ page, ok }) => {
+    await restaurarMapa()
+    const filial = (await api('POST', '/projetos?nome=Filial%20QA', null, TOKEN)).id
+    try {
+      await api('POST', `/projetos/${filial}/salvar`, { equipamentos: [
+        { id: 'fq1', nome: 'Roteador Filial', ip: '192.0.2.77', tipo: 'Roteador', status: 'offline', posX: 0, posY: 0, width: 200, height: 80 },
+      ], conexoes: [] }, TOKEN)
+      await entrar(page); await abrirEditor(page)
+      await page.click('button:has-text("Adicionar")')
+      await page.selectOption('select[aria-label="Tipo de Equipamento"]', 'Atalho de mapa')
+      await page.selectOption('select[aria-label="Mapa de destino"]', String(filial))
+      await ok((await page.inputValue('input[placeholder="Ex: Switch Andar 1"]')) === 'Filial QA', 'nome do atalho preenchido com o nome do mapa')
+      await page.click('div[style*="z-index: 1000"] button:has-text("Adicionar") >> nth=-1')
+      await ok(await existe(page, '.react-flow__node .no-atalho:has-text("Filial QA")'), 'atalho aparece no mapa')
+      await page.keyboard.press('Control+s'); await page.waitForTimeout(1200)
+      await ok(await existe(page, '.react-flow__node .no-atalho.atalho-alerta', 10000), 'atalho fica vermelho: há equipamento offline na filial')
+      await page.locator('.react-flow__node .no-atalho').dblclick()
+      await page.waitForURL(`**/editor/${filial}`, { timeout: 8000 }).catch(() => {})
+      await ok(page.url().endsWith(`/editor/${filial}`), 'duplo clique abre o mapa da filial')
+      await ok(await existe(page, '.react-flow__node:has-text("Roteador Filial")'), 'mapa da filial carregado')
+    } finally {
+      await api('DELETE', `/projetos/${filial}`, null, TOKEN).catch(() => {})
+      await restaurarMapa()
+    }
+  })
+
   await cenario('Histórico, latência e diagnóstico', async ({ page, ok }) => {
     await entrar(page); await abrirEditor(page)
     await page.locator('button:has(svg.lucide-settings)').click()

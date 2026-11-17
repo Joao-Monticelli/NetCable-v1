@@ -29,6 +29,7 @@ SNMP_SEM_SENHA = ("username", "authProtocol", "privProtocol", "port")
 # --------------------------------------------------------------------------- exportar
 def exportar_projeto(db, projeto, abrir_config, versao_app="dev"):
     modelos_por_id = {m.id: m for m in crud.listar_modelos(db)}
+    nomes_projetos = {p.id: p.nome for p in crud.get_projetos(db)}
     usados = {}
     equipamentos = []
     for eq in projeto.equipamentos:
@@ -42,6 +43,7 @@ def exportar_projeto(db, projeto, abrir_config, versao_app="dev"):
             "monitor_mode": eq.monitor_mode or "ip", "snmp": snmp, "notificar": eq.notificar,
             "rack_id": eq.rack_id, "rack_u": eq.rack_u, "altura_u": eq.altura_u,
             "modelo": modelo.nome if modelo else None, "depende_de": eq.depende_de,
+            "mapa_destino": nomes_projetos.get(eq.mapa_destino_id),
         })
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto.id).all()
     return {
@@ -140,6 +142,7 @@ def _preencher_projeto(db, projeto, dados, novo_id, sufixo, ids_modelo, modelos_
             "rackU": eq.get("rack_u"), "alturaU": eq.get("altura_u"),
             "modeloId": ids_modelo.get(eq.get("modelo")),
             "dependeDe": novo_id.get(eq.get("depende_de")) if eq.get("depende_de") else None,
+            "mapaDestinoId": _projeto_por_nome(db, eq.get("mapa_destino")),
         })
     erro = crud.validar_racks(equipamentos)
     if erro:
@@ -152,6 +155,30 @@ def _preencher_projeto(db, projeto, dados, novo_id, sufixo, ids_modelo, modelos_
     return {"id": projeto.id, "nome": projeto.nome, "equipamentos": len(equipamentos), "conexoes": len(conexoes), "modelos_criados": modelos_criados}
 
 
+def _projeto_por_nome(db, nome):
+    if not nome:
+        return None
+    p = db.query(models.Projeto).filter(models.Projeto.nome == nome).order_by(models.Projeto.id.desc()).first()
+    return p.id if p else None
+
+
+def _religar_atalhos(db, importados, arquivos):
+    """Num .zip, um atalho pode apontar para um mapa importado depois dele: liga pelo nome no fim."""
+    novos_por_nome = {}
+    for item, dados in zip(importados, arquivos):
+        original = ((normalizar_arquivo(dados).get("projeto") or {}).get("nome")) or item["nome"]
+        novos_por_nome[original] = item["id"]
+    for item, dados in zip(importados, arquivos):
+        destinos = {eq["nome"]: eq.get("mapa_destino") for eq in normalizar_arquivo(dados)["equipamentos"] if eq.get("mapa_destino")}
+        if not destinos:
+            continue
+        for eq in db.query(models.Equipamento).filter(models.Equipamento.projeto_id == item["id"]).all():
+            alvo = destinos.get(eq.nome)
+            if alvo and alvo in novos_por_nome:
+                eq.mapa_destino_id = novos_por_nome[alvo]
+    db.commit()
+
+
 def importar_arquivo(db, conteudo: bytes, user_id, proteger_config):
     """Aceita um mapa (.json) ou um backup completo (.zip, importa todos os mapas dele)."""
     if conteudo[:2] == b"PK":
@@ -159,10 +186,12 @@ def importar_arquivo(db, conteudo: bytes, user_id, proteger_config):
             nomes = sorted(n for n in z.namelist() if n.startswith("mapas/") and n.endswith(".json"))
             if not nomes:
                 raise ValueError("O backup não contém mapas.")
-            importados = []
+            importados, arquivos = [], []
             try:
                 for n in nomes:
-                    importados.append(importar_mapa(db, json.loads(z.read(n)), user_id, proteger_config))
+                    arquivos.append(json.loads(z.read(n)))
+                    importados.append(importar_mapa(db, arquivos[-1], user_id, proteger_config))
+                _religar_atalhos(db, importados, arquivos)
             except Exception:
                 for item in importados:  # tudo ou nada
                     crud.deletar_projeto(db, item["id"])

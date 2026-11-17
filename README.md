@@ -24,6 +24,7 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 
 - 📡 **Network discovery** — scan a range (e.g. `192.168.1.0/24`), see who answered with hostname, open ports and a suggested type, and add them to the map in one click.
 - 🗺️ **Visual map** — drag & drop devices, draw cables, labels, search (`Ctrl+K`) and hover highlighting.
+- 🧭 **Shortcuts between maps** — build an overview map (HQ → branches → datacenter); each shortcut shows the live online/offline count of its map, turns red when something is down there and opens it on double-click.
 - 🗄️ **Realistic racks** — 4U to 48U racks; switches, servers, NAS, patch panels, UPS… snap to U positions.
 - 🧩 **Device model library** — register your real gear (e.g. “4× RJ45 + 2× SFP, 1U”) and its front panel is drawn with exactly those ports.
 - 🔌 **Port-to-port cables** — connect switch port 12 to firewall eth3; ports show as in use with tooltips.
@@ -97,6 +98,13 @@ Values set in the UI take precedence over the environment variables.
 | `SNMP_METRICS_INTERVAL` | `60` | Seconds between SNMP metric collections (`0` disables) |
 | `DISCOVERY_ALLOW_PUBLIC` | — | `1` allows network discovery on public IP ranges |
 | `DISCOVERY_TIMEOUT` / `DISCOVERY_WORKERS` | `0.8` / `128` | Per-probe timeout (s) and parallel probes during discovery |
+
+## Large networks: shortcuts between maps
+
+Split a big network into several maps (one per site, floor or rack room) and create an **overview map** with shortcuts:
+**Add → type "Shortcut to another map"**, pick the target map. The shortcut shows how many devices are online/offline over there,
+turns red when anything is down, and **double-click** (or a single click in view mode) opens that map. Shortcuts can be cabled
+like any device (e.g. the WAN link between two sites) and are kept in backups/exports (re-linked by map name on import).
 
 ## Network discovery
 

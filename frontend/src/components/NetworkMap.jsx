@@ -2,8 +2,9 @@ import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower, Thermometer, Cpu } from 'lucide-react'
-import { classeStatus, dadosDeAlerta, calcularUplinks } from '../utils/mapa'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower, Thermometer, Cpu, Map as IconeMapa, CheckCircle2, XCircle, ExternalLink } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { classeStatus, dadosDeAlerta, calcularUplinks, TIPO_ATALHO } from '../utils/mapa'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import MetricasModal from './Modals/MetricasModal'
@@ -19,8 +20,38 @@ import {
 } from './rack/rackUtils'
 import { t, useI18n } from '../i18n'
 
+// Atalho para outro mapa: mostra o resumo ao vivo do mapa de destino (vermelho se algo caiu lá).
+function NoAtalho({ data, selected }) {
+  const r = data.resumoMapa
+  const alerta = r && !r.removido && r.offline > 0
+  const alca = { background: '#3b82f6', width: '12px', height: '12px' }
+  return (
+    <div className={`custom-node no-atalho ${alerta ? 'atalho-alerta' : ''}`} style={{ width: '100%', height: '100%' }}
+      title={r?.removido ? t('O mapa de destino foi excluído.') : t('Duplo clique para abrir o mapa {nome}', { nome: r?.nome || data.label })}>
+      <NodeResizer minWidth={140} minHeight={60} isVisible={selected} lineStyle={{ borderColor: '#3b82f6', borderWidth: '2px' }} handleStyle={{ backgroundColor: '#3b82f6', width: '8px', height: '8px' }} />
+      <Handle type="source" position={Position.Top} id="top" style={alca} />
+      <Handle type="source" position={Position.Left} id="left" style={alca} />
+      <IconeMapa size={20} color={alerta ? '#f87171' : '#818cf8'} />
+      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '10px' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '14px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 5 }}>
+          {data.label} <ExternalLink size={11} color="#64748b" />
+        </div>
+        {!r ? <div style={{ fontSize: '11px', color: '#64748b' }}>{t('Sem mapa de destino')}</div>
+          : r.removido ? <div style={{ fontSize: '11px', color: '#f59e0b' }}>{t('Mapa removido')}</div>
+          : <div style={{ fontSize: '12px', display: 'flex', gap: '10px', marginTop: 3 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#10b981' }}><CheckCircle2 size={12} /> {r.online}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: r.offline ? '#ef4444' : '#64748b', fontWeight: r.offline ? 'bold' : 'normal' }}><XCircle size={12} /> {r.offline}</span>
+            </div>}
+      </div>
+      <Handle type="source" position={Position.Bottom} id="bottom" style={alca} />
+      <Handle type="source" position={Position.Right} id="right" style={alca} />
+    </div>
+  )
+}
+
 const CustomNode = memo(({ data, selected }) => {
   useI18n()
+  if (data.tipo === TIPO_ATALHO) return <NoAtalho data={data} selected={selected} />
   const getIcon = () => {
     switch (data.tipo) {
       case 'Roteador': return <Wifi size={18} color="#3b82f6" />
@@ -87,7 +118,7 @@ const calcularCorConexao = (sourceNode, targetNode) => {
 
 // readOnly: trava a edição e esconde os pontos de conexão (modo visualização / TV).
 // monitor: consulta o status mantido pelo backend (requer login e projectId). A página pública passa false.
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, onStatusProjeto, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true, mostrarCabosPorta = true, foco = null }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, onStatusProjeto, onAbrirMapa, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true, mostrarCabosPorta = true, foco = null }) {
   const mapaModelos = useMemo(() => new Map(modelos.map(m => [m.id, m])), [modelos])
   const alturaDoEquipamento = (data) => mapaModelos.get(data.modeloId)?.altura_u || alturaPadrao(data.tipo)
   const [nodes, setNodes] = useState(initialNodes)
@@ -158,6 +189,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           notificar: equipment.notificar !== false,
           us: equipment.us,
           modeloId: equipment.modeloId || null,
+          mapaDestinoId: equipment.mapaDestinoId || null,
         },
         _rack: { id: equipment.rackId, u: equipment.rackU, altura: equipment.alturaU },
       }))
@@ -216,7 +248,8 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
             const alerta = dadosDeAlerta(atual, nomePorId)
             if (atual.status === node.data.status && atual.ping_time === node.data.pingTime &&
                 alerta.inalcancavelPor === (node.data.inalcancavelPor || null) && alerta.manutencaoAte === (node.data.manutencaoAte || null) &&
-                alerta.snmp?.coletado_em === node.data.snmp?.coletado_em) return node
+                alerta.snmp?.coletado_em === node.data.snmp?.coletado_em &&
+                JSON.stringify(alerta.resumoMapa) === JSON.stringify(node.data.resumoMapa || null)) return node
             mudou = true
             return { ...node, data: { ...node.data, status: atual.status, pingTime: atual.ping_time, ...alerta } }
           })
@@ -273,7 +306,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       setNodes(nds => normalizarRacks(nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, rackU: u } } : n)))
       return
     }
-    if (node.type !== 'custom') return
+    if (node.type !== 'custom' || node.data?.tipo === TIPO_ATALHO) return  // atalhos não vão para dentro de racks
     const largura = node.width || node.style?.width || 200
     const altura = node.height || node.style?.height || 80
     const centro = { x: node.position.x + largura / 2, y: node.position.y + altura / 2 }
@@ -382,10 +415,33 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const onNodeMouseLeave = useCallback(() => setHoverId(null), [])
 
   const [metricasNode, setMetricasNode] = useState(null)
-  // No modo leitura (ex.: visualizador, TV), clicar num equipamento SNMP abre as métricas.
+  const navigate = useNavigate()
+  const autenticado = projectId && projectId !== 'novo' // a página pública (TV) não navega entre mapas
+  const abrirAtalho = (node) => {
+    const destino = node.data?.mapaDestinoId
+    if (!destino || node.data?.resumoMapa?.removido) return false
+    if (onAbrirMapa) onAbrirMapa(destino)
+    else navigate(`/editor/${destino}`)
+    return true
+  }
+  // No modo leitura (ex.: visualizador, TV), clicar abre o atalho ou as métricas SNMP.
+  const timerClique = useRef(null)
   const onNodeClick = (event, node) => {
-    if (!readOnly) setSelectedNode(node)
-    else if (projectId && projectId !== 'novo' && node.data?.monitorMode === 'snmpv3') setMetricasNode(node)
+    if (!readOnly) {
+      // Atalho: espera um instante para o duplo clique (abrir o mapa) não abrir o modal de edição antes.
+      clearTimeout(timerClique.current)
+      if (node.data?.tipo === TIPO_ATALHO) timerClique.current = setTimeout(() => setSelectedNode(node), 250)
+      else setSelectedNode(node)
+      return
+    }
+    if (!autenticado) return
+    if (node.data?.tipo === TIPO_ATALHO) abrirAtalho(node)
+    else if (node.data?.monitorMode === 'snmpv3') setMetricasNode(node)
+  }
+  // Duplo clique num atalho abre o mapa de destino também no modo edição.
+  const onNodeDoubleClick = (event, node) => {
+    clearTimeout(timerClique.current)
+    if (autenticado && node.data?.tipo === TIPO_ATALHO && abrirAtalho(node)) setSelectedNode(null)
   }
   const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edges.find(e => e.id === edge.id) || edge) }
   const onReconnect = useCallback((oldEdge, newConnection) => { if (!readOnly) setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds)) }, [readOnly])
@@ -459,7 +515,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         nodes={nodesExibidos} edges={edgesExibidas} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         onNodeMouseEnter={onNodeMouseEnter} onNodeMouseLeave={onNodeMouseLeave}
         defaultEdgeOptions={defaultEdgeOptions} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-        onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
+        onConnect={onConnect} onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
         onReconnect={onReconnect} onNodeDragStop={onNodeDragStop} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
         elementsSelectable={!readOnly} edgesUpdatable={!readOnly} nodesFocusable={!readOnly} edgesFocusable={!readOnly} deleteKeyCode={readOnly ? null : 'Backspace'}
@@ -471,7 +527,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
 
       {metricasNode && <MetricasModal projectId={projectId} node={metricasNode} onClose={() => setMetricasNode(null)} />}
       {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} modelos={modelos} projectId={projectId} onCalcularUplinks={handleCalcularUplinks}
-        onAbrirMetricas={(n) => { setSelectedNode(null); setMetricasNode(n) }} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
+        onAbrirMetricas={(n) => { setSelectedNode(null); setMetricasNode(n) }} onAbrirAtalho={(n) => { setSelectedNode(null); abrirAtalho(n) }} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
       {selectedEdge && <EdgeModal edge={selectedEdge} nodes={nodes} edges={edges} modelos={mapaModelos} onClose={() => setSelectedEdge(null)} onUpdate={handleUpdateEdge} onDelete={handleDeleteEdge} />}
     </ModelosContext.Provider>
   )

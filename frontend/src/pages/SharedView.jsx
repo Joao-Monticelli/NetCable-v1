@@ -73,7 +73,7 @@ export default function SharedView() {
   const handleMapUpdate = useCallback((nodes, edges) => {
     atualizarResumo(nodes, edges)
     const counts = nodes.reduce((acc, node) => {
-      if (node.type === 'rack') return acc
+      if (node.type === 'rack' || node.data?.tipo === 'Atalho de mapa') return acc
       if (node.data.status === 'online') acc.online++
       else if (node.data.status === 'offline') acc.offline++
       else if (node.data.status === 'visual') acc.visual++

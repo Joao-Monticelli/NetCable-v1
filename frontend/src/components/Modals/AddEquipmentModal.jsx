@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network, Bell, BellOff } from 'lucide-react'
 import { api } from '../../services/api'
 import { TIPOS, TIPOS_PASSIVOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre } from '../rack/rackUtils'
@@ -7,7 +7,7 @@ import { t, useI18n } from '../../i18n'
 const resumoModelo = (m) => [m.portas_rj45 && `${m.portas_rj45}× RJ45`, m.portas_sfp && `${m.portas_sfp}× SFP`].filter(Boolean).join(' + ') || t('sem portas')
 const faixaU = (u, a) => a > 1 ? `U${u}–U${u + a - 1}` : `U${u}`
 
-export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, nodes = [], modelos = [] }) {
+export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, nodes = [], modelos = [], projetoAtual = null }) {
   useI18n()
   const [modeloId, setModeloId] = useState('')
   const modelo = modelos.find(m => m.id === Number(modeloId))
@@ -23,8 +23,16 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
   const [discoveryError, setDiscoveryError] = useState('')
   const [isDiscovering, setIsDiscovering] = useState(false)
   
-  const [tipos, setTipos] = useState([{ value: 'Rack', rotulo: 'Rack (gabinete)' }, ...TIPOS.map(tp => ({ value: tp }))])
+  const [tipos, setTipos] = useState([{ value: 'Rack', rotulo: 'Rack (gabinete)' }, { value: 'Atalho de mapa', rotulo: 'Atalho para outro mapa' }, ...TIPOS.map(tp => ({ value: tp }))])
   const isRack = tipo === 'Rack'
+  const isAtalho = tipo === 'Atalho de mapa'
+  const isEspecial = isRack || isAtalho
+  const [projetos, setProjetos] = useState([])
+  const [destino, setDestino] = useState('')
+  useEffect(() => {
+    if (!isAtalho || projetos.length) return
+    api.listarProjetos().then(lista => setProjetos((lista || []).filter(p => String(p.id) !== String(projetoAtual)))).catch(() => {})
+  }, [isAtalho])
   const [rackUs, setRackUs] = useState(12)
 
   // Montagem em rack já existente no mapa
@@ -144,6 +152,11 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
       onAdd({ nome, ip: 'Sem IP', tipo: 'Rack', status: 'visual', monitorMode: 'visual', snmpConfig: null, us: Number(rackUs) })
       return
     }
+    if (isAtalho) {
+      if (!destino) { alert(t('Escolha o mapa de destino.')); return }
+      onAdd({ nome, ip: 'Sem IP', tipo: 'Atalho de mapa', status: 'visual', monitorMode: 'visual', snmpConfig: null, notificar: false, mapaDestinoId: Number(destino) })
+      return
+    }
     if (rack && !rackU) { alert(t('Não há {u}U livres no rack {rack}.', { u: alturaU, rack: rack.data.label })); return }
     if (!semIp && !ip) { alert(t('Preencha o IP ou marque Sem IP.')); return }
 
@@ -189,7 +202,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
       <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '12px', width: '480px', maxHeight: '92vh', overflow: 'auto', border: '1px solid #334155' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '20px' }}>{isRack ? t('Adicionar Rack') : t('Adicionar Equipamento')}</h2>
+          <h2 style={{ fontSize: '20px' }}>{isRack ? t('Adicionar Rack') : isAtalho ? t('Adicionar atalho para outro mapa') : t('Adicionar Equipamento')}</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
         </div>
 
@@ -216,7 +229,18 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
             <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={isRack ? t('Ex: Rack Principal') : t('Ex: Switch Andar 1')} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
           </div>
 
-          {!isRack && (
+          {isAtalho && (
+            <div>
+              <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Mapa de destino')}</label>
+              <select aria-label={t('Mapa de destino')} value={destino} onChange={(e) => { setDestino(e.target.value); if (!nome) setNome(projetos.find(p => String(p.id) === e.target.value)?.nome || '') }} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                <option value="">{t('Escolha um mapa...')}</option>
+                {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+              <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '6px', lineHeight: 1.4 }}>{t('O atalho mostra quantos equipamentos estão online/offline no outro mapa e fica vermelho quando algo cai lá. Duplo clique abre o mapa.')}</span>
+            </div>
+          )}
+
+          {!isEspecial && (
             <div>
               <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Modelo (opcional)')}</label>
               <select aria-label={t('Modelo')} value={modeloId} onChange={(e) => escolherModelo(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
@@ -237,7 +261,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
             </div>
           )}
 
-          {!isRack && <>
+          {!isEspecial && <>
           <div>
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Método de monitoramento')}</label>
             <select value={semIp ? 'visual' : monitorMode} onChange={(e) => setMonitorMode(e.target.value)} disabled={semIp} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
