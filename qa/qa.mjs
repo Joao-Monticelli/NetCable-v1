@@ -19,10 +19,12 @@ const PORTA_WEB = Number(process.env.QA_WEB_PORT || 5184)
 const PORTA_SMTP = Number(process.env.QA_SMTP_PORT || 2526)
 const ADMIN = { usuario: 'qa-admin', senha: 'qa-senha-forte-123' }
 const PASSOS_EXPLORACAO = RAPIDO ? 25 : 70
+// QA_MODO=unica testa como a imagem Docker única: o backend serve a interface já compilada (frontend/dist).
+const MODO_UNICO = process.env.QA_MODO === 'unica'
 
 // IP da rede local: testar por http://IP reproduz o homelab (contexto "não seguro").
 const ipLocal = Object.values(os.networkInterfaces()).flat().find(i => i && i.family === 'IPv4' && !i.internal)?.address
-const WEB = `http://${ipLocal || '127.0.0.1'}:${PORTA_WEB}`
+const WEB = `http://${ipLocal || '127.0.0.1'}:${MODO_UNICO ? PORTA_API : PORTA_WEB}`
 const API = `http://127.0.0.1:${PORTA_API}/api`
 
 const agora = new Date()
@@ -77,15 +79,20 @@ async function subirAmbiente() {
   fs.cpSync(path.join(RAIZ, 'backend', 'app'), path.join(TEMP, 'backend', 'app'), { recursive: true, filter: (o) => !o.includes('__pycache__') })
   const python = pythonDoBackend()
   iniciar('smtp', python, [path.join(AQUI, 'fake_smtp.py'), String(PORTA_SMTP), CAIXA_EMAIL], { cwd: TEMP })
-  iniciar('backend', python, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(PORTA_API)], {
+  const dist = path.join(RAIZ, 'frontend', 'dist')
+  if (MODO_UNICO && !fs.existsSync(path.join(dist, 'index.html'))) throw new Error('QA_MODO=unica precisa do build: rode "npm run build" em frontend/')
+  iniciar('backend', python, ['-m', 'uvicorn', 'app.main:app', '--host', MODO_UNICO ? '0.0.0.0' : '127.0.0.1', '--port', String(PORTA_API)], {
     cwd: path.join(TEMP, 'backend'),
     // Sem ADMIN_PASSWORD nem SECRET_KEY: como uma instalação nova da loja (assistente + chave automática).
-    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', MONITOR_INTERVAL: '3', ADMIN_PASSWORD: '', SECRET_KEY: '' },
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', MONITOR_INTERVAL: '3', ADMIN_PASSWORD: '', SECRET_KEY: '',
+      NETCABLE_DATA_DIR: path.join(TEMP, 'backend', 'data'), NETCABLE_STATIC_DIR: MODO_UNICO ? dist : path.join(TEMP, 'sem-interface') },
   })
-  iniciar('frontend', 'npx', ['vite'], {
-    cwd: path.join(RAIZ, 'frontend'),
-    env: { ...process.env, NETCABLE_API_PROXY: `http://127.0.0.1:${PORTA_API}`, NETCABLE_DEV_PORT: String(PORTA_WEB) },
-  })
+  if (!MODO_UNICO) {
+    iniciar('frontend', 'npx', ['vite'], {
+      cwd: path.join(RAIZ, 'frontend'),
+      env: { ...process.env, NETCABLE_API_PROXY: `http://127.0.0.1:${PORTA_API}`, NETCABLE_DEV_PORT: String(PORTA_WEB) },
+    })
+  }
   await aguardarUrl(`${API}/health`)
   await aguardarUrl(WEB)
 }

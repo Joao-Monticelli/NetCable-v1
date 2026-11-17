@@ -1,44 +1,29 @@
 services:
-  backend:
-    image: ghcr.io/joao-monticelli/netcable-backend:latest
-    container_name: netcable_backend
-    restart: unless-stopped
-    # A porta fica disponível apenas na rede interna do Compose.
-    volumes:
-      # Pasta onde o banco SQLite é salvo. Troque por um caminho absoluto se preferir
-      # (ex.: /mnt/pool/apps/netcable:/app/data).
-      - ./data:/app/data
-    environment:
-      - PYTHONUNBUFFERED=1
-      - ADMIN_USER=admin
-      - ADMIN_PASSWORD=altere_esta_senha
-      - SECRET_KEY=altere_esta_chave_por_uma_string_longa_e_aleatoria
-      - ALLOWED_ORIGINS=http://localhost
-
-      # --- Monitoramento (opcional) ---
-      # Intervalo (s) entre verificações feitas pelo servidor. 0 desativa.
-      # - MONITOR_INTERVAL=15
-      # Falhas seguidas antes de marcar um equipamento como offline (evita alarme falso).
-      # - MONITOR_FAILURE_THRESHOLD=2
-      # Dias de histórico mantidos no banco. 0 mantém para sempre.
-      # - HISTORY_RETENTION_DAYS=30
-
-      # --- Alertas de queda/recuperação (opcional) ---
-      # E-mail: configure o servidor SMTP pela interface (⚙️ → E-mail (SMTP), usuário admin).
-      # Fuso horário usado no horário dos relatórios diários (também ajustável na interface):
-      # - TZ=America/Sao_Paulo
-      # Telegram: crie um bot com o @BotFather e descubra o chat_id do seu grupo/conversa.
-      # - TELEGRAM_BOT_TOKEN=123456:ABC...
-      # - TELEGRAM_CHAT_ID=-1001234567890
-      # Webhook genérico (recebe um POST JSON a cada mudança de status):
-      # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
-
-  frontend:
-    image: ghcr.io/joao-monticelli/netcable-frontend:latest
-    container_name: netcable_frontend
+  netcable:
+    image: ghcr.io/joao-monticelli/netcable:latest
+    container_name: netcable
     restart: unless-stopped
     ports:
-      - "80:80"
-    depends_on:
-      backend:
-        condition: service_healthy
+      - "8080:8080"   # acesse http://IP-DO-SERVIDOR:8080
+    volumes:
+      # Banco de dados, chave secreta e backups. Troque por um caminho absoluto se preferir
+      # (ex.: /mnt/pool/apps/netcable:/app/data).
+      - ./data:/app/data
+    # Nada é obrigatório: no primeiro acesso a tela pede para criar o administrador
+    # e a chave secreta é gerada automaticamente na pasta de dados.
+    environment:
+      - TZ=America/Sao_Paulo
+      # --- Opcionais ---
+      # Intervalo (s) do monitoramento no servidor (0 desativa) e falhas seguidas antes de "offline".
+      # - MONITOR_INTERVAL=15
+      # - MONITOR_FAILURE_THRESHOLD=2
+      # Dias de histórico mantidos no banco (0 = para sempre).
+      # - HISTORY_RETENTION_DAYS=30
+      # Alertas no Telegram (idioma: en ou pt) e webhook. E-mail é configurado na interface.
+      # - TELEGRAM_BOT_TOKEN=123456:ABC...
+      # - TELEGRAM_CHAT_ID=-1001234567890
+      # - ALERT_LANGUAGE=en
+      # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
+      # Criar/recuperar um admin por variável (em vez do assistente de primeiro acesso):
+      # - ADMIN_USER=admin
+      # - ADMIN_PASSWORD=uma_senha_forte

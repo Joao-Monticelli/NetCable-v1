@@ -37,7 +37,17 @@ models.Base.metadata.create_all(bind=engine)
 # Atualiza bancos de versões anteriores (com cópia de segurança antes de migrar).
 migracoes.aplicar(engine, DB_PATH)
 
-app = FastAPI(title="NetCable API", version=os.getenv("APP_VERSION", "dev"))
+def _versao():
+    """APP_VERSION (definida no build da imagem) ou o arquivo VERSION do repositório."""
+    if os.getenv("APP_VERSION"):
+        return os.getenv("APP_VERSION")
+    for caminho in (os.path.join(os.path.dirname(__file__), "..", "VERSION"), os.path.join(os.path.dirname(__file__), "..", "..", "VERSION")):
+        if os.path.isfile(caminho):
+            return open(caminho, encoding="utf-8").read().strip() + "-dev"
+    return "dev"
+
+
+app = FastAPI(title="NetCable API", version=_versao())
 
 ALLOWED_ORIGINS = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 
@@ -1084,3 +1094,24 @@ def latencia_equipamento(projeto_id: int, equipamento_id: str, horas: int = 24, 
         "equipamento_id": equipamento.id, "nome": equipamento.nome, "ip": equipamento.ip, "horas": horas,
         "pontos": [{"t": iso_utc(p.criado_em), "status": p.status, "ms": p.tempo_ms} for p in pontos],
     }
+
+
+# --- INTERFACE WEB (imagem única) ---
+# Quando a pasta com o build do frontend existe (imagem Docker única, versão Windows),
+# o próprio backend serve a interface: uma porta só para tudo. No desenvolvimento
+# (Vite em 5173) e na imagem separada (Nginx) esta parte simplesmente não é ativada.
+PASTA_WEB = os.path.abspath(os.getenv("NETCABLE_STATIC_DIR") or os.path.join(os.path.dirname(__file__), "..", "static"))
+if os.path.isfile(os.path.join(PASTA_WEB, "index.html")):
+    from fastapi.responses import FileResponse
+
+    @app.get("/{caminho:path}", include_in_schema=False)
+    def interface_web(caminho: str):
+        if caminho.startswith("api/") or caminho == "api":
+            raise HTTPException(status_code=404, detail="Not Found")
+        arquivo = os.path.abspath(os.path.join(PASTA_WEB, caminho))
+        if caminho and arquivo.startswith(PASTA_WEB + os.sep) and os.path.isfile(arquivo):
+            # Arquivos com hash no nome (assets/) nunca mudam: cache longo.
+            cache = "public, max-age=31536000, immutable" if caminho.startswith("assets/") else "no-cache"
+            return FileResponse(arquivo, headers={"Cache-Control": cache})
+        # Rotas do React (/projects, /editor/1, /share/...) recebem o index.html.
+        return FileResponse(os.path.join(PASTA_WEB, "index.html"), headers={"Cache-Control": "no-cache"})
