@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, memo, useRef } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff } from 'lucide-react'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
@@ -26,6 +26,9 @@ const CustomNode = memo(({ data, selected }) => {
       <Handle type="source" position={Position.Left} id="left" style={{ background: '#3b82f6', width: '12px', height: '12px' }} />
       
       <div className={`status-dot ${data.status === 'visual' ? 'status-visual' : (data.status === 'online' ? 'status-online' : 'status-offline')}`} />
+      {data.notificar === false && data.status !== 'visual' && (
+        <span className="node-sem-alerta" title="Notificações desligadas para este equipamento"><BellOff size={12} /></span>
+      )}
       
       {getIcon()}
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingRight: '10px' }}>
@@ -127,7 +130,8 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           status: equipment.status || 'offline',
           pingTime: equipment.pingTime,
           monitorMode: equipment.monitorMode || 'ip',
-          snmpConfig: equipment.snmpConfig || {}
+          snmpConfig: equipment.snmpConfig || {},
+          notificar: equipment.notificar !== false
         }
       }))
       setNodes((nds) => [...nds, ...newNodes])

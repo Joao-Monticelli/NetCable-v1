@@ -12,6 +12,14 @@ const getHeaders = () => ({
   'Authorization': `Bearer ${getToken()}`
 });
 
+// Requisição autenticada genérica: devolve o JSON ou lança Error com o "detail" da API.
+async function requisicao(caminho, opcoes = {}, erroPadrao = 'Falha na comunicação com o servidor.') {
+  const res = await fetch(`${API_URL}${caminho}`, { ...opcoes, headers: getHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || erroPadrao);
+  return data;
+}
+
 export const api = {
   async login(username, password) {
     const formData = new URLSearchParams();
@@ -56,6 +64,25 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Erro ao atualizar perfil.');
     return data;
+  },
+
+  async enviarMeuRelatorio() {
+    return requisicao('/me/relatorio/enviar', { method: 'POST' }, 'Falha ao enviar o relatório.');
+  },
+
+  // --- Usuários (admin) ---
+  listarUsuarios() { return requisicao('/usuarios', {}, 'Não foi possível listar os usuários.') },
+  criarUsuario(dados) { return requisicao('/usuarios', { method: 'POST', body: JSON.stringify(dados) }, 'Não foi possível criar o usuário.') },
+  atualizarUsuario(id, dados) { return requisicao(`/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(dados) }, 'Não foi possível atualizar o usuário.') },
+  excluirUsuario(id) { return requisicao(`/usuarios/${id}`, { method: 'DELETE' }, 'Não foi possível excluir o usuário.') },
+
+  // --- E-mail / SMTP (admin) ---
+  obterConfigEmail() { return requisicao('/config/email', {}, 'Não foi possível carregar a configuração de e-mail.') },
+  salvarConfigEmail(dados) { return requisicao('/config/email', { method: 'PUT', body: JSON.stringify(dados) }, 'Não foi possível salvar a configuração de e-mail.') },
+  testarEmail(destinatario) { return requisicao('/config/email/teste', { method: 'POST', body: JSON.stringify({ destinatario }) }, 'Falha no envio do e-mail de teste.') },
+
+  latenciaEquipamento(projetoId, equipamentoId, horas = 24) {
+    return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/latencia?horas=${horas}`, {}, 'Não foi possível carregar a latência.')
   },
 
   logout() {
@@ -109,14 +136,12 @@ export const api = {
     return res.json();
   },
   
-  async criarProjeto(nome) {
-    const res = await fetch(`${API_URL}/projetos?nome=${encodeURIComponent(nome)}`, { method: 'POST', headers: getHeaders() });
-    return res.json();
+  criarProjeto(nome) {
+    return requisicao(`/projetos?nome=${encodeURIComponent(nome)}`, { method: 'POST' }, 'Não foi possível criar o projeto.')
   },
 
-  async editarNomeProjeto(id, novoNome) {
-    const res = await fetch(`${API_URL}/projetos/${id}?novo_nome=${encodeURIComponent(novoNome)}`, { method: 'PUT', headers: getHeaders() });
-    return res.json();
+  editarNomeProjeto(id, novoNome) {
+    return requisicao(`/projetos/${id}?novo_nome=${encodeURIComponent(novoNome)}`, { method: 'PUT' }, 'Não foi possível renomear o projeto.')
   },
   
   async salvarMapa(projetoId, equipamentos, conexoes) {

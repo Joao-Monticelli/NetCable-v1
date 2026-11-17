@@ -47,3 +47,6 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 .netmap-readonly .react-flow__node {
   cursor: default !important;
 }
+
+/* Ícone discreto quando o equipamento está com notificações desligadas */
+.node-sem-alerta { position: absolute; top: 8px; right: 28px; color: #64748b; display: flex; }

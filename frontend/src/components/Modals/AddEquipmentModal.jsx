@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network } from 'lucide-react'
+import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network, Bell, BellOff } from 'lucide-react'
 import { api } from '../../services/api' // IMPORTANDO A API
 
 export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
@@ -8,6 +8,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
   const [tipo, setTipo] = useState('Roteador')
   const [semIp, setSemIp] = useState(false)
   const [monitorMode, setMonitorMode] = useState('ip')
+  const [notificar, setNotificar] = useState(true)
   const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161 })
   const [neighbors, setNeighbors] = useState(null)
   const [selectedNeighbors, setSelectedNeighbors] = useState(new Set())
@@ -114,7 +115,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
       }
     }
     
-    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null })
+    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar })
   }
 
   const handleAddTipo = () => {
@@ -143,6 +144,13 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
               <option value="snmpv3">SNMPv3</option>
             </select>
           </div>
+
+          {!semIp && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title="Quando desligado, quedas deste equipamento não geram e-mail/Telegram/webhook (continuam no histórico).">
+              <input type="checkbox" checked={notificar} onChange={(e) => setNotificar(e.target.checked)} />
+              {notificar ? <Bell size={15} color="#f59e0b" /> : <BellOff size={15} color="#64748b" />} Notificar quando cair ou voltar
+            </label>
+          )}
 
           {monitorMode === 'snmpv3' && !semIp && <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '10px' }}>
             <label style={{ fontSize: '13px', color: '#94a3b8' }}>Credenciais SNMPv3</label>

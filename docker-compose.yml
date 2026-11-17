@@ -24,6 +24,9 @@ services:
       # - HISTORY_RETENTION_DAYS=30
 
       # --- Alertas de queda/recuperação (opcional) ---
+      # E-mail: configure o servidor SMTP pela interface (⚙️ → E-mail (SMTP), usuário admin).
+      # Fuso horário usado no horário dos relatórios diários (também ajustável na interface):
+      # - TZ=America/Sao_Paulo
       # Telegram: crie um bot com o @BotFather e descubra o chat_id do seu grupo/conversa.
       # - TELEGRAM_BOT_TOKEN=123456:ABC...
       # - TELEGRAM_CHAT_ID=-1001234567890
