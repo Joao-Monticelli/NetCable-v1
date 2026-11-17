@@ -16,7 +16,6 @@ import hashlib
 import logging
 import secrets
 import threading
-import requests
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from cryptography.fernet import Fernet, InvalidToken
@@ -24,7 +23,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailableError
 
-from . import models, crud
+from . import models, crud, alerts
 from .database import engine, SessionLocal
 
 models.Base.metadata.create_all(bind=engine)
@@ -64,12 +63,20 @@ async def security_headers(request: Request, call_next):
     return response
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-this-secret")
-ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "").strip()
-ALERT_WEBHOOK_TIMEOUT = float(os.getenv("ALERT_WEBHOOK_TIMEOUT", "3"))
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("netcable")
 # Intervalo (s) do monitoramento em segundo plano no backend. 0 desativa.
-MONITOR_INTERVAL = int(os.getenv("MONITOR_INTERVAL", "30"))
+MONITOR_INTERVAL = int(os.getenv("MONITOR_INTERVAL", "15"))
 MONITOR_WORKERS = int(os.getenv("MONITOR_WORKERS", "16"))
+# Falhas seguidas antes de marcar um equipamento online como offline (evita alarme falso).
+MONITOR_FAILURE_THRESHOLD = max(1, int(os.getenv("MONITOR_FAILURE_THRESHOLD", "2")))
+# Dias de histórico mantidos no banco. 0 mantém para sempre.
+HISTORY_RETENTION_DAYS = int(os.getenv("HISTORY_RETENTION_DAYS", "30"))
+
+
+def iso_utc(momento):
+    """Datas do banco são UTC sem fuso; o sufixo Z evita que o navegador as leia como hora local."""
+    return momento.isoformat() + "Z" if momento else None
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
@@ -121,6 +128,16 @@ def health_check(db: Session = Depends(get_db)):
         "database": {"connected": database_ok, "error": database_error},
         "snmp": snmp,
         "database_path": str(engine.url.database),
+        "monitor": {
+            "enabled": MONITOR_INTERVAL > 0,
+            "interval": MONITOR_INTERVAL,
+            "failure_threshold": MONITOR_FAILURE_THRESHOLD,
+            "last_cycle": iso_utc(_ultimo_ciclo["fim"]),
+            "last_cycle_seconds": _ultimo_ciclo["duracao"],
+            "equipments": _ultimo_ciclo["equipamentos"],
+        },
+        "alerts": alerts.canais_configurados(),
+        "history_retention_days": HISTORY_RETENTION_DAYS,
         "security": {
             "secret_key_configured": SECRET_KEY != "dev-only-change-this-secret",
             "default_admin_password": ADMIN_PASSWORD in {"admin", "altere_esta_senha"},
@@ -209,7 +226,7 @@ def atualizar_perfil_usuario(dados: PerfilUpdate, db: Session = Depends(get_db),
 
 @app.get("/api/projetos")
 def listar_projetos(db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
-    return crud.get_projetos(db, user.id)
+    return crud.resumo_projetos(db, user.id)
 
 @app.post("/api/projetos")
 def novo_projeto(nome: str, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
@@ -238,21 +255,14 @@ class MonitorRequest(BaseModel):
 def registrar_monitoramento(db: Session, equipamento, resultado):
     if not equipamento:
         return
-    crud.atualizar_status_equipamento(db, equipamento.id, resultado.get("status", "offline"), resultado.get("tempo_ms"))
-    _, mudou, status_anterior = crud.registrar_status(
-        db, equipamento.id, resultado.get("status", "offline"), resultado.get("tempo_ms")
-    )
-    if mudou and resultado.get("status") == "offline" and ALERT_WEBHOOK_URL:
-        try:
-            requests.post(ALERT_WEBHOOK_URL, json={
-                "evento": "equipamento_offline",
-                "equipamento": equipamento.nome,
-                "ip": equipamento.ip,
-                "status_anterior": status_anterior,
-                "status": "offline",
-            }, timeout=ALERT_WEBHOOK_TIMEOUT)
-        except Exception as exc:
-            logger.warning("Falha ao enviar alerta webhook: %s", exc)
+    status = resultado.get("status", "offline")
+    tempo_ms = resultado.get("tempo_ms")
+    crud.atualizar_status_equipamento(db, equipamento.id, status, tempo_ms)
+    _, mudou, status_anterior = crud.registrar_status(db, equipamento.id, status, tempo_ms)
+    if mudou:
+        projeto_nome = equipamento.projeto.nome if equipamento.projeto else None
+        logger.info("Status alterado: %s (%s) %s -> %s", equipamento.nome, equipamento.ip, status_anterior, status)
+        alerts.notificar(alerts.montar_evento(equipamento, projeto_nome, status, status_anterior, tempo_ms))
 
 def checar_equipamento(ip: str, mode: str = "ip", config: Optional[dict] = None):
     """Verifica um equipamento por ping/TCP ou SNMPv3.
@@ -288,6 +298,9 @@ def monitor_equipamento(request: MonitorRequest, db: Session = Depends(get_db), 
 # Mantém o status no banco atualizado mesmo sem nenhum Editor aberto,
 # para que o link público (ex.: TV do NOC) mostre dados reais.
 _monitor_stop = threading.Event()
+_falhas_consecutivas = {}
+_ultimo_ciclo = {"fim": None, "duracao": None, "equipamentos": 0}
+_ultima_limpeza = {"momento": 0.0}
 
 def _equipamento_monitoravel(eq):
     return eq.monitor_mode != "visual" and eq.status != "visual" and eq.ip and eq.ip != "Sem IP"
@@ -309,10 +322,11 @@ def executar_ciclo_monitoramento():
         ]
     finally:
         db.close()
-    if not alvos:
-        return
-    with ThreadPoolExecutor(max_workers=max(1, MONITOR_WORKERS)) as pool:
-        resultados = list(pool.map(_checar_seguro, alvos))
+    inicio = time.monotonic()
+    resultados = []
+    if alvos:
+        with ThreadPoolExecutor(max_workers=max(1, MONITOR_WORKERS)) as pool:
+            resultados = list(pool.map(_checar_seguro, alvos))
     db = SessionLocal()
     try:
         for eq_id, resultado in resultados:
@@ -320,18 +334,37 @@ def executar_ciclo_monitoramento():
                 continue
             # Recarrega: o mapa pode ter sido salvo (e o equipamento removido) durante o ciclo.
             equipamento = db.query(models.Equipamento).filter(models.Equipamento.id == eq_id).first()
-            if equipamento:
-                registrar_monitoramento(db, equipamento, resultado)
+            if not equipamento:
+                _falhas_consecutivas.pop(eq_id, None)
+                continue
+            if resultado.get("status") == "offline":
+                falhas = _falhas_consecutivas.get(eq_id, 0) + 1
+                _falhas_consecutivas[eq_id] = falhas
+                # Equipamento estava online: só derruba após N falhas seguidas.
+                if equipamento.status == "online" and falhas < MONITOR_FAILURE_THRESHOLD:
+                    continue
+            else:
+                _falhas_consecutivas.pop(eq_id, None)
+            registrar_monitoramento(db, equipamento, resultado)
+        if HISTORY_RETENTION_DAYS > 0 and time.monotonic() - _ultima_limpeza["momento"] > 3600:
+            _ultima_limpeza["momento"] = time.monotonic()
+            apagados = crud.limpar_historico(db, HISTORY_RETENTION_DAYS)
+            if apagados:
+                logger.info("Histórico: %s registros com mais de %s dias removidos", apagados, HISTORY_RETENTION_DAYS)
     finally:
         db.close()
+    _ultimo_ciclo.update(fim=datetime.utcnow(), duracao=round(time.monotonic() - inicio, 2), equipamentos=len(alvos))
 
 def _loop_monitoramento():
     logger.info("Monitoramento em segundo plano ativo (intervalo: %ss)", MONITOR_INTERVAL)
-    while not _monitor_stop.wait(MONITOR_INTERVAL):
+    # Primeiro ciclo logo após iniciar, para não exibir status antigos por um intervalo inteiro.
+    while True:
         try:
             executar_ciclo_monitoramento()
         except Exception:
             logger.exception("Erro no ciclo de monitoramento")
+        if _monitor_stop.wait(MONITOR_INTERVAL):
+            break
 
 @app.on_event("startup")
 def iniciar_monitoramento():
@@ -358,6 +391,11 @@ def descobrir_vizinhos(request: DiscoveryRequest, user: models.Usuario = Depends
 
 # --- FUNÇÃO DE PING (TCP + ICMP com medição de tempo) ---
 @app.get("/api/ping/{ip}")
+def ping_rota(ip: str, user: models.Usuario = Depends(get_current_user)):
+    # Exige login: sem isso qualquer pessoa usaria o servidor para varrer a rede interna.
+    return ping_equipamento(ip)
+
+
 def ping_equipamento(ip: str):
     try:
         # 1. Tenta conectar em portas comuns (TCP) e mede o tempo
@@ -396,11 +434,26 @@ class MapaSchema(BaseModel):
     equipamentos: List[EquipamentoCreate]
     conexoes: List[ConexaoCreate]
 
+def mesclar_config_snmp(eq, config_anterior_cifrada):
+    """O frontend nunca recebe as senhas SNMP de volta; senha vazia significa
+    "manter a atual". Mescla com a config anterior e devolve cifrado."""
+    config = eq.get('monitorConfig') or {}
+    if eq.get('monitorMode') != 'snmpv3':
+        return proteger_config(config) if config else None
+    anterior = abrir_config(config_anterior_cifrada)
+    mesclada = {**anterior, **{k: v for k, v in config.items() if v not in (None, "")}}
+    return proteger_config(mesclada)
+
+
 @app.post("/api/projetos/{projeto_id}/salvar")
 def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    projeto = crud.get_projeto(db, projeto_id, user.id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    configs_anteriores = {eq.id: eq.monitor_config for eq in projeto.equipamentos}
     eq_dict = [eq.dict() for eq in mapa.equipamentos]
     for eq in eq_dict:
-        eq['monitorConfig'] = proteger_config(eq.get('monitorConfig'))
+        eq['monitorConfig'] = mesclar_config_snmp(eq, configs_anteriores.get(eq['id']))
     conn_dict = [conn.dict() for conn in mapa.conexoes]
     result = crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict, user.id)
     if not result:
@@ -481,7 +534,31 @@ def historico_projeto(projeto_id: int, limite: int = 100, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     return [{
         "equipamento_id": item.equipamento_id,
+        "equipamento_nome": nome,
         "status": item.status,
         "tempo_ms": item.tempo_ms,
-        "criado_em": item.criado_em.isoformat() if item.criado_em else None,
-    } for item in historico]
+        "criado_em": iso_utc(item.criado_em),
+    } for item, nome in historico]
+
+
+@app.get("/api/projetos/{projeto_id}/status")
+def status_projeto(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    """Status atual de cada equipamento, mantido pelo monitor do backend.
+    O Editor consulta esta rota em vez de pingar cada equipamento."""
+    linhas = crud.get_status_projeto(db, projeto_id, user.id)
+    if linhas is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return {
+        "monitor_ativo": MONITOR_INTERVAL > 0,
+        "ultimo_ciclo": iso_utc(_ultimo_ciclo["fim"]),
+        "equipamentos": [{"id": eq_id, "status": status, "ping_time": ping} for eq_id, status, ping in linhas],
+    }
+
+
+@app.get("/api/projetos/{projeto_id}/disponibilidade")
+def disponibilidade_projeto(projeto_id: int, horas: int = 24, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    horas = max(1, min(horas, 24 * 90))
+    dados = crud.calcular_disponibilidade(db, projeto_id, user.id, horas)
+    if dados is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return {"horas": horas, "equipamentos": dados}

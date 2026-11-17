@@ -67,8 +67,23 @@ export const api = {
   },
 
   async ping(ip) {
-    const res = await fetch(`${API_URL}/ping/${encodeURIComponent(ip)}`);
+    const res = await fetch(`${API_URL}/ping/${encodeURIComponent(ip)}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Falha no teste de conexão');
     return res.json();
+  },
+
+  // Status atual dos equipamentos, mantido pelo monitor do backend.
+  async statusProjeto(projetoId) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/status`, { headers: getHeaders() });
+    if (!res.ok) throw new Error('Não foi possível obter o status dos equipamentos.');
+    return res.json();
+  },
+
+  async disponibilidadeProjeto(projetoId, horas = 24) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/disponibilidade?horas=${horas}`, { headers: getHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Não foi possível calcular a disponibilidade.');
+    return data;
   },
 
   async monitor(equipmentId, ip, mode = 'ip', config = null) {
