@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Maximize, Minimize } from 'lucide-react'
 import NetworkMap from '../components/NetworkMap'
 import { api } from '../services/api'
+import { equipamentosParaNodes, conexoesParaEdges } from '../utils/mapa'
 
 const REFRESH_MS = 10000
 
@@ -23,17 +24,8 @@ export default function SharedView() {
     try {
       const data = await api.obterMapaPublico(token)
       setProjectName(data.nome)
-      const formattedNodes = data.equipamentos.map(eq => ({
-        id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
-        style: { width: eq.width, height: eq.height },
-        data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time }
-      }))
-      const formattedEdges = data.conexoes.map(conn => ({
-        id: conn.id, source: conn.source, target: conn.target, label: conn.label,
-        sourceHandle: conn.source_handle, targetHandle: conn.target_handle,
-        type: 'smoothstep', animated: true, interactionWidth: 20,
-        style: { stroke: '#3b82f6', strokeWidth: 2.5 }, markerEnd: { type: 'arrowclosed', color: '#3b82f6' }
-      }))
+      const formattedNodes = equipamentosParaNodes(data.equipamentos)
+      const formattedEdges = conexoesParaEdges(data.conexoes)
       setMapNodes(formattedNodes)
       setMapEdges(formattedEdges)
       setUltimaAtualizacao(new Date())
@@ -69,6 +61,7 @@ export default function SharedView() {
 
   const handleMapUpdate = useCallback((nodes) => {
     const counts = nodes.reduce((acc, node) => {
+      if (node.type === 'rack') return acc
       if (node.data.status === 'online') acc.online++
       else if (node.data.status === 'offline') acc.offline++
       else if (node.data.status === 'visual') acc.visual++

@@ -42,6 +42,9 @@ with engine.begin() as connection:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_config VARCHAR")
     if "notificar" not in columns:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN notificar BOOLEAN NOT NULL DEFAULT 1")
+    for coluna, ddl in [("rack_id", "VARCHAR"), ("rack_u", "INTEGER"), ("altura_u", "INTEGER")]:
+        if coluna not in columns:
+            connection.exec_driver_sql(f"ALTER TABLE equipamentos ADD COLUMN {coluna} {ddl}")
     project_columns = _colunas("projetos")
     if "user_id" not in project_columns:
         connection.exec_driver_sql("ALTER TABLE projetos ADD COLUMN user_id INTEGER")
@@ -741,6 +744,7 @@ class EquipamentoCreate(BaseModel):
     pingTime: Optional[float] = None; posX: float; posY: float; width: float; height: float
     monitorMode: str = "ip"; monitorConfig: Optional[dict] = None
     notificar: bool = True
+    rackId: Optional[str] = None; rackU: Optional[int] = None; alturaU: Optional[int] = None
 
 
 class ConexaoCreate(BaseModel):
@@ -773,6 +777,9 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
     eq_dict = [eq.dict() for eq in mapa.equipamentos]
     for eq in eq_dict:
         eq['monitorConfig'] = mesclar_config_snmp(eq, configs_anteriores.get(eq['id']))
+    erro = crud.validar_racks(eq_dict)
+    if erro:
+        raise HTTPException(status_code=400, detail=erro)
     conn_dict = [conn.dict() for conn in mapa.conexoes]
     result = crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict)
     if not result:
@@ -785,6 +792,7 @@ class EquipamentoBase(BaseModel):
     ping_time: Optional[float] = None; pos_x: float; pos_y: float; width: float; height: float
     monitor_mode: str = "ip"; monitor_config: Optional[dict] = None
     notificar: bool = True
+    rack_id: Optional[str] = None; rack_u: Optional[int] = None; altura_u: Optional[int] = None
     class Config: from_attributes = True
 
 
@@ -806,7 +814,7 @@ def _obter_dados_projeto(projeto_id: int, db: Session, projeto, publico: bool = 
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).all()
     equipamentos = []
     for equipamento in projeto.equipamentos:
-        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar')}
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u')}
         config = abrir_config(equipamento.monitor_config)
         item['monitor_config'] = {} if publico else {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
         equipamentos.append(item)

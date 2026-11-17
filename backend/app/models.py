@@ -51,6 +51,12 @@ class Equipamento(Base):
     monitor_config = Column(String, nullable=True)
     # Envia alertas (e-mail/Telegram/webhook) quando este equipamento cai ou volta.
     notificar = Column(Boolean, default=True, nullable=False)
+    # Racks: um rack é um equipamento com tipo "Rack" (altura_u = tamanho do rack).
+    # Equipamentos montados apontam para o rack em rack_id, ocupando de rack_u
+    # (U mais baixo, contando de baixo para cima como nos racks reais) até rack_u + altura_u - 1.
+    rack_id = Column(String, nullable=True, index=True)
+    rack_u = Column(Integer, nullable=True)
+    altura_u = Column(Integer, nullable=True)
     projeto = relationship("Projeto", back_populates="equipamentos")
 
 
