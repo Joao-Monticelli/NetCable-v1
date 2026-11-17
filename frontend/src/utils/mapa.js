@@ -33,6 +33,8 @@ export function conexoesParaEdges(conexoes) {
     sourceHandle: conn.source_handle, targetHandle: conn.target_handle,
     type: 'smoothstep', animated: true, interactionWidth: 20,
     style: { stroke: '#3b82f6', strokeWidth: 2.5 }, markerEnd: { type: 'arrowclosed', color: '#3b82f6' },
+    // Mesmo estilo de rótulo usado ao editar o cabo (antes, ao recarregar, o fundo ficava branco).
+    labelStyle: { fill: 'white', fontWeight: 'bold' }, labelBgStyle: { fill: '#1e293b' },
   }))
 }
 
