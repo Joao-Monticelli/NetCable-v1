@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Maximize, Minimize } from 'lucide-react'
+import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Maximize, Minimize, Cable, Unplug } from 'lucide-react'
 import NetworkMap from '../components/NetworkMap'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges } from '../utils/mapa'
+import BuscaEquipamento from '../components/BuscaEquipamento'
+import { usePreferenciaCabos, useResumoMapa } from '../components/visaoMapa'
 import { t, useI18n, SeletorIdioma } from '../i18n'
 
 const REFRESH_MS = 10000
@@ -14,6 +16,9 @@ export default function SharedView() {
   const [projectName, setProjectName] = useState(() => t('Carregando...'))
   const [mapNodes, setMapNodes] = useState([])
   const [modelos, setModelos] = useState([])
+  const [mostrarCabos, alternarCabos] = usePreferenciaCabos()
+  const { itens: itensBusca, cabosPorta, atualizar: atualizarResumo } = useResumoMapa()
+  const [foco, setFoco] = useState(null)
   const [mapEdges, setMapEdges] = useState([])
   const [stats, setStats] = useState({ online: 0, offline: 0, visual: 0 })
   const [isLoading, setIsLoading] = useState(true)
@@ -63,7 +68,8 @@ export default function SharedView() {
     else document.documentElement.requestFullscreen?.().catch(() => {})
   }
 
-  const handleMapUpdate = useCallback((nodes) => {
+  const handleMapUpdate = useCallback((nodes, edges) => {
+    atualizarResumo(nodes, edges)
     const counts = nodes.reduce((acc, node) => {
       if (node.type === 'rack') return acc
       if (node.data.status === 'online') acc.online++
@@ -72,7 +78,7 @@ export default function SharedView() {
       return acc
     }, { online: 0, offline: 0, visual: 0 })
     setStats(counts)
-  }, [])
+  }, [atualizarResumo])
 
   if (isLoading) return (
     <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0f172a' }}>
@@ -106,6 +112,13 @@ export default function SharedView() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><XCircle size={16} color="#ef4444" /> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{stats.offline}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><MinusCircle size={16} color="#64748b" /> <span style={{ color: '#64748b', fontWeight: 'bold' }}>{stats.visual}</span></div>
           </div>
+          <BuscaEquipamento itens={itensBusca} onEscolher={(id) => setFoco({ id, n: Date.now() })} />
+
+          <button onClick={alternarCabos} title={mostrarCabos ? t('Ocultar cabos entre portas') : t('Mostrar cabos entre portas')} aria-pressed={!mostrarCabos}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: mostrarCabos ? '#334155' : '#7c2d12', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+            {mostrarCabos ? <Cable size={18} /> : <Unplug size={18} />}
+            {cabosPorta > 0 && <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{cabosPorta}</span>}
+          </button>
           <SeletorIdioma compacto />
           <button onClick={alternarTelaCheia} title={telaCheia ? t('Sair da tela cheia') : t('Tela cheia (TV / NOC)')} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
             {telaCheia ? <Minimize size={18} /> : <Maximize size={18} />}
@@ -113,7 +126,7 @@ export default function SharedView() {
         </div>
       </div>
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} onMapUpdate={handleMapUpdate} readOnly={true} monitor={false} modelos={modelos} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} onMapUpdate={handleMapUpdate} readOnly={true} monitor={false} modelos={modelos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>
     </div>
   )

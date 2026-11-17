@@ -77,7 +77,7 @@ const calcularCorConexao = (sourceNode, targetNode) => {
 
 // readOnly: trava a edição e esconde os pontos de conexão (modo visualização / TV).
 // monitor: consulta o status mantido pelo backend (requer login e projectId). A página pública passa false.
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true, mostrarCabosPorta = true, foco = null }) {
   const mapaModelos = useMemo(() => new Map(modelos.map(m => [m.id, m])), [modelos])
   const alturaDoEquipamento = (data) => mapaModelos.get(data.modeloId)?.altura_u || alturaPadrao(data.tipo)
   const [nodes, setNodes] = useState(initialNodes)
@@ -85,7 +85,9 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const [selectedNode, setSelectedNode] = useState(null)
   const [selectedEdge, setSelectedEdge] = useState(null)
   
-  const { screenToFlowPosition, getViewport } = useReactFlow()
+  const { screenToFlowPosition, getViewport, fitView } = useReactFlow()
+  const [hoverId, setHoverId] = useState(null)   // equipamento sob o mouse (destaca seus cabos)
+  const [destaqueId, setDestaqueId] = useState(null) // equipamento escolhido na busca (pisca)
   const statusAnterior = useRef({}) // Guarda o status anterior para saber se caiu
   const nodesRef = useRef(initialNodes)
   const monitoringRef = useRef(false)
@@ -316,8 +318,54 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     }, eds))
   }, [nodes, edges, readOnly, mapaModelos])
 
+  // Busca: centraliza o equipamento escolhido e faz ele piscar.
+  useEffect(() => {
+    if (!foco?.id) return
+    fitView({ nodes: [{ id: foco.id }], duration: 600, maxZoom: 1.6, padding: 0.8 })
+    setDestaqueId(foco.id)
+    const fim = setTimeout(() => setDestaqueId(null), 2600)
+    return () => clearTimeout(fim)
+  }, [foco, fitView])
+
+  // O que é desenhado (sem alterar o mapa salvo):
+  // - cabos entre portas podem ser ocultados pelo botão da barra superior;
+  // - passar o mouse num equipamento acende os cabos dele (e revela os ocultos) e esmaece o resto.
+  const vizinhos = useMemo(() => {
+    if (!hoverId) return null
+    const set = new Set([hoverId])
+    for (const e of edges) { if (e.source === hoverId) set.add(e.target); if (e.target === hoverId) set.add(e.source) }
+    return set
+  }, [hoverId, edges])
+
+  const edgesExibidas = useMemo(() => edges.map(e => {
+    const ligado = hoverId && (e.source === hoverId || e.target === hoverId)
+    const ehCaboPorta = ehPorta(e.sourceHandle) || ehPorta(e.targetHandle)
+    let ne = e
+    if (ehCaboPorta && !mostrarCabosPorta && !ligado) ne = { ...ne, hidden: true }
+    if (hoverId) {
+      const op = ligado ? 1 : 0.12
+      ne = { ...ne, zIndex: ligado ? 6 : ne.zIndex, animated: ligado || ne.animated,
+        style: { ...ne.style, opacity: op, strokeWidth: ligado ? 3.5 : (ne.style?.strokeWidth || 2.5) },
+        labelStyle: { ...(ne.labelStyle || {}), opacity: op }, labelBgStyle: { ...(ne.labelBgStyle || {}), opacity: op } }
+    }
+    return ne
+  }), [edges, mostrarCabosPorta, hoverId])
+
+  const nodesExibidos = useMemo(() => {
+    if (!vizinhos && !destaqueId) return nodes
+    return nodes.map(n => {
+      const classes = []
+      if (vizinhos && n.type !== 'rack' && !vizinhos.has(n.id)) classes.push('no-esmaecido')
+      if (n.id === destaqueId) classes.push('no-destaque')
+      return classes.length ? { ...n, className: classes.join(' ') } : n
+    })
+  }, [nodes, vizinhos, destaqueId])
+
+  const onNodeMouseEnter = useCallback((event, node) => { if (node.type !== 'rack') setHoverId(node.id) }, [])
+  const onNodeMouseLeave = useCallback(() => setHoverId(null), [])
+
   const onNodeClick = (event, node) => { if (!readOnly) setSelectedNode(node) }
-  const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edge) }
+  const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edges.find(e => e.id === edge.id) || edge) }
   const onReconnect = useCallback((oldEdge, newConnection) => { if (!readOnly) setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds)) }, [readOnly])
   
   const onEdgeMouseEnter = (event, edge) => !readOnly && setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 4 } } : e))
@@ -374,7 +422,8 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     <ModelosContext.Provider value={mapaModelos}>
       <ReactFlow
         className={readOnly ? 'netmap-readonly' : ''}
-        nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+        nodes={nodesExibidos} edges={edgesExibidas} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+        onNodeMouseEnter={onNodeMouseEnter} onNodeMouseLeave={onNodeMouseLeave}
         defaultEdgeOptions={defaultEdgeOptions} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}

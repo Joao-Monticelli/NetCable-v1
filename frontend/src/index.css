@@ -50,3 +50,9 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 
 /* Ícone discreto quando o equipamento está com notificações desligadas */
 .node-sem-alerta { position: absolute; top: 8px; right: 28px; color: #64748b; display: flex; }
+
+/* Destaque ao passar o mouse: equipamentos sem ligação com o apontado ficam apagados */
+.react-flow__node.no-esmaecido { opacity: .35; transition: opacity .15s; }
+/* Equipamento encontrado pela busca: pisca algumas vezes */
+.react-flow__node.no-destaque > * { animation: pisca-destaque .65s ease-in-out 4; }
+@keyframes pisca-destaque { 50% { box-shadow: 0 0 0 4px #fbbf24, 0 0 22px #fbbf24; } }

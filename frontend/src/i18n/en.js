@@ -2,6 +2,9 @@
 // Gerado a partir das chaves encontradas em src/ (veja t('...')).
 const en = {
   "NetCable - Mapeador de Rede": "NetCable - Network Mapper",
+  "Buscar equipamento (Ctrl+K)": "Search device (Ctrl+K)",
+  "Buscar nome ou IP…": "Search name or IP…",
+  "Nenhum equipamento encontrado": "No device found",
   "Gráfico de latência ao longo do tempo": "Latency over time chart",
   "Offline": "Offline",
   "Sem medição": "No measurement",
@@ -280,6 +283,8 @@ const en = {
   "Sem alertas": "No alerts",
   "Seu usuário é Visualizador: peça a um administrador para mudar o papel se precisar editar.": "Your user is a Viewer: ask an administrator to change your role if you need to edit.",
   "Somente visualização": "View only",
+  "Ocultar cabos entre portas": "Hide port-to-port cables",
+  "Mostrar cabos entre portas": "Show port-to-port cables",
   "Voltar ao modo edição": "Back to edit mode",
   "Modo visualização (somente leitura)": "View mode (read-only)",
   "Importar JSON": "Import JSON",
