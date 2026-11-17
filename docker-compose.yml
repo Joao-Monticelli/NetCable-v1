@@ -5,17 +5,30 @@ services:
     restart: unless-stopped
     # A porta fica disponível apenas na rede interna do Compose.
     volumes:
-      - /mnt/ssd-apps/vm/netcable:/app/data
+      # Pasta onde o banco SQLite é salvo. Troque por um caminho absoluto se preferir
+      # (ex.: /mnt/pool/apps/netcable:/app/data).
+      - ./data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=altere_esta_senha
       - SECRET_KEY=altere_esta_chave_por_uma_string_longa_e_aleatoria
       - ALLOWED_ORIGINS=http://localhost
-      # Opcional: URL que receberá alertas quando um equipamento ficar offline.
+
+      # --- Monitoramento (opcional) ---
+      # Intervalo (s) entre verificações feitas pelo servidor. 0 desativa.
+      # - MONITOR_INTERVAL=15
+      # Falhas seguidas antes de marcar um equipamento como offline (evita alarme falso).
+      # - MONITOR_FAILURE_THRESHOLD=2
+      # Dias de histórico mantidos no banco. 0 mantém para sempre.
+      # - HISTORY_RETENTION_DAYS=30
+
+      # --- Alertas de queda/recuperação (opcional) ---
+      # Telegram: crie um bot com o @BotFather e descubra o chat_id do seu grupo/conversa.
+      # - TELEGRAM_BOT_TOKEN=123456:ABC...
+      # - TELEGRAM_CHAT_ID=-1001234567890
+      # Webhook genérico (recebe um POST JSON a cada mudança de status):
       # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
-      # Opcional: intervalo (s) do monitoramento em segundo plano. 0 desativa.
-      # - MONITOR_INTERVAL=30
 
   frontend:
     image: ghcr.io/joao-monticelli/netcable-frontend:latest
@@ -24,4 +37,5 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy

@@ -23,9 +23,11 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 🎨 Mapeamento visual — crie diagramas de rede arrastando ícones e puxando linhas (cabos)
 
-📡 Monitoramento inteligente — testa cada equipamento usando TCP (portas 80, 443, 22) e ICMP (ping)
+📡 Monitoramento contínuo no servidor — testa cada equipamento via TCP (portas 80, 443, 22), ICMP (ping) ou SNMPv3, mesmo sem nenhum navegador aberto
 
-🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo) e alerta sonoro
+🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo), alerta sonoro e notificações no **Telegram** ou webhook (queda e recuperação)
+
+📊 Disponibilidade — uptime %, quantidade de quedas e latência média por equipamento (24 h / 7 dias / 30 dias)
 
 🔗 Link público — compartilhe o diagrama em modo somente leitura, com link secreto revogável e atualização automática
 
@@ -35,7 +37,25 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 ## 🔧 Atualizações recentes
 
-✅ **Monitoramento em segundo plano no backend** — o status dos equipamentos é atualizado no servidor mesmo sem nenhum navegador aberto (intervalo configurável por `MONITOR_INTERVAL`, padrão 30 s; `0` desativa).
+✅ **Monitoramento centralizado** — o servidor verifica todos os equipamentos (padrão a cada 15 s, `MONITOR_INTERVAL`) e o editor apenas lê o resultado. Antes, cada navegador aberto pingava todos os equipamentos a cada 5 s.
+
+✅ **Menos alarmes falsos** — um equipamento só é marcado offline após 2 falhas seguidas (`MONITOR_FAILURE_THRESHOLD`).
+
+✅ **Alertas no Telegram** — configure `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` e receba avisos de queda e de recuperação. O webhook (`ALERT_WEBHOOK_URL`) também passou a avisar a recuperação.
+
+✅ **Relatório de disponibilidade** — no menu ⚙️ → Histórico: uptime %, quedas e latência média por equipamento; a aba de eventos agora mostra o nome do equipamento e o horário no fuso correto.
+
+✅ **Histórico com retenção** — registros mais antigos que `HISTORY_RETENTION_DAYS` (padrão 30) são apagados automaticamente; excluir um projeto também apaga o histórico dele.
+
+✅ **Aviso de alterações não salvas** — o botão Salvar fica laranja quando há mudanças, o navegador avisa antes de sair e `Ctrl+S` salva o mapa.
+
+✅ **Painel de projetos** — cada projeto mostra quantos equipamentos estão online/offline e se tem link público ativo.
+
+✅ **Docker mais robusto** — healthcheck no backend, frontend só sobe depois da API estar saudável, build com Node 20 e `.dockerignore` (a imagem não leva mais banco local nem venv).
+
+✅ **Correção (segurança): `/api/ping` exigia login** — antes qualquer pessoa com acesso ao NetCable podia usá-lo para varrer portas da rede interna.
+
+✅ **Correção: salvar mapa com equipamento SNMPv3** — retornava erro 500; as senhas SNMP existentes agora são preservadas ao salvar.
 
 ✅ **Modo visualização (somente leitura)** — botão no editor que esconde os pontos de conexão e bloqueia edições, ideal para telas de NOC.
 
@@ -115,8 +135,7 @@ Infraestrutura: Docker, Docker Compose, GitHub Actions, GitHub Container Registr
 O projeto está em beta e as seguintes melhorias estão planejadas:
 
 □ Suporte a múltiplos usuários e permissões
-□ Histórico de status dos dispositivos (uptime/downtime)
-□ Notificações externas (e-mail, webhook, Telegram/Discord)
+□ Notificações por e-mail e Discord
 □ Suporte a PostgreSQL como alternativa ao SQLite
 □ Testes automatizados (backend e frontend)
 □ Documentação de API (OpenAPI/Swagger)

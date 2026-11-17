@@ -30,6 +30,15 @@ export default function DiagnosticsModal({ onClose }) {
         <Status ok={data.snmp?.installed}>PySNMP: {data.snmp?.status}{data.snmp?.detail ? ` — ${data.snmp.detail}` : ''}</Status>
         <Status ok={data.security?.secret_key_configured}>Chave JWT: {data.security?.secret_key_configured ? 'configurada' : 'padrão de desenvolvimento'}</Status>
         <Status ok={!data.security?.default_admin_password}>Senha administrativa: {data.security?.default_admin_password ? 'altere imediatamente' : 'personalizada'}</Status>
+        <Status ok={data.monitor?.enabled}>
+          Monitor no servidor: {data.monitor?.enabled
+            ? `a cada ${data.monitor.interval}s · ${data.monitor.equipments} equipamento(s)${data.monitor.last_cycle ? ` · último ciclo ${new Date(data.monitor.last_cycle).toLocaleTimeString()} (${data.monitor.last_cycle_seconds}s)` : ' · aguardando 1º ciclo'}`
+            : 'desativado (MONITOR_INTERVAL=0)'}
+        </Status>
+        <Status ok={data.alerts?.telegram || data.alerts?.webhook}>
+          Alertas: {[data.alerts?.telegram && 'Telegram', data.alerts?.webhook && 'Webhook'].filter(Boolean).join(' + ') || 'nenhum canal configurado (TELEGRAM_BOT_TOKEN / ALERT_WEBHOOK_URL)'}
+        </Status>
+        <div style={{ color: '#94a3b8', fontSize: '12px' }}>Histórico mantido por: {data.history_retention_days ? `${data.history_retention_days} dias` : 'tempo indeterminado'}</div>
         <div style={{ color: '#94a3b8', fontSize: '12px' }}>Versão da API: {data.version || 'desconhecida'}</div>
         <div style={{ color: '#94a3b8', fontSize: '12px', wordBreak: 'break-all' }}>Banco: {data.database_path}</div>
       </div>}

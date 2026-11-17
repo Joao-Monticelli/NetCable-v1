@@ -63,8 +63,8 @@ const calcularCorConexao = (sourceNode, targetNode) => {
 }
 
 // readOnly: trava a edição e esconde os pontos de conexão (modo visualização / TV).
-// monitor: faz os pings pelo frontend (requer login). A página pública passa false.
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true }) {
+// monitor: consulta o status mantido pelo backend (requer login e projectId). A página pública passa false.
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true, projectId = null }) {
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -134,56 +134,52 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     }
   }, [newEquipment, screenToFlowPosition, getViewport, readOnly])
 
-  // Monitoramento Contínuo (Frontend) e Alerta
+  // Status em tempo real: o backend monitora todos os equipamentos em segundo
+  // plano; aqui só lemos o resultado (uma requisição leve a cada 5s, em vez de
+  // um ping por equipamento a partir do navegador).
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const currentNodes = nodesRef.current
-      if (currentNodes.length === 0 || !monitor || monitoringRef.current) return
+    if (!monitor || !projectId || projectId === 'novo') return
+    let ativo = true
+    const atualizar = async () => {
+      if (monitoringRef.current) return
       monitoringRef.current = true
-
-      const pingPromises = currentNodes.map(async (node) => {
-        if (node.data.monitorMode === 'visual' || node.data.status === 'visual' || node.data.ip === 'Sem IP') return null
-        try {
-          const data = await api.monitor(node.id, node.data.ip, node.data.monitorMode || 'ip', node.data.snmpConfig)
-          return { id: node.id, nome: node.data.label, status: data.status, pingTime: data.tempo_ms }
-        } catch (error) { 
-          return { id: node.id, nome: node.data.label, status: 'offline', pingTime: null }
+      try {
+        const { equipamentos = [] } = await api.statusProjeto(projectId)
+        if (!ativo) return
+        const porId = new Map(equipamentos.map(e => [e.id, e]))
+        // Detecta quedas fora do updater do setState (que deve ser puro).
+        const quedas = []
+        for (const node of nodesRef.current) {
+          const atual = porId.get(node.id)
+          if (!atual) continue
+          if (statusAnterior.current[node.id] === 'online' && atual.status === 'offline') quedas.push(node.data.label)
+          statusAnterior.current[node.id] = atual.status
         }
-      })
-
-      const results = await Promise.all(pingPromises)
-
-      setNodes((currentNodes) => 
-        currentNodes.map(node => {
-          const result = results.find(r => r && r.id === node.id)
-          
-          if (result) {
-            // VERIFICA SE CAIU (Estava online, agora está offline)
-            if (statusAnterior.current[node.id] === 'online' && result.status === 'offline') {
-              // Toca o som
-              const audio = new Audio('/alert.mp3') // Vamos precisar de um mp3
-              audio.play().catch(e => console.log("Navegador bloqueou o som. Interaja com a página primeiro."))
-              
-              // Avisa o Editor para piscar o header
-              if (onAlertaQueda) onAlertaQueda(`O equipamento ${result.nome} caiu!`)
-            }
-            
-            // Atualiza a referência
-            statusAnterior.current[node.id] = result.status
-
-            if (result.status !== node.data.status) {
-              return { ...node, data: { ...node.data, status: result.status, pingTime: result.pingTime } }
-            }
-            return { ...node, data: { ...node.data, pingTime: result.pingTime } }
-          }
-          return node
+        setNodes((currentNodes) => {
+          let mudou = false
+          const proximos = currentNodes.map(node => {
+            const atual = porId.get(node.id)
+            if (!atual) return node // equipamento ainda não salvo
+            if (atual.status === node.data.status && atual.ping_time === node.data.pingTime) return node
+            mudou = true
+            return { ...node, data: { ...node.data, status: atual.status, pingTime: atual.ping_time } }
+          })
+          return mudou ? proximos : currentNodes
         })
-      )
-      monitoringRef.current = false
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [onAlertaQueda, monitor])
+        if (quedas.length) {
+          new Audio('/alert.mp3').play().catch(() => console.log("Navegador bloqueou o som. Interaja com a página primeiro."))
+          if (onAlertaQueda) onAlertaQueda(quedas.length === 1 ? `O equipamento ${quedas[0]} caiu!` : `${quedas.length} equipamentos caíram: ${quedas.join(', ')}`)
+        }
+      } catch (error) {
+        console.warn(error.message)
+      } finally {
+        monitoringRef.current = false
+      }
+    }
+    atualizar()
+    const interval = setInterval(atualizar, 5000)
+    return () => { ativo = false; clearInterval(interval) }
+  }, [onAlertaQueda, monitor, projectId])
 
   // Ao entrar no modo visualização, limpa seleção e fecha modais abertos.
   useEffect(() => {

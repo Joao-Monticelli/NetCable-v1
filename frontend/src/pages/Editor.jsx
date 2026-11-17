@@ -9,6 +9,15 @@ import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import HistoryModal from '../components/Modals/HistoryModal'
 import { api } from '../services/api'
 
+const TITULO_PAGINA = 'NetCable - Mapeador de Rede'
+
+// Assinatura do que é salvo no mapa (sem status/latência, que mudam sozinhos).
+const assinaturaMapa = (nodes, edges) => JSON.stringify([
+  nodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y), n.style?.width, n.style?.height,
+    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null]),
+  edges.map(e => [e.id, e.source, e.target, e.label || null, e.sourceHandle || null, e.targetHandle || null]),
+])
+
 export default function Editor() {
   const navigate = useNavigate()
   const { projectId } = useParams()
@@ -38,6 +47,24 @@ export default function Editor() {
   const currentEdges = useRef([])
   const fileInputRef = useRef(null)
 
+  // Controle de alterações não salvas.
+  const [mapaAlterado, setMapaAlterado] = useState(false)
+  const baselineRef = useRef(null)
+  const nomeSalvoRef = useRef(projectId === 'novo' ? 'Novo Mapa' : null)
+  const haAlteracoes = mapaAlterado || (nomeSalvoRef.current !== null && projectName !== nomeSalvoRef.current)
+
+  useEffect(() => {
+    if (!haAlteracoes) return
+    const avisar = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', avisar)
+    return () => window.removeEventListener('beforeunload', avisar)
+  }, [haAlteracoes])
+
+  const sairDoEditor = () => {
+    if (haAlteracoes && !window.confirm('Existem alterações não salvas. Sair mesmo assim?')) return
+    navigate('/projects')
+  }
+
   useEffect(() => {
     const fetchMe = async () => {
       try {
@@ -53,6 +80,8 @@ export default function Editor() {
       try {
         const data = await api.obterProjeto(projectId)
         setProjectName(data.nome)
+        nomeSalvoRef.current = data.nome
+        baselineRef.current = null // a próxima atualização do mapa vira a referência
         const formattedNodes = data.equipamentos.map(eq => ({
           id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
           style: { width: eq.width, height: eq.height },
@@ -79,6 +108,9 @@ export default function Editor() {
   const handleMapUpdate = useCallback((nodes, edges) => {
     currentNodes.current = nodes
     currentEdges.current = edges
+    const assinatura = assinaturaMapa(nodes, edges)
+    if (baselineRef.current === null) baselineRef.current = assinatura
+    setMapaAlterado(assinatura !== baselineRef.current)
     const counts = nodes.reduce((acc, node) => {
       if (node.data.status === 'online') acc.online++
       else if (node.data.status === 'offline') acc.offline++
@@ -96,12 +128,12 @@ export default function Editor() {
     // Piscar o título da aba do navegador
     let isOriginalTitle = false;
     const interval = setInterval(() => {
-      document.title = isOriginalTitle ? '⚠️ QUEDA DETECTADA ⚠️' : 'NetCable';
+      document.title = isOriginalTitle ? '⚠️ QUEDA DETECTADA ⚠️' : TITULO_PAGINA;
       isOriginalTitle = !isOriginalTitle;
     }, 1000);
     
-    // Para de piscar depois de 10 segundos
-    setTimeout(() => clearInterval(interval), 10000);
+    // Para de piscar depois de 10 segundos e restaura o título.
+    setTimeout(() => { clearInterval(interval); document.title = TITULO_PAGINA }, 10000);
     
     // Remove o alerta visual após 10 segundos
     setTimeout(() => setTemAlerta(false), 10000)
@@ -130,11 +162,25 @@ export default function Editor() {
       }
       const ok = await api.salvarMapa(idParaSalvar, equipamentosFormatados, conexoesFormatadas)
       if (ok) {
+        baselineRef.current = assinaturaMapa(currentNodes.current, currentEdges.current)
+        nomeSalvoRef.current = projectName
+        setMapaAlterado(false)
         toast.success('Projeto salvo com sucesso!')
         if (projectId === 'novo') navigate(`/editor/${idParaSalvar}`, { replace: true })
       }
     } catch (error) { toast.error('Erro ao salvar o projeto.') } finally { setIsSaving(false) }
   }
+
+  // Atalho Ctrl+S / Cmd+S para salvar (ref evita registrar o listener a cada render).
+  const salvarRef = useRef(handleSaveProject)
+  salvarRef.current = handleSaveProject
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); salvarRef.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // navigator.clipboard só existe em contexto seguro (HTTPS ou localhost).
   // Em homelab acessado via http://IP ele é undefined, então usamos fallbacks.
@@ -241,7 +287,7 @@ export default function Editor() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', padding: '10px 20px', borderBottom: '1px solid #334155' }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <button onClick={() => navigate('/projects')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <button onClick={sairDoEditor} title="Voltar aos projetos" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <ArrowLeft size={20} />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -281,8 +327,8 @@ export default function Editor() {
             </button>
           )}
           
-          <button onClick={handleSaveProject} disabled={isSaving} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
-            {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : 'Salvar'}
+          <button onClick={handleSaveProject} disabled={isSaving} title={haAlteracoes ? 'Há alterações não salvas (Ctrl+S)' : 'Tudo salvo (Ctrl+S)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : (haAlteracoes ? '#f59e0b' : '#10b981'), color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
+            {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : (haAlteracoes ? 'Salvar *' : 'Salvar')}
           </button>
           
           <div style={{ position: 'relative' }}>
@@ -320,7 +366,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={modoVisualizacao} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={modoVisualizacao} projectId={projectId} />
       </div>
 
       {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}

@@ -42,9 +42,11 @@ export default function SettingsModal({ onClose, currentUser }) {
           </div>
 
           {/* OPÇÕES EM BREVE */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: 0.6, padding: '10px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
-            <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}><Send size={14}/> Alertas via Telegram</span>
-            <span style={{ fontSize: '10px', backgroundColor: '#ef4444', color: 'white', padding: '2px 6px', borderRadius: '10px', fontWeight: 'bold' }}>EM BREVE</span>
+          <div style={{ padding: '10px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}><Send size={14}/> Alertas via Telegram / Webhook</span>
+            <span style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4 }}>
+              Configure <code>TELEGRAM_BOT_TOKEN</code> e <code>TELEGRAM_CHAT_ID</code> (ou <code>ALERT_WEBHOOK_URL</code>) no docker-compose. Veja o status em ⚙️ → Diagnóstico.
+            </span>
           </div>
 
           <div style={{ height: '1px', backgroundColor: '#334155', margin: '10px 0' }}></div>

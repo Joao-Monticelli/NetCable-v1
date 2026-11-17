@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog } from 'lucide-react'
+import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import SettingsModal from '../components/Modals/SettingsModal'
@@ -18,7 +18,7 @@ export default function Projects() {
   const fetchProjetos = async () => {
     try {
       const data = await api.listarProjetos()
-      setProjetos(data)
+      setProjetos(Array.isArray(data) ? data : [])
     } catch (error) {
       if (error.message === 'Não autorizado') {
         api.logout(); navigate('/');
@@ -30,7 +30,9 @@ export default function Projects() {
 
   useEffect(() => {
     fetchProjetos()
-    
+    // Mantém os contadores online/offline atualizados enquanto a tela estiver aberta.
+    const interval = setInterval(fetchProjetos, 15000)
+
     // Busca os dados do usuário logado para preencher o Modal de Perfil
     const fetchMe = async () => {
       try {
@@ -38,6 +40,7 @@ export default function Projects() {
       } catch (error) { console.error(error) }
     }
     fetchMe()
+    return () => clearInterval(interval)
   }, [])
 
   const handleDeleteProject = async (e, id, nome) => {
@@ -115,7 +118,12 @@ export default function Projects() {
                 </div>
                 <button onClick={(e) => handleDeleteProject(e, proj.id, proj.nome)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '5px' }}><Trash2 size={18} /></button>
               </div>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>ID: {proj.id}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px' }}>
+                <span title="Online" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981' }}><CheckCircle2 size={15} /> {proj.online ?? 0}</span>
+                <span title="Offline" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: proj.offline ? '#ef4444' : '#64748b', fontWeight: proj.offline ? 'bold' : 'normal' }}><XCircle size={15} /> {proj.offline ?? 0}</span>
+                <span title="Somente visual" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}><MinusCircle size={15} /> {proj.visual ?? 0}</span>
+                {proj.compartilhado && <span title="Link público ativo" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px', color: '#3b82f6', fontSize: '12px' }}><Share2 size={14} /> público</span>}
+              </div>
             </div>
           ))}
         </div>
