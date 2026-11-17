@@ -3,11 +3,13 @@ import { Handle, Position, useStore, useUpdateNodeInternals } from 'reactflow'
 import { Server, BellOff, Activity } from 'lucide-react'
 import { U_PX, portasDoEquipamento, nomePortaRj45, nomePortaSfp, nomeDaPorta } from './rackUtils'
 import { useModelos } from './ModelosContext'
+import { t, useI18n } from '../../i18n'
 
 // ---------------------------------------------------------------------------
 // Gabinete do rack (vista frontal): cabeçalho, trilhos numerados e vão interno.
 // ---------------------------------------------------------------------------
 export const RackNode = memo(({ data, selected }) => {
+  useI18n()
   const us = data.us || 12
   const numeros = Array.from({ length: us }, (_, i) => us - i) // de cima (U mais alto) para baixo
   const trilho = (lado) => (
@@ -47,7 +49,7 @@ const estiloHandlePorta = { top: 0, left: 0, width: '100%', height: '100%', tran
 
 function Porta({ id, nome, classe, linhaSuperior, online, uso, conectavel, piscar }) {
   const ligada = !!uso
-  const titulo = uso ? `${nome} → ${uso}` : `${nome} (livre)`
+  const titulo = uso ? `${nome} → ${uso}` : `${nome} (${t('livre')})`
   return (
     <span className={`${classe} ${ligada ? 'em-uso' : ''}`} title={titulo}>
       <i className={(online && (ligada || piscar)) ? 'led-porta on' : 'led-porta'} />
@@ -116,7 +118,7 @@ function Face({ data, info, usos, conectavel }) {
     case 'Patch Panel':
       return portas
     case 'Roteador':
-      return <div className="face-linha">{portas}<span className="face-rotulo">CONSOLE</span></div>
+      return <div className="face-linha">{portas}<span className="face-rotulo">{t('CONSOLE')}</span></div>
     case 'Firewall':
       return (
         <div className="face-linha">
@@ -142,7 +144,7 @@ function Face({ data, info, usos, conectavel }) {
     case 'Nobreak':
       return (
         <div className="face-linha">
-          <div className="face-lcd face-lcd-grande">{status === 'online' ? 'ON-LINE  100%' : status === 'offline' ? 'SEM COMUNICAÇÃO' : 'NOBREAK'}</div>
+          <div className="face-lcd face-lcd-grande">{status === 'online' ? 'ON-LINE  100%' : status === 'offline' ? t('SEM COMUNICAÇÃO') : t('NOBREAK')}</div>
           {temPortas ? portas : <Ventilacao />}
         </div>
       )
@@ -172,7 +174,7 @@ function Frente({ data, info, usos, conectavel }) {
           <div className="rack-equip-textos">
             <div className="rack-equip-nome">{data.label}</div>
             <div className="rack-equip-ip">
-              <span className="rack-equip-ip-texto">{passivo ? (data.modeloNome || data.tipo) : data.ip}</span>
+              <span className="rack-equip-ip-texto">{passivo ? (data.modeloNome || t(data.tipo)) : data.ip}</span>
               {online && data.pingTime != null && <span className="rack-equip-ping"><Activity size={8} /> {data.pingTime}ms</span>}
             </div>
           </div>
@@ -203,6 +205,7 @@ const handleOculto = { opacity: 0, pointerEvents: 'none', width: 6, height: 6 }
 const handleLateral = { background: '#3b82f6', width: 10, height: 10 }
 
 export const RackDeviceNode = memo(({ id, data, selected, isConnectable }) => {
+  useI18n()
   const modelos = useModelos()
   const modelo = modelos.get(data.modeloId)
   const info = portasDoEquipamento(data, modelo)

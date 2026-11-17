@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react'
 import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network, Bell, BellOff } from 'lucide-react'
 import { api } from '../../services/api'
 import { TIPOS, TIPOS_PASSIVOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre } from '../rack/rackUtils'
+import { t, useI18n } from '../../i18n'
 
-const resumoModelo = (m) => [m.portas_rj45 && `${m.portas_rj45}× RJ45`, m.portas_sfp && `${m.portas_sfp}× SFP`].filter(Boolean).join(' + ') || 'sem portas'
+const resumoModelo = (m) => [m.portas_rj45 && `${m.portas_rj45}× RJ45`, m.portas_sfp && `${m.portas_sfp}× SFP`].filter(Boolean).join(' + ') || t('sem portas')
 const faixaU = (u, a) => a > 1 ? `U${u}–U${u + a - 1}` : `U${u}`
 
 export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, nodes = [], modelos = [] }) {
+  useI18n()
   const [modeloId, setModeloId] = useState('')
   const modelo = modelos.find(m => m.id === Number(modeloId))
   const [nome, setNome] = useState('')
@@ -21,7 +23,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
   const [discoveryError, setDiscoveryError] = useState('')
   const [isDiscovering, setIsDiscovering] = useState(false)
   
-  const [tipos, setTipos] = useState([{ value: 'Rack', rotulo: 'Rack (gabinete)' }, ...TIPOS.map(t => ({ value: t }))])
+  const [tipos, setTipos] = useState([{ value: 'Rack', rotulo: 'Rack (gabinete)' }, ...TIPOS.map(tp => ({ value: tp }))])
   const isRack = tipo === 'Rack'
   const [rackUs, setRackUs] = useState(12)
 
@@ -48,11 +50,11 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
     if (rack) setRackU(primeiraPosicaoLivre(nodes, rack, m.altura_u))
   }
 
-  const escolherTipo = (t) => {
+  const escolherTipo = (tp) => {
     setModeloId('')
-    setTipo(t)
-    if (TIPOS_PASSIVOS.includes(t)) setSemIp(true)
-    const a = alturaPadrao(t)
+    setTipo(tp)
+    if (TIPOS_PASSIVOS.includes(tp)) setSemIp(true)
+    const a = alturaPadrao(tp)
     setAlturaU(a)
     if (rack) setRackU(primeiraPosicaoLivre(nodes, rack, a))
   }
@@ -89,11 +91,11 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
         setPingTime(data.tempo_ms)
       } else {
         setTestResult('error')
-        setTestMessage(data.error || 'O equipamento não respondeu.')
+        setTestMessage(data.error || t('O equipamento não respondeu.'))
       }
     } catch (error) {
       setTestResult('error')
-      setTestMessage(error.message || 'Falha ao consultar o equipamento.')
+      setTestMessage(error.message || t('Falha ao consultar o equipamento.'))
     } finally {
       setIsTesting(false)
     }
@@ -109,7 +111,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
       setNeighbors(data.neighbors || [])
       setSelectedNeighbors(new Set())
     } catch (error) {
-      setDiscoveryError(error.message || 'Falha ao consultar vizinhos LLDP/CDP.')
+      setDiscoveryError(error.message || t('Falha ao consultar vizinhos LLDP/CDP.'))
     } finally {
       setIsDiscovering(false)
     }
@@ -137,13 +139,13 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
   }
 
   const adicionar = async () => {
-    if (!nome) { alert('Preencha o Nome.'); return }
+    if (!nome) { alert(t('Preencha o Nome.')); return }
     if (isRack) {
       onAdd({ nome, ip: 'Sem IP', tipo: 'Rack', status: 'visual', monitorMode: 'visual', snmpConfig: null, us: Number(rackUs) })
       return
     }
-    if (rack && !rackU) { alert(`Não há ${alturaU}U livres no rack ${rack.data.label}.`); return }
-    if (!semIp && !ip) { alert('Preencha o IP ou marque Sem IP.'); return }
+    if (rack && !rackU) { alert(t('Não há {u}U livres no rack {rack}.', { u: alturaU, rack: rack.data.label })); return }
+    if (!semIp && !ip) { alert(t('Preencha o IP ou marque Sem IP.')); return }
 
     let finalStatus = 'offline'
     let finalPingTime = null
@@ -158,10 +160,10 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
             finalStatus = 'online'
             finalPingTime = data.tempo_ms
           } else {
-            if (!window.confirm('O IP não respondeu. Deseja adicionar mesmo assim?')) return
+            if (!window.confirm(t('O IP não respondeu. Deseja adicionar mesmo assim?'))) return
           }
         } catch (error) {
-          if (!window.confirm('Erro no backend. Deseja adicionar mesmo assim?')) return
+          if (!window.confirm(t('Erro no backend. Deseja adicionar mesmo assim?'))) return
         }
       } else {
         finalStatus = 'online'
@@ -187,80 +189,80 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
       <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '12px', width: '480px', maxHeight: '92vh', overflow: 'auto', border: '1px solid #334155' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '20px' }}>{isRack ? 'Adicionar Rack' : 'Adicionar Equipamento'}</h2>
+          <h2 style={{ fontSize: '20px' }}>{isRack ? t('Adicionar Rack') : t('Adicionar Equipamento')}</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Tipo de Equipamento</label>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Tipo de Equipamento')}</label>
             <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-              <select aria-label="Tipo de Equipamento" value={tipo} onChange={(e) => escolherTipo(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
-                {tipos.map((t) => <option key={t.value} value={t.value}>{t.rotulo || t.value}</option>)}
+              <select aria-label={t('Tipo de Equipamento')} value={tipo} onChange={(e) => escolherTipo(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                {tipos.map((tp) => <option key={tp.value} value={tp.value}>{t(tp.rotulo || tp.value)}</option>)}
               </select>
-              <button onClick={() => setMostrarNovoTipo(!mostrarNovoTipo)} style={{ padding: '10px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }} title="Criar novo tipo"><Plus size={18} /></button>
+              <button onClick={() => setMostrarNovoTipo(!mostrarNovoTipo)} style={{ padding: '10px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }} title={t('Criar novo tipo')}><Plus size={18} /></button>
             </div>
           </div>
 
           {mostrarNovoTipo && (
             <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-              <input type="text" value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} placeholder="Novo tipo..." style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #3b82f6', backgroundColor: '#0f172a', color: 'white' }} />
-              <button onClick={handleAddTipo} style={{ padding: '10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Adicionar</button>
+              <input type="text" value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} placeholder={t('Novo tipo...')} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #3b82f6', backgroundColor: '#0f172a', color: 'white' }} />
+              <button onClick={handleAddTipo} style={{ padding: '10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>{t('Adicionar')}</button>
             </div>
           )}
 
           <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{isRack ? 'Nome do Rack' : 'Nome do Equipamento'}</label>
-            <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={isRack ? 'Ex: Rack Principal' : 'Ex: Switch Andar 1'} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{isRack ? t('Nome do Rack') : t('Nome do Equipamento')}</label>
+            <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={isRack ? t('Ex: Rack Principal') : t('Ex: Switch Andar 1')} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
           </div>
 
           {!isRack && (
             <div>
-              <label style={{ fontSize: '14px', color: '#94a3b8' }}>Modelo (opcional)</label>
-              <select aria-label="Modelo" value={modeloId} onChange={(e) => escolherModelo(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
-                <option value="">Sem modelo (portas padrão do tipo)</option>
-                {modelos.map(m => <option key={m.id} value={m.id}>{m.nome} — {m.tipo}, {m.altura_u}U, {resumoModelo(m)}</option>)}
+              <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Modelo (opcional)')}</label>
+              <select aria-label={t('Modelo')} value={modeloId} onChange={(e) => escolherModelo(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                <option value="">{t('Sem modelo (portas padrão do tipo)')}</option>
+                {modelos.map(m => <option key={m.id} value={m.id}>{m.nome} — {t(m.tipo)}, {m.altura_u}U, {resumoModelo(m)}</option>)}
               </select>
-              {modelos.length === 0 && <span style={{ fontSize: '11px', color: '#64748b' }}>Dica: cadastre seus equipamentos reais em ⚙️ → Modelos de equipamento.</span>}
+              {modelos.length === 0 && <span style={{ fontSize: '11px', color: '#64748b' }}>{t('Dica: cadastre seus equipamentos reais em ⚙️ → Modelos de equipamento.')}</span>}
             </div>
           )}
 
           {isRack && (
             <div>
-              <label style={{ fontSize: '14px', color: '#94a3b8' }}>Tamanho do rack</label>
-              <select aria-label="Tamanho do rack" value={rackUs} onChange={(e) => setRackUs(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
-                {TAMANHOS_RACK.map(t => <option key={t} value={t}>{t}U</option>)}
+              <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Tamanho do rack')}</label>
+              <select aria-label={t('Tamanho do rack')} value={rackUs} onChange={(e) => setRackUs(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                {TAMANHOS_RACK.map(tam => <option key={tam} value={tam}>{tam}U</option>)}
               </select>
-              <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '6px' }}>Depois é só arrastar os equipamentos para dentro do rack: eles encaixam nos U livres.</span>
+              <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '6px' }}>{t('Depois é só arrastar os equipamentos para dentro do rack: eles encaixam nos U livres.')}</span>
             </div>
           )}
 
           {!isRack && <>
           <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Método de monitoramento</label>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Método de monitoramento')}</label>
             <select value={semIp ? 'visual' : monitorMode} onChange={(e) => setMonitorMode(e.target.value)} disabled={semIp} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
-              <option value="ip">IP / ICMP + TCP</option>
-              <option value="snmpv3">SNMPv3</option>
+              <option value="ip">{t('IP / ICMP + TCP')}</option>
+              <option value="snmpv3">{t('SNMPv3')}</option>
             </select>
           </div>
 
           {!semIp && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title="Quando desligado, quedas deste equipamento não geram e-mail/Telegram/webhook (continuam no histórico).">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title={t('Quando desligado, quedas deste equipamento não geram e-mail/Telegram/webhook (continuam no histórico).')}>
               <input type="checkbox" checked={notificar} onChange={(e) => setNotificar(e.target.checked)} />
-              {notificar ? <Bell size={15} color="#f59e0b" /> : <BellOff size={15} color="#64748b" />} Notificar quando cair ou voltar
+              {notificar ? <Bell size={15} color="#f59e0b" /> : <BellOff size={15} color="#64748b" />} {t('Notificar quando cair ou voltar')}
             </label>
           )}
 
           {monitorMode === 'snmpv3' && !semIp && <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '10px' }}>
-            <label style={{ fontSize: '13px', color: '#94a3b8' }}>Credenciais SNMPv3</label>
-            <input value={snmpConfig.username} onChange={(e) => setSnmpConfig({ ...snmpConfig, username: e.target.value })} placeholder="Usuário" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
-            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.authProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, authProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>SHA</option><option>MD5</option></select><input type="password" value={snmpConfig.authPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, authPassword: e.target.value })} placeholder="Senha de autenticação" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
-            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.privProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, privProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>AES</option><option>DES</option><option>3DES</option></select><input type="password" value={snmpConfig.privPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, privPassword: e.target.value })} placeholder="Senha de privacidade" style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
-            <input type="number" min="1" max="65535" value={snmpConfig.port} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder="Porta SNMP (padrão 161)" style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
-            <button onClick={handleDiscovery} disabled={isDiscovering || !ip || !snmpConfig.username} style={{ padding: '9px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: isDiscovering ? 'wait' : 'pointer' }}>{isDiscovering ? 'Consultando vizinhos...' : 'Descobrir vizinhos LLDP/CDP'}</button>
-            {discoveryError && <div role="alert" style={{ fontSize: '12px', color: '#ef4444' }}>Falha na descoberta: {discoveryError}. Verifique as credenciais SNMPv3, a porta e se LLDP/CDP está habilitado no equipamento.</div>}
+            <label style={{ fontSize: '13px', color: '#94a3b8' }}>{t('Credenciais SNMPv3')}</label>
+            <input value={snmpConfig.username} onChange={(e) => setSnmpConfig({ ...snmpConfig, username: e.target.value })} placeholder={t('Usuário')} style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
+            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.authProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, authProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>{t('SHA')}</option><option>{t('MD5')}</option></select><input type="password" value={snmpConfig.authPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, authPassword: e.target.value })} placeholder={t('Senha de autenticação')} style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
+            <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.privProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, privProtocol: e.target.value })} style={{ flex: 1, padding: '9px', backgroundColor: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: '6px' }}><option>{t('AES')}</option><option>{t('DES')}</option><option>{t('3DES')}</option></select><input type="password" value={snmpConfig.privPassword} onChange={(e) => setSnmpConfig({ ...snmpConfig, privPassword: e.target.value })} placeholder={t('Senha de privacidade')} style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} /></div>
+            <input type="number" min="1" max="65535" value={snmpConfig.port} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder={t('Porta SNMP (padrão 161)')} style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }} />
+            <button onClick={handleDiscovery} disabled={isDiscovering || !ip || !snmpConfig.username} style={{ padding: '9px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: isDiscovering ? 'wait' : 'pointer' }}>{isDiscovering ? t('Consultando vizinhos...') : t('Descobrir vizinhos LLDP/CDP')}</button>
+            {discoveryError && <div role="alert" style={{ fontSize: '12px', color: '#ef4444' }}>{t('Falha na descoberta: {erro}. Verifique as credenciais SNMPv3, a porta e se LLDP/CDP está habilitado no equipamento.', { erro: discoveryError })}</div>}
             {neighbors && (neighbors.length ? <div style={{ display: 'grid', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: '#10b981' }}>{neighbors.length} vizinho(s) encontrado(s). Selecione os que deseja incluir no mapa:</span>
+              <span style={{ fontSize: '12px', color: '#10b981' }}>{t('{n} vizinho(s) encontrado(s). Selecione os que deseja incluir no mapa:', { n: neighbors.length })}</span>
               <div style={{ display: 'grid', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
                 {neighbors.map((neighbor) => {
                   const key = `${neighbor.protocol}:${neighbor.index}`
@@ -278,54 +280,54 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
                 })}
               </div>
               <button onClick={handleAddSelectedNeighbors} disabled={selectedNeighbors.size === 0} style={{ padding: '9px', backgroundColor: selectedNeighbors.size ? '#2563eb' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: selectedNeighbors.size ? 'pointer' : 'not-allowed' }}>
-                Adicionar {selectedNeighbors.size} selecionado(s) ao mapa
+                {t('Adicionar {n} selecionado(s) ao mapa', { n: selectedNeighbors.size })}
               </button>
-              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Serão criados como itens visuais sem IP; você poderá editar os dados depois.</span>
-            </div> : <div style={{ fontSize: '12px', color: '#f59e0b' }}>Nenhum vizinho LLDP/CDP encontrado.</div>)}
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>{t('Serão criados como itens visuais sem IP; você poderá editar os dados depois.')}</span>
+            </div> : <div style={{ fontSize: '12px', color: '#f59e0b' }}>{t('Nenhum vizinho LLDP/CDP encontrado.')}</div>)}
           </div>}
 
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
             <input type="checkbox" id="semIp" checked={semIp} onChange={(e) => setSemIp(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
             <label htmlFor="semIp" style={{ fontSize: '14px', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Network size={16} /> Equipamento sem IP (Camada 2)
+              <Network size={16} /> {t('Equipamento sem IP (Camada 2)')}
             </label>
           </div>
 
           <div style={{ opacity: semIp ? 0.5 : 1, pointerEvents: semIp ? 'none' : 'auto' }}>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Endereço IP</label>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Endereço IP')}</label>
             <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-              <input type="text" value={ip} onChange={(e) => setIp(e.target.value)} placeholder={semIp ? "Desabilitado" : "Ex: 192.168.0.10"} disabled={semIp} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
+              <input type="text" value={ip} onChange={(e) => setIp(e.target.value)} placeholder={semIp ? t('Desabilitado') : 'Ex: 192.168.0.10'} disabled={semIp} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
               <button onClick={handleTestConnection} disabled={isTesting || semIp} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0 15px', backgroundColor: isTesting ? '#475569' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: isTesting ? 'wait' : 'pointer' }}>
-                {isTesting ? <Activity size={18} className="spin" /> : <Wifi size={18} />} Testar
+                {isTesting ? <Activity size={18} className="spin" /> : <Wifi size={18} />} {t('Testar')}
               </button>
             </div>
             {testResult === 'success' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontSize: '13px', marginTop: '8px' }}>
-                <CheckCircle size={16} /> Online! Resposta em {pingTime}ms.
+                <CheckCircle size={16} /> {t('Online! Resposta em {ms}ms.', { ms: pingTime })}
               </div>
             )}
             {testResult === 'error' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#ef4444', fontSize: '13px', marginTop: '8px' }}>
-                <XCircle size={16} /> {testMessage || 'Falha na conexão. Verifique o IP.'}
+                <XCircle size={16} /> {testMessage || t('Falha na conexão. Verifique o IP.')}
               </div>
             )}
           </div>
 
           {racks.length > 0 && (
             <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '8px' }}>
-              <span style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}><Server size={14} /> Montar em rack (opcional)</span>
-              <select aria-label="Rack" value={rackId} onChange={(e) => escolherRack(e.target.value)} style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
-                <option value="">Não montar (solto no mapa)</option>
+              <span style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}><Server size={14} /> {t('Montar em rack (opcional)')}</span>
+              <select aria-label={t('Rack')} value={rackId} onChange={(e) => escolherRack(e.target.value)} style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                <option value="">{t('Não montar (solto no mapa)')}</option>
                 {racks.map(r => <option key={r.id} value={r.id}>{r.data.label} ({r.data.us}U)</option>)}
               </select>
               {rack && (
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <select aria-label="Altura" value={alturaU} disabled={!!modelo} onChange={(e) => escolherAltura(Number(e.target.value))} style={{ opacity: modelo ? 0.6 : 1, flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                  <select aria-label={t('Altura')} value={alturaU} disabled={!!modelo} onChange={(e) => escolherAltura(Number(e.target.value))} style={{ opacity: modelo ? 0.6 : 1, flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
                     {ALTURAS_EQUIP.filter(a => a <= rack.data.us).map(a => <option key={a} value={a}>{a}U</option>)}
                   </select>
-                  <select aria-label="Posição" value={rackU || ''} onChange={(e) => setRackU(Number(e.target.value))} style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
-                    {!posicoes.length && <option value="">Sem espaço para {alturaU}U</option>}
+                  <select aria-label={t('Posição')} value={rackU || ''} onChange={(e) => setRackU(Number(e.target.value))} style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                    {!posicoes.length && <option value="">{t('Sem espaço para {u}U', { u: alturaU })}</option>}
                     {posicoes.map(u => <option key={u} value={u}>{faixaU(u, alturaU)}</option>)}
                   </select>
                 </div>
@@ -337,8 +339,8 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '30px', gap: '10px' }}>
-          <button onClick={onClose} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: '6px', cursor: 'pointer' }}>Cancelar</button>
-          <button onClick={handleAdd} disabled={adicionando} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: adicionando ? '#475569' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: adicionando ? 'wait' : 'pointer' }}>{adicionando ? <><Activity size={18} className="spin" /> Verificando IP...</> : <><Plus size={18} /> Adicionar</>}</button>
+          <button onClick={onClose} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: '6px', cursor: 'pointer' }}>{t('Cancelar')}</button>
+          <button onClick={handleAdd} disabled={adicionando} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: adicionando ? '#475569' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: adicionando ? 'wait' : 'pointer' }}>{adicionando ? <><Activity size={18} className="spin" /> {t('Verificando IP...')}</> : <><Plus size={18} /> {t('Adicionar')}</>}</button>
         </div>
 
       </div>

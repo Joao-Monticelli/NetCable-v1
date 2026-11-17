@@ -20,6 +20,7 @@ class Usuario(Base):
     relatorio_diario = Column(Boolean, default=False, nullable=False)
     relatorio_horario = Column(String, default="08:00", nullable=False)  # HH:MM no fuso do sistema
     ultimo_relatorio = Column(String, nullable=True)  # data (AAAA-MM-DD) do último relatório enviado
+    idioma = Column(String, default="en", nullable=False)  # idioma da interface/e-mails: en ou pt
     projetos = relationship("Projeto", back_populates="usuario")
 
 

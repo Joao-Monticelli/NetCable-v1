@@ -1,3 +1,5 @@
+import { t } from '../../i18n'
+
 // Geometria e regras dos racks.
 // U são numerados de baixo para cima (U1 = base), como nos racks reais.
 // Um equipamento montado ocupa de rackU (U mais baixo) até rackU + alturaU - 1.
@@ -169,7 +171,7 @@ export function portasDoEquipamento(data, modelo) {
   return { rj45, sfp, linhas, prefixo: modelo?.prefixo_porta || '' }
 }
 
-export const nomePortaRj45 = (n, prefixo) => prefixo ? `${prefixo}${n}` : `Porta ${n}`
+export const nomePortaRj45 = (n, prefixo) => prefixo ? `${prefixo}${n}` : t('Porta {n}', { n })
 export const nomePortaSfp = (n) => `SFP${n}`
 
 export function listarPortas(info) {

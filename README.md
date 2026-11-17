@@ -43,6 +43,10 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 ## 🔧 Atualizações recentes
 
+✅ **English by default / Português opcional** — a interface agora abre em inglês (padrão para o projeto open source) e cada pessoa pode trocar para português no seletor **EN | PT** (tela de login, menu ⚙️ e página pública). A escolha fica salva no navegador e no perfil: mensagens de erro da API, alertas e relatórios por e-mail chegam no idioma escolhido. O Telegram usa `ALERT_LANGUAGE` (`en` ou `pt`, padrão `en`).
+
+✅ **Adicionar equipamento mais rápido** — o teste de IP agora verifica TCP 80/443/22 e ICMP em paralelo (antes, até ~6 s por equipamento fora do ar) e o botão mostra "Verificando IP...". Isso também acelera o monitoramento.
+
 ✅ **Biblioteca de modelos de equipamento** — em ⚙️ → Modelos de equipamento, cadastre seus equipamentos reais (ex.: "Grandstream GWN7003": firewall 1U, 4 RJ45 + 2 SFP, portas "eth1…eth4") com prévia ao vivo. Ao adicionar um equipamento, escolha o modelo e a frente no rack é desenhada com exatamente essas portas.
 
 ✅ **Cabos porta a porta** — no rack, arraste de uma porta até outra (ex.: porta 12 do switch → eth3 do firewall). O cabo sai da própria porta, a porta fica marcada como em uso e o tooltip mostra para onde ela vai. No modal do cabo também dá para escolher as portas numa lista; uma porta não aceita dois cabos.

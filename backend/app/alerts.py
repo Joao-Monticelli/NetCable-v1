@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 import requests
 
 from . import email_service
+from .i18n import traduzir as tr, normalizar
 
 logger = logging.getLogger("netcable.alerts")
 
@@ -25,6 +26,8 @@ WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "").strip()
 WEBHOOK_TIMEOUT = float(os.getenv("ALERT_WEBHOOK_TIMEOUT", "3"))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+# Idioma das mensagens do Telegram (en ou pt). Os e-mails seguem o idioma de cada usuário.
+ALERT_LANGUAGE = normalizar(os.getenv("ALERT_LANGUAGE", "en").strip().lower())
 
 
 def canais_configurados(smtp_cfg=None):
@@ -48,20 +51,17 @@ def montar_evento(equipamento, projeto_nome, status, status_anterior, tempo_ms=N
     }
 
 
-def formatar_mensagem(evento):
-    if evento["status"] == "offline":
-        titulo = "🔴 Equipamento OFFLINE"
-    else:
-        titulo = "🟢 Equipamento voltou ONLINE"
+def formatar_mensagem(evento, idioma="pt"):
+    titulo = tr("🔴 Equipamento OFFLINE" if evento["status"] == "offline" else "🟢 Equipamento voltou ONLINE", idioma)
     linhas = [titulo, f"{evento['equipamento']} ({evento['ip']})"]
     if evento.get("projeto"):
-        linhas.append(f"Mapa: {evento['projeto']}")
+        linhas.append(f"{tr('Mapa', idioma)}: {evento['projeto']}")
     if evento["status"] == "online" and evento.get("tempo_ms") is not None:
-        linhas.append(f"Latência: {evento['tempo_ms']} ms")
+        linhas.append(f"{tr('Latência', idioma)}: {evento['tempo_ms']} ms")
     return "\n".join(linhas)
 
 
-def _enviar(eventos, smtp_cfg, destinatarios):
+def _enviar(eventos, smtp_cfg, destinatarios_por_idioma):
     if WEBHOOK_URL:
         for evento in eventos:
             try:
@@ -72,21 +72,26 @@ def _enviar(eventos, smtp_cfg, destinatarios):
         try:
             requests.post(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={"chat_id": TELEGRAM_CHAT_ID, "text": "\n\n".join(formatar_mensagem(e) for e in eventos)},
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": "\n\n".join(formatar_mensagem(e, ALERT_LANGUAGE) for e in eventos)},
                 timeout=WEBHOOK_TIMEOUT,
             )
         except Exception as exc:
             logger.warning("Falha ao enviar alerta Telegram: %s", exc)
-    if destinatarios and email_service.smtp_configurado(smtp_cfg):
-        try:
-            assunto, texto, html = email_service.montar_email_alerta(eventos)
-            email_service.enviar_email(smtp_cfg, destinatarios, assunto, texto, html)
-        except Exception as exc:
-            logger.warning("Falha ao enviar alerta por e-mail: %s", exc)
+    if destinatarios_por_idioma and email_service.smtp_configurado(smtp_cfg):
+        # Um e-mail por idioma: cada usuário recebe no idioma que escolheu no NetCable.
+        for idioma, destinatarios in destinatarios_por_idioma.items():
+            try:
+                assunto, texto, html = email_service.montar_email_alerta(eventos, idioma)
+                email_service.enviar_email(smtp_cfg, destinatarios, assunto, texto, html)
+            except Exception as exc:
+                logger.warning("Falha ao enviar alerta por e-mail: %s", exc)
 
 
 def notificar(eventos, smtp_cfg=None, destinatarios=None):
-    """Envia os eventos (lista) por todos os canais configurados, em segundo plano."""
+    """Envia os eventos (lista) por todos os canais configurados, em segundo plano.
+    `destinatarios`: {idioma: [e-mails]} (uma lista simples é tratada como português)."""
+    if isinstance(destinatarios, (list, tuple)):
+        destinatarios = {"pt": list(destinatarios)} if destinatarios else {}
     if isinstance(eventos, dict):
         eventos = [eventos]
     if not eventos:

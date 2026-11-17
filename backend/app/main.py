@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -26,6 +28,7 @@ from zoneinfo import ZoneInfo
 from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailableError
 
 from . import models, crud, alerts, email_service
+from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal
 
 models.Base.metadata.create_all(bind=engine)
@@ -60,6 +63,7 @@ with engine.begin() as connection:
         ("relatorio_diario", "BOOLEAN NOT NULL DEFAULT 0"),
         ("relatorio_horario", "VARCHAR NOT NULL DEFAULT '08:00'"),
         ("ultimo_relatorio", "VARCHAR"),
+        ("idioma", "VARCHAR NOT NULL DEFAULT 'en'"),
     ]:
         if coluna not in user_columns:
             connection.exec_driver_sql(f"ALTER TABLE usuarios ADD COLUMN {coluna} {ddl}")
@@ -75,6 +79,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def erro_traduzido(request: Request, exc: StarletteHTTPException):
+    """Devolve a mensagem de erro no idioma da interface (cabeçalho Accept-Language)."""
+    idioma = idioma_do_cabecalho(request.headers.get("accept-language"))
+    return JSONResponse({"detail": traduzir(exc.detail, idioma)}, status_code=exc.status_code, headers=getattr(exc, "headers", None))
 
 
 @app.middleware("http")
@@ -273,7 +284,7 @@ def usuario_publico(u: models.Usuario):
     return {
         "id": u.id, "username": u.username, "email": u.email, "papel": u.papel, "ativo": u.ativo,
         "receber_alertas": u.receber_alertas, "relatorio_diario": u.relatorio_diario,
-        "relatorio_horario": u.relatorio_horario,
+        "relatorio_horario": u.relatorio_horario, "idioma": u.idioma or "en",
     }
 
 
@@ -293,6 +304,7 @@ class PerfilUpdate(BaseModel):
     receber_alertas: Optional[bool] = None
     relatorio_diario: Optional[bool] = None
     relatorio_horario: Optional[str] = None
+    idioma: Optional[str] = None
 
 
 @app.put("/api/me/perfil")
@@ -306,13 +318,15 @@ def atualizar_perfil_usuario(dados: PerfilUpdate, db: Session = Depends(get_db),
         nova_hash = pwd_context.hash(dados.nova_senha)
     if dados.relatorio_horario is not None and not HORARIO_RE.match(dados.relatorio_horario):
         raise HTTPException(status_code=400, detail="Horário do relatório inválido (use HH:MM).")
+    if dados.idioma is not None and dados.idioma not in IDIOMAS:
+        raise HTTPException(status_code=400, detail="Idioma inválido (use en ou pt).")
     email = dados.email.strip() if dados.email is not None else None
     if (dados.receber_alertas or dados.relatorio_diario) and not (email if email is not None else user.email):
         raise HTTPException(status_code=400, detail="Informe um e-mail para receber alertas e relatórios.")
     atualizado = crud.atualizar_usuario(
         db, user.id, email=email, password_hash=nova_hash,
         receber_alertas=dados.receber_alertas, relatorio_diario=dados.relatorio_diario,
-        relatorio_horario=dados.relatorio_horario,
+        relatorio_horario=dados.relatorio_horario, idioma=dados.idioma,
     )
     return usuario_publico(atualizado)
 
@@ -323,7 +337,7 @@ def enviar_meu_relatorio(db: Session = Depends(get_db), user: models.Usuario = D
     if not user.email:
         raise HTTPException(status_code=400, detail="Cadastre um e-mail no seu perfil primeiro.")
     try:
-        enviar_relatorio(db, [user.email])
+        enviar_relatorio(db, [user.email], idioma=user.idioma)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Falha ao enviar o relatório: {exc}")
     return {"status": "enviado", "para": user.email}
@@ -454,8 +468,8 @@ def testar_email(dados: EmailTeste, db: Session = Depends(get_db), admin: models
         raise HTTPException(status_code=400, detail="Informe um destinatário ou cadastre um e-mail no seu perfil.")
     try:
         email_service.enviar_email(
-            get_smtp_config(db), [destino], "[NetCable] E-mail de teste",
-            "Se você recebeu esta mensagem, o envio de e-mails do NetCable está funcionando.",
+            get_smtp_config(db), [destino], traduzir("[NetCable] E-mail de teste", admin.idioma),
+            traduzir("Se você recebeu esta mensagem, o envio de e-mails do NetCable está funcionando.", admin.idioma),
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Falha no envio: {exc}")
@@ -518,8 +532,10 @@ def registrar_monitoramento(db: Session, equipamento, resultado):
 def enviar_alertas(db: Session, eventos):
     if not eventos:
         return
-    destinatarios = [u.email for u in crud.usuarios_para_alertas(db)]
-    alerts.notificar(eventos, get_smtp_config(db), destinatarios)
+    por_idioma = {}
+    for u in crud.usuarios_para_alertas(db):
+        por_idioma.setdefault(normalizar(u.idioma), []).append(u.email)
+    alerts.notificar(eventos, get_smtp_config(db), por_idioma)
 
 
 def checar_equipamento(ip: str, mode: str = "ip", config: Optional[dict] = None):
@@ -641,10 +657,11 @@ def _loop_monitoramento():
 _falhas_relatorio = {}  # user_id -> momento (monotonic) da última falha, para não tentar a cada minuto
 
 
-def enviar_relatorio(db: Session, destinatarios, horas: int = 24):
+def enviar_relatorio(db: Session, destinatarios, horas: int = 24, idioma: str = "en"):
     fuso = get_fuso(db)
-    formatar = lambda momento: momento.replace(tzinfo=timezone.utc).astimezone(fuso).strftime("%d/%m/%Y %H:%M")
-    assunto, texto, html = email_service.montar_email_relatorio(crud.montar_relatorio(db, horas), formatar)
+    formato = "%d/%m/%Y %H:%M" if normalizar(idioma) == "pt" else "%Y-%m-%d %H:%M"
+    formatar = lambda momento: momento.replace(tzinfo=timezone.utc).astimezone(fuso).strftime(formato)
+    assunto, texto, html = email_service.montar_email_relatorio(crud.montar_relatorio(db, horas), formatar, normalizar(idioma))
     email_service.enviar_email(get_smtp_config(db), destinatarios, assunto, texto, html)
 
 
@@ -664,7 +681,7 @@ def verificar_relatorios_agendados(agora_utc: datetime = None):
             if time.monotonic() - _falhas_relatorio.get(user.id, -1e9) < 1800:
                 continue
             try:
-                enviar_relatorio(db, [user.email])
+                enviar_relatorio(db, [user.email], idioma=user.idioma)
                 crud.atualizar_usuario(db, user.id, ultimo_relatorio=hoje)
                 logger.info("Relatório diário enviado para %s", user.email)
             except Exception as exc:
