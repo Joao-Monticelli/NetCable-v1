@@ -23,7 +23,44 @@ async function requisicao(caminho, opcoes = {}, erroPadrao = t('Falha na comunic
   return data;
 }
 
+// Baixa um Blob como arquivo no navegador.
+function salvarArquivo(blob, nome) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = nome
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+const nomeSeguro = (texto) => (texto || 'mapa').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.-]+/g, '_').slice(0, 60)
+
 export const api = {
+  // --- Exportar / importar / backup ---
+  async exportarProjeto(projetoId, nomeProjeto) {
+    const dados = await requisicao(`/projetos/${projetoId}/exportar`, {}, t('Não foi possível exportar o mapa.'))
+    salvarArquivo(new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' }), `netcable-${nomeSeguro(nomeProjeto || dados.projeto?.nome)}.json`)
+    return dados
+  },
+  async importarArquivo(arquivo) {
+    const form = new FormData()
+    form.append('arquivo', arquivo)
+    const res = await fetch(`${API_URL}/projetos/importar`, {
+      method: 'POST', body: form, headers: { 'Authorization': `Bearer ${getToken()}`, 'Accept-Language': getIdioma() }
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || t('Não foi possível importar o arquivo.'))
+    return data.importados
+  },
+  obterBackup() { return requisicao('/backup', {}, t('Não foi possível carregar a configuração de backup.')) },
+  salvarBackup(dados) { return requisicao('/backup', { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar a configuração de backup.')) },
+  backupAgora() { return requisicao('/backup/agora', { method: 'POST' }, t('Falha ao criar o backup.')) },
+  async baixarBackup(nome) {
+    const res = await fetch(`${API_URL}/backup/arquivo/${encodeURIComponent(nome)}`, { headers: getHeaders() })
+    if (!res.ok) throw new Error(t('Não foi possível baixar o backup.'))
+    salvarArquivo(await res.blob(), nome)
+  },
+
   async login(username, password) {
     const formData = new URLSearchParams();
     formData.append('username', username);

@@ -12,7 +12,6 @@ import BuscaEquipamento from '../components/BuscaEquipamento'
 import { usePreferenciaCabos, useResumoMapa } from '../components/visaoMapa'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
-import { normalizarRacks } from '../components/rack/rackUtils'
 import { t, useI18n, SeletorIdioma, getIdioma } from '../i18n'
 
 const tituloPagina = () => t('NetCable - Mapeador de Rede')
@@ -251,48 +250,25 @@ export default function Editor() {
     toast.success(t('{n} vizinho(s) adicionado(s) ao mapa. Salve o projeto para manter as alterações.', { n: neighbors.length }))
   }
 
-  const handleExport = () => {
-    const equipamentosSeguros = currentNodes.current.map(node => ({
-      ...node,
-      data: node.data ? {
-        ...node.data,
-        snmpConfig: node.data.snmpConfig ? {
-          username: node.data.snmpConfig.username,
-          authProtocol: node.data.snmpConfig.authProtocol,
-          privProtocol: node.data.snmpConfig.privProtocol,
-          port: node.data.snmpConfig.port
-        } : null
-      } : node.data
-    }))
-    const dataToExport = { versao: 1, projeto: projectName, equipamentos: equipamentosSeguros, conexoes: currentEdges.current }
-    const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `netcable_backup_${projectName.replace(/\s+/g, '_')}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-    toast.success(t('Backup exportado!'))
+  // Exporta o mapa SALVO (com os modelos do catálogo usados nele; senhas SNMP ficam de fora).
+  const handleExport = async () => {
+    try {
+      if (projectId === 'novo') { toast.error(t('Salve o projeto antes de exportar.')); return }
+      await api.exportarProjeto(projectId, projectName)
+      toast.success(t('Mapa exportado (versão salva).'))
+    } catch (err) { toast.error(err.message) }
   }
 
-  const handleImport = (event) => {
+  // Importar cria um projeto NOVO (nunca sobrescreve este) e abre o primeiro importado.
+  const handleImport = async (event) => {
     const file = event.target.files[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        if (file.size > 2 * 1024 * 1024) throw new Error(t('O arquivo excede o limite de 2 MB.'))
-        const importedData = JSON.parse(e.target.result)
-        const validNodes = Array.isArray(importedData.equipamentos) && importedData.equipamentos.every(node => node?.id && node?.data)
-        const validEdges = Array.isArray(importedData.conexoes) && importedData.conexoes.every(edge => edge?.id && edge?.source && edge?.target)
-        if (!validNodes || !validEdges) throw new Error(t('Formato de backup inválido.'))
-        setMapNodes(normalizarRacks(importedData.equipamentos))
-        setMapEdges(importedData.conexoes)
-        toast.success(t('Backup importado!'))
-      } catch (err) { toast.error(t('Erro ao ler o arquivo JSON.')) }
-    }
-    reader.readAsText(file)
     event.target.value = null
+    if (!file) return
+    try {
+      const importados = await api.importarArquivo(file)
+      toast.success(t('{n} mapa(s) importado(s) como projeto novo.', { n: importados.length }))
+      if (importados[0]) navigate(`/editor/${importados[0].id}`)
+    } catch (err) { toast.error(err.message, { duration: 7000 }) }
   }
 
   if (isLoadingData) return <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Loader2 className="spin" /> {t('Carregando...')}</div>
@@ -344,9 +320,9 @@ export default function Editor() {
             {modoVisualizacao ? <><Pencil size={18} /> {t('Editar')}</> : <Eye size={18} />}
           </button>}
 
-          <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" style={{ display: 'none' }} />
-          {!leitura && <button onClick={() => fileInputRef.current.click()} title={t('Importar JSON')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
-          <button onClick={handleExport} title={t('Exportar JSON')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
+          <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json,.zip" style={{ display: 'none' }} />
+          {!leitura && <button onClick={() => fileInputRef.current.click()} title={t('Importar mapa ou backup (.json / .zip)')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
+          <button onClick={handleExport} title={t('Exportar mapa (.json)')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
           {!leitura && (
             <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>

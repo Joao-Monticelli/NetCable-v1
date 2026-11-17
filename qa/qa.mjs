@@ -372,6 +372,37 @@ async function roteiros() {
     await ok(emails.length >= 1, `SMTP recebeu o e-mail (${emails.length})`)
   })
 
+  await cenario('Backup, exportar e importar', async ({ page, ok }) => {
+    await restaurarMapa()
+    await entrar(page)
+    await page.locator('button[title="Configurações"]').click()
+    await page.click('button:has-text("Backup")')
+    await ok(await existe(page, 'text=Backup automático diário'), 'tela de backup abre')
+    await page.click('button:has-text("Fazer backup agora")')
+    await ok(await existe(page, 'text=/Backup criado: netcable-backup-/', 15000), 'backup manual criado')
+    await ok(await page.locator('[role=dialog] span:has-text("netcable-backup-")').count() >= 1, 'arquivo aparece na lista')
+    const [download] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('[role=dialog] button[title="Baixar"]').first().click()])
+    const zip = path.join(PASTA, 'backup-qa.zip')
+    await download.saveAs(zip)
+    await ok(fs.statSync(zip).size > 1000, `download do .zip (${fs.statSync(zip).size} bytes)`)
+    await page.locator('[role=dialog] button[aria-label="Fechar"]').click()
+
+    const antes = await page.locator('h3').count()
+    const [exportado] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.locator('button[title="Exportar mapa (.json)"]').first().click()])
+    const json = path.join(PASTA, 'mapa-qa.json')
+    await exportado.saveAs(json)
+    const mapa = JSON.parse(fs.readFileSync(json, 'utf8'))
+    await ok(mapa.formato === 'netcable-mapa' && mapa.equipamentos.length >= 4, 'mapa exportado no formato novo')
+    await page.locator('input[type=file][accept=".json,.zip"]').setInputFiles(json)
+    await ok(await existe(page, 'text=/importado\\(s\\) como projeto novo/', 10000), 'importação cria projeto novo')
+    await page.waitForTimeout(800)
+    await ok(await page.locator('h3').count() === antes + 1, 'novo card aparece na lista')
+    await page.locator('input[type=file][accept=".json,.zip"]').setInputFiles(zip)
+    await ok(await existe(page, 'text=/importado\\(s\\) como projeto novo/', 10000), 'importar o .zip do backup recupera os mapas')
+    // limpa os projetos extras para não afetar os próximos cenários
+    for (const p of await api('GET', '/projetos', null, TOKEN)) if (p.id !== PID) await api('DELETE', `/projetos/${p.id}`, null, TOKEN)
+  })
+
   await cenario('Histórico, latência e diagnóstico', async ({ page, ok }) => {
     await entrar(page); await abrirEditor(page)
     await page.locator('button:has(svg.lucide-settings)').click()
