@@ -25,6 +25,8 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 🎨 Mapeamento visual — crie diagramas de rede arrastando ícones e puxando linhas (cabos)
 
+🗄️ Racks com equipamentos em formato real — monte switches, servidores, storage, patch panels, nobreaks e organizadores em racks de 4U a 48U; arraste para encaixar por U e conecte os cabos normalmente
+
 📡 Monitoramento contínuo no servidor — testa cada equipamento via TCP (portas 80, 443, 22), ICMP (ping) ou SNMPv3, mesmo sem nenhum navegador aberto
 
 🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo), alerta sonoro e notificações por **e-mail**, **Telegram** ou webhook (queda e recuperação), com opção de ligar/desligar por equipamento
@@ -40,6 +42,8 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 💾 Exportar/Importar JSON — faça backup e restaure seu diagrama facilmente
 
 ## 🔧 Atualizações recentes
+
+✅ **Racks em formato real** — adicione um *Rack* (4U a 48U) e monte os equipamentos nele: cada tipo tem a frente desenhada como o equipamento real (portas RJ45/SFP com LEDs, baias de disco, display do nobreak/firewall...). Arraste um equipamento do mapa para dentro do rack e ele encaixa no U mais próximo; dentro do rack ele só se move na vertical, encaixando nos U livres. Também dá para escolher rack, altura (1U, 2U, 4U...) e posição ao adicionar ou editar. O servidor recusa sobreposições ao salvar.
 
 ✅ **Vários usuários com papéis** — o admin cria usuários em ⚙️ → Usuários e define o papel de cada um (Administrador, Editor ou Visualizador). O Visualizador abre os mapas já em modo somente leitura. O usuário de `ADMIN_USER` é sempre mantido como admin ativo (serve para recuperar o acesso).
 

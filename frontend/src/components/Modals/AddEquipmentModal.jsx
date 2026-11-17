@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle, Network, Bell, BellOff } from 'lucide-react'
-import { api } from '../../services/api' // IMPORTANDO A API
+import { api } from '../../services/api'
+import { TIPOS, TIPOS_PASSIVOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre } from '../rack/rackUtils'
 
-export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
+const faixaU = (u, a) => a > 1 ? `U${u}–U${u + a - 1}` : `U${u}`
+
+export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, nodes = [] }) {
   const [nome, setNome] = useState('')
   const [ip, setIp] = useState('')
   const [tipo, setTipo] = useState('Roteador')
@@ -15,14 +18,39 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
   const [discoveryError, setDiscoveryError] = useState('')
   const [isDiscovering, setIsDiscovering] = useState(false)
   
-  const [tipos, setTipos] = useState([
-    { value: 'Roteador', icon: Wifi },
-    { value: 'Switch Gerenciável', icon: Server },
-    { value: 'Switch Não Gerenciável', icon: Server },
-    { value: 'Firewall', icon: Shield },
-    { value: 'Servidor', icon: Server },
-    { value: 'PC', icon: Monitor }
-  ])
+  const [tipos, setTipos] = useState([{ value: 'Rack', rotulo: 'Rack (gabinete)' }, ...TIPOS.map(t => ({ value: t }))])
+  const isRack = tipo === 'Rack'
+  const [rackUs, setRackUs] = useState(12)
+
+  // Montagem em rack já existente no mapa
+  const racks = nodes.filter(n => n.type === 'rack')
+  const [rackId, setRackId] = useState('')
+  const [alturaU, setAlturaU] = useState(1)
+  const [rackU, setRackU] = useState(null)
+  const rack = racks.find(r => r.id === rackId)
+  const posicoes = useMemo(() => {
+    if (!rack) return []
+    const lista = []
+    for (let u = rack.data.us - alturaU + 1; u >= 1; u--) if (cabe(nodes, rack, u, alturaU)) lista.push(u)
+    return lista
+  }, [rack, alturaU, nodes])
+
+  const escolherTipo = (t) => {
+    setTipo(t)
+    if (TIPOS_PASSIVOS.includes(t)) setSemIp(true)
+    const a = alturaPadrao(t)
+    setAlturaU(a)
+    if (rack) setRackU(primeiraPosicaoLivre(nodes, rack, a))
+  }
+  const escolherRack = (id) => {
+    setRackId(id)
+    const r = racks.find(x => x.id === id)
+    setRackU(r ? primeiraPosicaoLivre(nodes, r, alturaU) : null)
+  }
+  const escolherAltura = (a) => {
+    setAlturaU(a)
+    if (rack) setRackU(primeiraPosicaoLivre(nodes, rack, a))
+  }
   const [novoTipo, setNovoTipo] = useState('')
   const [mostrarNovoTipo, setMostrarNovoTipo] = useState(false)
 
@@ -89,6 +117,11 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
 
   const handleAdd = async () => {
     if (!nome) { alert('Preencha o Nome.'); return }
+    if (isRack) {
+      onAdd({ nome, ip: 'Sem IP', tipo: 'Rack', status: 'visual', monitorMode: 'visual', snmpConfig: null, us: Number(rackUs) })
+      return
+    }
+    if (rack && !rackU) { alert(`Não há ${alturaU}U livres no rack ${rack.data.label}.`); return }
     if (!semIp && !ip) { alert('Preencha o IP ou marque Sem IP.'); return }
 
     let finalStatus = 'offline'
@@ -115,12 +148,13 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
       }
     }
     
-    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar })
+    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar,
+      rackId: rack ? rack.id : null, rackU: rack ? rackU : null, alturaU: rack ? alturaU : null })
   }
 
   const handleAddTipo = () => {
     if (novoTipo.trim() !== '') {
-      setTipos([...tipos, { value: novoTipo, icon: Server }])
+      setTipos([...tipos, { value: novoTipo }])
       setTipo(novoTipo)
       setNovoTipo('')
       setMostrarNovoTipo(false)
@@ -129,14 +163,47 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
 
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-      <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '12px', width: '480px', border: '1px solid #334155' }}>
+      <div style={{ backgroundColor: '#1e293b', padding: '25px', borderRadius: '12px', width: '480px', maxHeight: '92vh', overflow: 'auto', border: '1px solid #334155' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '20px' }}>Adicionar Equipamento</h2>
+          <h2 style={{ fontSize: '20px' }}>{isRack ? 'Adicionar Rack' : 'Adicionar Equipamento'}</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Tipo de Equipamento</label>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+              <select aria-label="Tipo de Equipamento" value={tipo} onChange={(e) => escolherTipo(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                {tipos.map((t) => <option key={t.value} value={t.value}>{t.rotulo || t.value}</option>)}
+              </select>
+              <button onClick={() => setMostrarNovoTipo(!mostrarNovoTipo)} style={{ padding: '10px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }} title="Criar novo tipo"><Plus size={18} /></button>
+            </div>
+          </div>
+
+          {mostrarNovoTipo && (
+            <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+              <input type="text" value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} placeholder="Novo tipo..." style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #3b82f6', backgroundColor: '#0f172a', color: 'white' }} />
+              <button onClick={handleAddTipo} style={{ padding: '10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Adicionar</button>
+            </div>
+          )}
+
+          <div>
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{isRack ? 'Nome do Rack' : 'Nome do Equipamento'}</label>
+            <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={isRack ? 'Ex: Rack Principal' : 'Ex: Switch Andar 1'} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
+          </div>
+
+          {isRack && (
+            <div>
+              <label style={{ fontSize: '14px', color: '#94a3b8' }}>Tamanho do rack</label>
+              <select aria-label="Tamanho do rack" value={rackUs} onChange={(e) => setRackUs(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                {TAMANHOS_RACK.map(t => <option key={t} value={t}>{t}U</option>)}
+              </select>
+              <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '6px' }}>Depois é só arrastar os equipamentos para dentro do rack: eles encaixam nos U livres.</span>
+            </div>
+          )}
+
+          {!isRack && <>
           <div>
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>Método de monitoramento</label>
             <select value={semIp ? 'visual' : monitorMode} onChange={(e) => setMonitorMode(e.target.value)} disabled={semIp} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
@@ -185,10 +252,6 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
             </div> : <div style={{ fontSize: '12px', color: '#f59e0b' }}>Nenhum vizinho LLDP/CDP encontrado.</div>)}
           </div>}
 
-          <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Nome do Equipamento</label>
-            <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Switch Andar 1" style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
-          </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '5px' }}>
             <input type="checkbox" id="semIp" checked={semIp} onChange={(e) => setSemIp(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
@@ -217,22 +280,28 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors }) {
             )}
           </div>
 
-          <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Tipo de Equipamento</label>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-              <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
-                {tipos.map((t) => <option key={t.value} value={t.value}>{t.value}</option>)}
+          {racks.length > 0 && (
+            <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '8px' }}>
+              <span style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}><Server size={14} /> Montar em rack (opcional)</span>
+              <select aria-label="Rack" value={rackId} onChange={(e) => escolherRack(e.target.value)} style={{ padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                <option value="">Não montar (solto no mapa)</option>
+                {racks.map(r => <option key={r.id} value={r.id}>{r.data.label} ({r.data.us}U)</option>)}
               </select>
-              <button onClick={() => setMostrarNovoTipo(!mostrarNovoTipo)} style={{ padding: '10px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }} title="Criar novo tipo"><Plus size={18} /></button>
-            </div>
-          </div>
-
-          {mostrarNovoTipo && (
-            <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-              <input type="text" value={novoTipo} onChange={(e) => setNovoTipo(e.target.value)} placeholder="Novo tipo..." style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid #3b82f6', backgroundColor: '#0f172a', color: 'white' }} />
-              <button onClick={handleAddTipo} style={{ padding: '10px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Adicionar</button>
+              {rack && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select aria-label="Altura" value={alturaU} onChange={(e) => escolherAltura(Number(e.target.value))} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                    {ALTURAS_EQUIP.filter(a => a <= rack.data.us).map(a => <option key={a} value={a}>{a}U</option>)}
+                  </select>
+                  <select aria-label="Posição" value={rackU || ''} onChange={(e) => setRackU(Number(e.target.value))} style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                    {!posicoes.length && <option value="">Sem espaço para {alturaU}U</option>}
+                    {posicoes.map(u => <option key={u} value={u}>{faixaU(u, alturaU)}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
           )}
+          </>}
+
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '30px', gap: '10px' }}>

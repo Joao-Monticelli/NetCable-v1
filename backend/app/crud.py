@@ -254,7 +254,8 @@ def resumo_projetos(db: Session):
     contagens = {}
     if projetos:
         linhas = db.query(models.Equipamento.projeto_id, models.Equipamento.status, func.count()).filter(
-            models.Equipamento.projeto_id.in_([p.id for p in projetos])
+            models.Equipamento.projeto_id.in_([p.id for p in projetos]),
+            models.Equipamento.tipo != "Rack",  # o gabinete em si não é um equipamento monitorável
         ).group_by(models.Equipamento.projeto_id, models.Equipamento.status).all()
         for projeto_id, status, quantidade in linhas:
             contagens.setdefault(projeto_id, {})[status] = quantidade
@@ -276,6 +277,30 @@ def atualizar_projeto_nome(db: Session, projeto_id: int, novo_nome: str):
         db.commit()
         db.refresh(db_projeto)
     return db_projeto
+
+
+def validar_racks(equipamentos):
+    """Confere que cada equipamento montado cabe no rack e não se sobrepõe a outro."""
+    racks = {eq["id"]: eq for eq in equipamentos if eq["tipo"] == "Rack"}
+    for rack in racks.values():
+        if not rack.get("alturaU") or not 1 <= rack["alturaU"] <= 60:
+            return f"Rack '{rack['nome']}': tamanho inválido (use de 1U a 60U)."
+    ocupacao = {}
+    for eq in equipamentos:
+        if not eq.get("rackId"):
+            continue
+        rack = racks.get(eq["rackId"])
+        if not rack:
+            return f"'{eq['nome']}' está montado em um rack que não existe mais."
+        u, altura = eq.get("rackU"), eq.get("alturaU")
+        if not u or not altura or u < 1 or altura < 1 or u + altura - 1 > rack["alturaU"]:
+            return f"'{eq['nome']}' não cabe no rack '{rack['nome']}' nessa posição."
+        for posicao in range(u, u + altura):
+            outro = ocupacao.setdefault(rack["id"], {}).get(posicao)
+            if outro:
+                return f"'{eq['nome']}' e '{outro}' ocupam o mesmo U{posicao} no rack '{rack['nome']}'."
+            ocupacao[rack["id"]][posicao] = eq["nome"]
+    return None
 
 
 def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list):
@@ -305,6 +330,7 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
             monitor_mode=modo,
             monitor_config=eq.get('monitorConfig'),  # já cifrado pelo main.py
             notificar=eq.get('notificar', True) is not False,
+            rack_id=eq.get('rackId'), rack_u=eq.get('rackU'), altura_u=eq.get('alturaU'),
         ))
 
     for conn in conexoes:

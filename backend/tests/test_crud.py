@@ -101,3 +101,33 @@ def test_share_token_revogavel():
         assert crud.get_projeto_por_token(session, "abc") is None
     finally:
         session.close()
+
+
+def test_validacao_de_racks():
+    rack = {"id": "r1", "nome": "Rack 12U", "tipo": "Rack", "alturaU": 12}
+    sw = {"id": "sw", "nome": "Switch", "tipo": "Switch", "rackId": "r1", "rackU": 11, "alturaU": 1}
+    srv = {"id": "srv", "nome": "Servidor", "tipo": "Servidor", "rackId": "r1", "rackU": 1, "alturaU": 2}
+    assert crud.validar_racks([rack, sw, srv]) is None
+    assert "não cabe" in crud.validar_racks([rack, {**sw, "rackU": 12, "alturaU": 2}])           # passa do topo
+    assert "mesmo U2" in crud.validar_racks([rack, srv, {**sw, "rackU": 2}])                      # sobreposição
+    assert "não existe" in crud.validar_racks([{**sw, "rackId": "fantasma"}])
+    assert "tamanho inválido" in crud.validar_racks([{**rack, "alturaU": 0}])
+
+
+def test_salvar_mapa_guarda_posicao_no_rack():
+    session = _sessao()
+    try:
+        projeto = crud.criar_projeto(session, "Homelab")
+        base = dict(posX=0, posY=0, width=200, height=80, status="visual", monitorMode="visual", monitorConfig=None)
+        crud.salvar_mapa(session, projeto.id, [
+            {**base, "id": "r1", "nome": "Rack", "ip": "Sem IP", "tipo": "Rack", "alturaU": 12},
+            {**base, "id": "sw", "nome": "Switch", "ip": "10.0.0.2", "tipo": "Switch", "status": "offline", "monitorMode": "ip", "rackId": "r1", "rackU": 12, "alturaU": 1},
+        ], [])
+        session.expire_all()
+        sw = session.get(models.Equipamento, "sw")
+        assert (sw.rack_id, sw.rack_u, sw.altura_u) == ("r1", 12, 1)
+        assert session.get(models.Equipamento, "r1").altura_u == 12
+        [resumo] = crud.resumo_projetos(session)
+        assert resumo["visual"] == 0 and resumo["offline"] == 1  # o rack não conta como equipamento
+    finally:
+        session.close()

@@ -8,13 +8,16 @@ import SettingsModal from '../components/Modals/SettingsModal'
 import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import HistoryModal from '../components/Modals/HistoryModal'
 import { api } from '../services/api'
+import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
+import { normalizarRacks } from '../components/rack/rackUtils'
 
 const TITULO_PAGINA = 'NetCable - Mapeador de Rede'
 
 // Assinatura do que é salvo no mapa (sem status/latência, que mudam sozinhos).
 const assinaturaMapa = (nodes, edges) => JSON.stringify([
   nodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y), n.style?.width, n.style?.height,
-    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null, n.data.notificar !== false]),
+    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null, n.data.notificar !== false,
+    n.parentNode || null, n.data.rackU || null, n.data.alturaU || null, n.data.us || null]),
   edges.map(e => [e.id, e.source, e.target, e.label || null, e.sourceHandle || null, e.targetHandle || null]),
 ])
 
@@ -85,17 +88,8 @@ export default function Editor() {
         setProjectName(data.nome)
         nomeSalvoRef.current = data.nome
         baselineRef.current = null // a próxima atualização do mapa vira a referência
-        const formattedNodes = data.equipamentos.map(eq => ({
-          id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
-          style: { width: eq.width, height: eq.height },
-          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {}, notificar: eq.notificar !== false }
-        }))
-        const formattedEdges = data.conexoes.map(conn => ({
-          id: conn.id, source: conn.source, target: conn.target, label: conn.label,
-          sourceHandle: conn.source_handle, targetHandle: conn.target_handle,
-          type: 'smoothstep', animated: true, interactionWidth: 20,
-          style: { stroke: '#3b82f6', strokeWidth: 2.5 }, markerEnd: { type: 'arrowclosed', color: '#3b82f6' }
-        }))
+        const formattedNodes = equipamentosParaNodes(data.equipamentos)
+        const formattedEdges = conexoesParaEdges(data.conexoes)
         setMapNodes(formattedNodes)
         setMapEdges(formattedEdges)
       } catch (error) {
@@ -115,6 +109,7 @@ export default function Editor() {
     if (baselineRef.current === null) baselineRef.current = assinatura
     setMapaAlterado(assinatura !== baselineRef.current)
     const counts = nodes.reduce((acc, node) => {
+      if (node.type === 'rack') return acc // o gabinete não é um equipamento
       if (node.data.status === 'online') acc.online++
       else if (node.data.status === 'offline') acc.offline++
       else if (node.data.status === 'visual') acc.visual++
@@ -149,12 +144,7 @@ export default function Editor() {
       if (projectId !== 'novo' && projectName !== `Carregando...`) {
         await api.editarNomeProjeto(projectId, projectName)
       }
-      const equipamentosFormatados = currentNodes.current.map(node => ({
-        id: node.id, nome: node.data.label, ip: node.data.ip, tipo: node.data.tipo, status: node.data.status,
-        pingTime: node.data.pingTime || null, posX: node.position.x, posY: node.position.y, width: node.style?.width || 200, height: node.style?.height || 80,
-        monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null,
-        notificar: node.data.notificar !== false
-      }))
+      const equipamentosFormatados = currentNodes.current.map(nodeParaEquipamento)
       const conexoesFormatadas = currentEdges.current.map(edge => ({
         id: edge.id, source: edge.source, target: edge.target, label: edge.label || null,
         sourceHandle: edge.sourceHandle || null, targetHandle: edge.targetHandle || null
@@ -172,7 +162,7 @@ export default function Editor() {
         toast.success('Projeto salvo com sucesso!')
         if (projectId === 'novo') navigate(`/editor/${idParaSalvar}`, { replace: true })
       }
-    } catch (error) { toast.error('Erro ao salvar o projeto.') } finally { setIsSaving(false) }
+    } catch (error) { toast.error(error.message || 'Erro ao salvar o projeto.', { duration: 6000 }) } finally { setIsSaving(false) }
   }
 
   // Atalho Ctrl+S / Cmd+S para salvar (ref evita registrar o listener a cada render).
@@ -275,7 +265,7 @@ export default function Editor() {
         const validNodes = Array.isArray(importedData.equipamentos) && importedData.equipamentos.every(node => node?.id && node?.data)
         const validEdges = Array.isArray(importedData.conexoes) && importedData.conexoes.every(edge => edge?.id && edge?.source && edge?.target)
         if (!validNodes || !validEdges) throw new Error('Formato de backup inválido.')
-        setMapNodes(importedData.equipamentos)
+        setMapNodes(normalizarRacks(importedData.equipamentos))
         setMapEdges(importedData.conexoes)
         toast.success('Backup importado!')
       } catch (err) { toast.error('Erro ao ler o arquivo JSON.') }
@@ -380,7 +370,7 @@ export default function Editor() {
         <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} />
       </div>
 
-      {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
+      {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
       {isHistoryModalOpen && <HistoryModal projectId={projectId} onClose={() => setIsHistoryModalOpen(false)} />}

@@ -1,0 +1,84 @@
+/* ===================== Gabinete do rack ===================== */
+.rack-gabinete {
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, #111827, #0b1120);
+  /* "Borda" via sombra para não ocupar espaço: os equipamentos alinham exatamente com os trilhos. */
+  border-radius: 6px;
+  box-shadow: 0 0 0 3px #374151, 0 10px 25px rgba(0,0,0,.55);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.rack-selecionado { box-shadow: 0 0 0 3px #3b82f6, 0 10px 25px rgba(0,0,0,.55); }
+.rack-topo {
+  height: 34px; flex: 0 0 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  background: linear-gradient(180deg, #2d3748, #1f2937); border-bottom: 2px solid #111827;
+  color: #e2e8f0; font-size: 13px; font-weight: bold; cursor: grab;
+}
+.rack-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rack-badge { font-size: 10px; color: #cbd5e1; background: #0f172a; border: 1px solid #475569; border-radius: 10px; padding: 1px 7px; }
+.rack-corpo { display: flex; flex: 0 0 auto; }
+.rack-trilho { width: 30px; background: linear-gradient(90deg, #4b5563, #6b7280 45%, #4b5563); }
+.rack-trilho-u { display: flex; flex-direction: column; align-items: center; justify-content: space-around; border-bottom: 1px solid rgba(0,0,0,.25); box-sizing: border-box; }
+.rack-furo { width: 5px; height: 5px; background: #111827; border-radius: 1px; }
+.rack-numero { font-size: 8px; line-height: 8px; color: #e5e7eb; font-family: Consolas, monospace; }
+.rack-vao { flex: 1; background: repeating-linear-gradient(90deg, #0b1120 0 6px, #0d1424 6px 7px); }
+.rack-vao-u { border-bottom: 1px dashed rgba(148,163,184,.08); box-sizing: border-box; }
+.rack-base { flex: 1; min-height: 14px; background: linear-gradient(180deg, #1f2937, #111827); display: flex; justify-content: space-between; padding: 0 30px; }
+.rack-base span { width: 22px; height: 6px; margin-top: 4px; background: #374151; border-radius: 0 0 4px 4px; }
+
+/* ===================== Equipamento montado ===================== */
+.rack-equip {
+  width: 100%; height: 100%; display: flex; box-sizing: border-box;
+  background: linear-gradient(180deg, #3a4556 0%, #2a3240 45%, #232a36 100%);
+  border: 1px solid #1a202c; border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 1px 2px rgba(0,0,0,.6);
+  color: #e2e8f0; cursor: grab; overflow: hidden;
+}
+.rack-equip.eq-offline { box-shadow: inset 0 0 0 1px rgba(239,68,68,.55), 0 1px 2px rgba(0,0,0,.6); }
+.rack-equip-selecionado { outline: 2px solid #3b82f6; outline-offset: -1px; }
+.rack-orelha { width: 12px; flex: 0 0 12px; background: linear-gradient(90deg, #4b5563, #374151); display: flex; flex-direction: column; justify-content: space-around; align-items: center; }
+.rack-orelha i { width: 5px; height: 5px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #d1d5db, #6b7280); }
+.rack-equip-frente { flex: 1; display: flex; align-items: center; gap: 8px; padding: 0 6px; min-width: 0; }
+.rack-equip-id { width: 118px; flex: 0 0 118px; display: flex; align-items: center; gap: 6px; min-width: 0; position: relative; }
+.rack-equip-textos { min-width: 0; line-height: 1.1; }
+.rack-equip-nome { font-size: 10.5px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rack-equip-ip { font-size: 8.5px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 4px; align-items: center; }
+.rack-equip-ping { color: #34d399; display: inline-flex; align-items: center; gap: 1px; }
+.rack-equip-sino { color: #64748b; flex: 0 0 auto; }
+.rack-equip-face { flex: 1; height: 100%; display: flex; align-items: center; justify-content: flex-end; min-width: 0; padding: 3px 0; box-sizing: border-box; }
+
+.led-status { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px; background: #475569; }
+.led-status.eq-online { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.led-status.eq-offline { background: #ef4444; box-shadow: 0 0 6px #ef4444; animation: pisca-vermelho 1s infinite; }
+.led-status.eq-passivo { background: #64748b; }
+@keyframes pisca-vermelho { 50% { opacity: .35; } }
+
+/* Portas RJ45 / SFP */
+.face-portas { display: flex; align-items: center; gap: 6px; }
+.face-portas-grade { display: grid; gap: 2px 1px; }
+.porta-rj45 { width: 8px; height: 7px; background: #0b0f17; border: 1px solid #4b5563; border-top-width: 2px; box-sizing: border-box; position: relative; }
+.porta-sfp { width: 12px; height: 9px; background: #0b0f17; border: 1px solid #9ca3af; box-sizing: border-box; position: relative; display: inline-block; margin-left: 1px; }
+.face-sfp { display: flex; flex-wrap: wrap; width: 28px; gap: 2px 1px; }
+.led-porta { position: absolute; top: -3px; left: 1px; width: 3px; height: 2px; background: #1f2937; }
+.led-porta.on { background: #22c55e; animation: pisca-porta 1.6s steps(2) infinite; }
+@keyframes pisca-porta { 50% { background: #f59e0b; } }
+.face-rotulo { font-size: 6px; color: #9ca3af; letter-spacing: .5px; border: 1px solid #4b5563; padding: 1px 2px; }
+
+/* Baias de disco */
+.face-baias { display: grid; gap: 1px 2px; width: 100%; max-width: 210px; height: 100%; }
+.baia { background: linear-gradient(180deg, #1f2937, #111827); border: 1px solid #4b5563; border-radius: 1px; position: relative; min-height: 5px; }
+.baia-grande { background: repeating-linear-gradient(90deg, #1f2937 0 3px, #111827 3px 4px); }
+.led-baia { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 3px; height: 3px; border-radius: 50%; background: #334155; }
+.led-baia.on { background: #3b82f6; animation: pisca-disco 2s infinite; }
+@keyframes pisca-disco { 30% { background: #93c5fd; } 60% { background: #1d4ed8; } }
+
+.face-linha { display: flex; align-items: center; gap: 8px; height: 100%; width: 100%; justify-content: flex-end; }
+.face-lcd { background: #0c2a1b; color: #4ade80; font-family: Consolas, monospace; font-size: 8px; padding: 2px 5px; border: 1px solid #14532d; border-radius: 2px; white-space: nowrap; text-shadow: 0 0 4px #22c55e; }
+.face-lcd-grande { font-size: 9px; padding: 4px 8px; }
+.eq-offline .face-lcd { background: #2a0c0c; color: #f87171; border-color: #7f1d1d; text-shadow: 0 0 4px #ef4444; }
+.face-ventilacao { flex: 1; max-width: 160px; height: 70%; background: radial-gradient(circle, #0b0f17 1.2px, transparent 1.6px) 0 0 / 5px 5px; opacity: .9; }
+.face-escova { width: 100%; height: 55%; border-radius: 2px; background: repeating-linear-gradient(90deg, #111827 0 1px, #1f2937 1px 3px); border: 1px solid #0b0f17; }
+.botao-power { width: 9px; height: 9px; border-radius: 50%; border: 1px solid #9ca3af; flex: 0 0 9px; }
+.botao-power.on { border-color: #3b82f6; box-shadow: 0 0 5px #3b82f6; }
+
+/* Modo visualização: sem cursor de arrastar */
+.netmap-readonly .rack-equip, .netmap-readonly .rack-topo { cursor: default; }

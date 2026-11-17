@@ -7,6 +7,12 @@ import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
+import { RackNode, RackDeviceNode } from './rack/RackNodes'
+import './rack/rack.css'
+import {
+  TRILHO, U_PX, alturaPadrao, uPelaPosicao, posicaoLivreMaisProxima, primeiraPosicaoLivre,
+  noRack, noMontado, noLivre, normalizarRacks, rackNoPonto, posicaoADireita,
+} from './rack/rackUtils'
 
 const CustomNode = memo(({ data, selected }) => {
   const getIcon = () => {
@@ -48,7 +54,7 @@ const CustomNode = memo(({ data, selected }) => {
   )
 })
 
-const nodeTypes = { custom: CustomNode }
+const nodeTypes = { custom: CustomNode, rack: RackNode, rackDevice: RackDeviceNode }
 const edgeTypes = { smoothstep: SmoothStepEdge }
 const defaultEdgeOptions = { animated: true, type: 'smoothstep', interactionWidth: 20 }
 
@@ -118,7 +124,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
 
       const equipmentList = Array.isArray(newEquipment) ? newEquipment : [newEquipment]
       const timestamp = Date.now()
-      const newNodes = equipmentList.map((equipment, index) => ({
+      const baseNodes = equipmentList.map((equipment, index) => ({
         id: `node_${equipment.id || `${timestamp}_${index}`}`,
         type: 'custom',
         position: { x: posicaoNoMapa.x + (index % 3) * 230, y: posicaoNoMapa.y + Math.floor(index / 3) * 110 },
@@ -131,10 +137,30 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           pingTime: equipment.pingTime,
           monitorMode: equipment.monitorMode || 'ip',
           snmpConfig: equipment.snmpConfig || {},
-          notificar: equipment.notificar !== false
-        }
+          notificar: equipment.notificar !== false,
+          us: equipment.us,
+        },
+        _rack: { id: equipment.rackId, u: equipment.rackU, altura: equipment.alturaU },
       }))
-      setNodes((nds) => [...nds, ...newNodes])
+      setNodes((nds) => {
+        const novos = []
+        for (const { _rack, ...base } of baseNodes) {
+          if (base.data.tipo === 'Rack') {
+            const livre = posicaoADireita([...nds, ...novos])
+            novos.push(noRack(livre ? { ...base, position: livre } : base))
+            continue
+          }
+          const rack = _rack.id && [...nds, ...novos].find(n => n.id === _rack.id)
+          if (rack) {
+            const altura = _rack.altura || alturaPadrao(base.data.tipo)
+            const u = _rack.u || primeiraPosicaoLivre([...nds, ...novos], rack, altura)
+            if (u) { novos.push(noMontado(base, rack, u, altura)); continue }
+            toast.error(`Sem espaço no rack para ${base.data.label}; adicionado fora do rack.`)
+          }
+          novos.push(base)
+        }
+        return normalizarRacks([...nds, ...novos])
+      })
     }
   }, [newEquipment, screenToFlowPosition, getViewport, readOnly])
 
@@ -194,7 +220,46 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     setEdges((eds) => eds.some(e => e.selected) ? eds.map(e => e.selected ? { ...e, selected: false } : e) : eds)
   }, [readOnly])
 
-  const onNodesChange = useCallback((changes) => setNodes((nds) => applyNodeChanges(changes, nds)), [])
+  const onNodesChange = useCallback((changes) => setNodes((nds) => {
+    const ajustadas = changes.map(c => {
+      if (c.type === 'position' && c.position) {
+        const n = nds.find(x => x.id === c.id)
+        if (n?.type === 'rackDevice') return { ...c, position: { ...c.position, x: TRILHO } }
+      }
+      return c
+    })
+    const resultado = applyNodeChanges(ajustadas, nds)
+    // Se um rack foi apagado (tecla Delete), solta os equipamentos que estavam nele.
+    return changes.some(c => c.type === 'remove') ? normalizarRacks(resultado) : resultado
+  }), [])
+
+  // Encaixe ao soltar: dentro do rack encaixa no U livre mais próximo; um equipamento
+  // solto em cima de um rack é montado nele.
+  const onNodeDragStop = useCallback((event, node) => {
+    if (readOnly) return
+    const atuais = nodesRef.current
+    if (node.type === 'rackDevice') {
+      const rack = atuais.find(n => n.id === node.parentNode)
+      if (!rack) return
+      const desejado = uPelaPosicao(node.position.y, node.data.alturaU, rack.data.us)
+      const u = posicaoLivreMaisProxima(atuais, rack, desejado, node.data.alturaU, node.id) ?? node.data.rackU
+      if (u !== desejado) toast('Posição ocupada: encaixado no U livre mais próximo.', { icon: '🧲' })
+      setNodes(nds => normalizarRacks(nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, rackU: u } } : n)))
+      return
+    }
+    if (node.type !== 'custom') return
+    const largura = node.width || node.style?.width || 200
+    const altura = node.height || node.style?.height || 80
+    const centro = { x: node.position.x + largura / 2, y: node.position.y + altura / 2 }
+    const rack = rackNoPonto(atuais.filter(n => n.id !== node.id), centro)
+    if (!rack) return
+    const alturaU = alturaPadrao(node.data.tipo)
+    const desejado = uPelaPosicao(centro.y - rack.position.y - (alturaU * U_PX) / 2, alturaU, rack.data.us)
+    const u = posicaoLivreMaisProxima(atuais, rack, desejado, alturaU, node.id)
+    if (u == null) { toast.error(`Não há ${alturaU}U livres no rack ${rack.data.label}.`); return }
+    setNodes(nds => normalizarRacks(nds.map(n => n.id === node.id ? noMontado(n, rack, u, alturaU) : n)))
+    toast.success(`${node.data.label} montado no ${rack.data.label} (U${u}${alturaU > 1 ? `-${u + alturaU - 1}` : ''})`)
+  }, [readOnly])
   const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [])
   
   const onConnect = useCallback((params) => {
@@ -217,8 +282,33 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const onEdgeMouseEnter = (event, edge) => !readOnly && setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 4 } } : e))
   const onEdgeMouseLeave = (event, edge) => !readOnly && setEdges((eds) => eds.map((e) => e.id === edge.id ? { ...e, style: { ...e.style, strokeWidth: 2.5 } } : e))
 
-  const handleUpdateNode = (id, newData) => { if (!readOnly) { setNodes((nds) => nds.map((node) => node.id === id ? { ...node, data: { ...node.data, ...newData } } : node)); setSelectedNode(null) } }
-  const handleDeleteNode = (id) => { if (!readOnly) { setNodes((nds) => nds.filter((node) => node.id !== id)); setEdges((eds) => eds.filter((edge) => edge.source !== id && edge.target !== id)); setSelectedNode(null) } }
+  const handleUpdateNode = (id, newData) => {
+    if (readOnly) return
+    const { rackId, rackU, alturaU, us, ...dados } = newData
+    setNodes((nds) => {
+      const alvo = nds.find(n => n.id === id)
+      if (!alvo) return nds
+      let novo = { ...alvo, data: { ...alvo.data, ...dados } }
+      if (alvo.type === 'rack') {
+        novo = noRack({ ...novo, data: { ...novo.data, us: us || alvo.data.us } })
+      } else if (rackId) {
+        const rack = nds.find(n => n.id === rackId)
+        if (rack) novo = noMontado(novo, rack, rackU, alturaU)
+      } else if (alvo.parentNode && 'rackId' in newData) {
+        novo = noLivre(novo, nds.find(n => n.id === alvo.parentNode))
+      }
+      return normalizarRacks(nds.map(n => n.id === id ? novo : n))
+    })
+    setSelectedNode(null)
+  }
+  const handleDeleteNode = (id) => {
+    if (readOnly) return
+    // Excluir um rack exclui também os equipamentos montados nele.
+    const removidos = new Set([id, ...nodesRef.current.filter(n => n.parentNode === id).map(n => n.id)])
+    setNodes((nds) => normalizarRacks(nds.filter((node) => !removidos.has(node.id))))
+    setEdges((eds) => eds.filter((edge) => !removidos.has(edge.source) && !removidos.has(edge.target)))
+    setSelectedNode(null)
+  }
   
   const handleUpdateEdge = (id, newLabel, newSource, newTarget) => {
     if (readOnly) return;
@@ -243,7 +333,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         defaultEdgeOptions={defaultEdgeOptions} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
         onConnect={onConnect} onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
-        onReconnect={onReconnect} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
+        onReconnect={onReconnect} onNodeDragStop={onNodeDragStop} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
         elementsSelectable={!readOnly} edgesUpdatable={!readOnly} nodesFocusable={!readOnly} edgesFocusable={!readOnly} deleteKeyCode={readOnly ? null : 'Backspace'}
         reconnectRadius={20} connectionMode="loose" fitView
       >
@@ -251,7 +341,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         <Controls showInteractive={!readOnly} />
       </ReactFlow>
 
-      {selectedNode && <EquipmentModal node={selectedNode} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
+      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
       {selectedEdge && <EdgeModal edge={selectedEdge} nodes={nodes} onClose={() => setSelectedEdge(null)} onUpdate={handleUpdateEdge} onDelete={handleDeleteEdge} />}
     </>
   )
