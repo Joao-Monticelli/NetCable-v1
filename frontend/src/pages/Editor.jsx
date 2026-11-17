@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
@@ -8,6 +8,8 @@ import SettingsModal from '../components/Modals/SettingsModal'
 import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import HistoryModal from '../components/Modals/HistoryModal'
 import ModelosModal from '../components/Modals/ModelosModal'
+import BuscaEquipamento from '../components/BuscaEquipamento'
+import { usePreferenciaCabos, useResumoMapa } from '../components/visaoMapa'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
 import { normalizarRacks } from '../components/rack/rackUtils'
@@ -50,6 +52,9 @@ export default function Editor() {
   const [modelosProntos, setModelosProntos] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [modoVisualizacao, setModoVisualizacao] = useState(false)
+  const [mostrarCabos, alternarCabos] = usePreferenciaCabos()
+  const { itens: itensBusca, cabosPorta, atualizar: atualizarResumo } = useResumoMapa()
+  const [foco, setFoco] = useState(null)
   // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
   const somenteLeitura = currentUser?.papel === 'visualizador'
   const leitura = modoVisualizacao || somenteLeitura
@@ -120,6 +125,7 @@ export default function Editor() {
   const handleMapUpdate = useCallback((nodes, edges) => {
     currentNodes.current = nodes
     currentEdges.current = edges
+    atualizarResumo(nodes, edges)
     const assinatura = assinaturaMapa(nodes, edges)
     if (baselineRef.current === null) baselineRef.current = assinatura
     setMapaAlterado(assinatura !== baselineRef.current)
@@ -131,7 +137,7 @@ export default function Editor() {
       return acc
     }, { online: 0, offline: 0, visual: 0 })
     setStats(counts)
-  }, [])
+  }, [atualizarResumo])
 
   // Callback chamado quando o NetworkMap detecta uma queda
   const handleAlertaQueda = useCallback((mensagem) => {
@@ -327,6 +333,13 @@ export default function Editor() {
               <Eye size={15} /> {t('Somente visualização')}
             </span>
           )}
+          <BuscaEquipamento itens={itensBusca} onEscolher={(id) => setFoco({ id, n: Date.now() })} />
+
+          <button onClick={alternarCabos} title={mostrarCabos ? t('Ocultar cabos entre portas') : t('Mostrar cabos entre portas')} aria-pressed={!mostrarCabos}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: mostrarCabos ? '#334155' : '#7c2d12', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+            {mostrarCabos ? <Cable size={18} /> : <Unplug size={18} />}
+            {cabosPorta > 0 && <span style={{ fontSize: '12px', fontWeight: 'bold' }}>{cabosPorta}</span>}
+          </button>
           {!somenteLeitura && <button onClick={() => setModoVisualizacao(v => !v)} title={modoVisualizacao ? t('Voltar ao modo edição') : t('Modo visualização (somente leitura)')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: modoVisualizacao ? '#3b82f6' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
             {modoVisualizacao ? <><Pencil size={18} /> {t('Editar')}</> : <Eye size={18} />}
           </button>}
@@ -388,7 +401,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>
 
       {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} modelos={modelos} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
