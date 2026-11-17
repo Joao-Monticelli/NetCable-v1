@@ -1,19 +1,110 @@
-name: Build and Push NetCable Images
+name: CI and Docker images
 
+# main  -> testes + imagem :latest (e :sha)
+# v1.2.3 (tag) -> testes + imagens :1.2.3, :1.2, :latest
+# Pull requests -> só testes (nada é publicado)
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-push:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install and run pytest
+        working-directory: backend
+        run: |
+          pip install -r requirements.txt
+          PYTHONDONTWRITEBYTECODE=1 pytest -q
+
+  qa-robot:
+    # Usa o NetCable como um usuário real (Playwright), servindo a interface compilada pela API,
+    # exatamente como na imagem Docker.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            qa/package-lock.json
+      - name: Backend environment
+        run: |
+          python -m venv backend/venv
+          backend/venv/bin/pip install -r backend/requirements.txt
+      - name: Build the interface
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Install the QA robot and Chromium
+        working-directory: qa
+        run: |
+          npm ci || npm install
+          npx playwright-core install --with-deps chromium
+      - name: Run the QA robot
+        working-directory: qa
+        env:
+          QA_MODO: unica
+        run: node qa.mjs --rapido
+      - name: Upload QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report
+          path: qa/relatorios/
+          retention-days: 14
+
+  docker:
+    needs: [ backend-tests, qa-robot ]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: App version
+        id: versao
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "app=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=$(cat VERSION)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/joao-monticelli/netcable
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -22,22 +113,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Validate backend
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          PYTHONDONTWRITEBYTECODE=1 pytest -q
+      # Imagem única (interface + API na porta 8080) para PC/servidor (amd64) e Raspberry Pi/ARM (arm64).
+      - name: Build and push NetCable
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: APP_VERSION=${{ steps.versao.outputs.app }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build and push Backend
-        uses: docker/build-push-action@v5
+      # Imagens antigas (backend + frontend separados), mantidas por um tempo para quem
+      # ainda usa o docker-compose antigo. Novas instalações devem usar a imagem única.
+      - name: Build and push legacy backend image
+        uses: docker/build-push-action@v6
         with:
           context: ./backend
           push: true
+          build-args: APP_VERSION=${{ steps.versao.outputs.app }}
           tags: ghcr.io/joao-monticelli/netcable-backend:latest
 
-      - name: Build and push Frontend
-        uses: docker/build-push-action@v5
+      - name: Build and push legacy frontend image
+        uses: docker/build-push-action@v6
         with:
           context: ./frontend
           push: true
