@@ -54,8 +54,9 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [setup, setSetup] = useState(null) // null = verificando; true = primeiro acesso
+  const [versao, setVersao] = useState('')
 
-  useEffect(() => { api.statusSetup().then(s => setSetup(!!s.necessario)).catch(() => setSetup(false)) }, [])
+  useEffect(() => { api.statusSetup().then(s => { setSetup(!!s.necessario); setVersao(s.versao || '') }).catch(() => setSetup(false)) }, [])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -95,6 +96,7 @@ export default function Login() {
             </form>
           </>
         )}
+        {versao && <div style={{ textAlign: 'center', marginTop: '22px', fontSize: '11px', color: '#475569' }}>NetCable v{versao}</div>}
       </div>
     </div>
   )
