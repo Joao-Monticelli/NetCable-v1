@@ -8,6 +8,7 @@ export function dadosDeAlerta(eq, nomePorId) {
   return {
     inalcancavelPor: causa, inalcancavelNome: causa ? (nomePorId.get(causa) || causa) : null,
     manutencaoAte: eq.manutencao_ate || null,
+    snmp: eq.snmp || null,
   }
 }
 

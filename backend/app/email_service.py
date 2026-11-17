@@ -78,6 +78,9 @@ def texto_dependentes(evento, idioma="pt"):
 
 
 def _linha_evento(e, idioma):
+    if e.get("metrica"):
+        from .alerts import texto_metrica  # import tardio: alerts importa este módulo
+        return f"{texto_metrica(e, idioma)}  {e['equipamento']} ({e['ip']}) — {tr('mapa', idioma)} {e.get('projeto') or '-'}"
     dep = texto_dependentes(e, idioma)
     return _linha_evento_base(e, idioma) + (f"\n      ↳ {dep}" if dep else "")
 
@@ -90,10 +93,20 @@ def _linha_evento_base(e, idioma):
     return f"🟢 ONLINE   {e['equipamento']} ({e['ip']}) — {mapa}{lat}"
 
 
+def _rotulo_status(e, idioma):
+    if e.get("metrica"):
+        from .alerts import texto_metrica
+        return texto_metrica(e, idioma)
+    return e["status"].upper()
+
+
 def montar_email_alerta(eventos, idioma="pt"):
     quedas = sum(1 for e in eventos if e["status"] == "offline")
-    voltas = len(eventos) - quedas
+    metricas = sum(1 for e in eventos if e.get("metrica"))
+    voltas = len(eventos) - quedas - metricas
     partes = []
+    if metricas:
+        partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
     if quedas:
         partes.append(tr("{n} equipamento(s) offline", idioma, n=quedas))
     if voltas:
@@ -101,7 +114,7 @@ def montar_email_alerta(eventos, idioma="pt"):
     assunto = "[NetCable] " + ", ".join(partes)
     texto = tr("Mudanças de status detectadas pelo NetCable:", idioma) + "\n\n" + "\n".join(_linha_evento(e, idioma) for e in eventos)
     linhas_html = "".join(
-        f"<tr><td style='padding:6px 10px;color:{_COR.get(e['status'], '#0f172a')};font-weight:bold'>{escape(e['status'].upper())}</td>"
+        f"<tr><td style='padding:6px 10px;color:{_COR.get(e['status'], '#b45309')};font-weight:bold'>{escape(_rotulo_status(e, idioma))}</td>"
         f"<td style='padding:6px 10px'>{escape(e['equipamento'])}</td>"
         f"<td style='padding:6px 10px;color:#64748b'>{escape(e['ip'] or '')}</td>"
         f"<td style='padding:6px 10px;color:#64748b'>{escape(e.get('projeto') or '-')}</td></tr>"

@@ -71,6 +71,7 @@ async function aguardarUrl(url, ms = 90000) {
 }
 
 function pythonDoBackend() {
+  if (process.env.QA_PYTHON) return process.env.QA_PYTHON // ex.: um Python 3.11 com pysnmp (métricas SNMP)
   const candidatos = [path.join(RAIZ, 'backend', 'venv', 'Scripts', 'python.exe'), path.join(RAIZ, 'backend', 'venv', 'bin', 'python')]
   return candidatos.find(fs.existsSync) || (process.platform === 'win32' ? 'python' : 'python3')
 }
@@ -85,7 +86,7 @@ async function subirAmbiente() {
   iniciar('backend', python, ['-m', 'uvicorn', 'app.main:app', '--host', MODO_UNICO ? '0.0.0.0' : '127.0.0.1', '--port', String(PORTA_API)], {
     cwd: path.join(TEMP, 'backend'),
     // Sem ADMIN_PASSWORD nem SECRET_KEY: como uma instalação nova da loja (assistente + chave automática).
-    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', MONITOR_INTERVAL: '3', ADMIN_PASSWORD: '', SECRET_KEY: '',
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', MONITOR_INTERVAL: '3', SNMP_METRICS_INTERVAL: '3', ADMIN_PASSWORD: '', SECRET_KEY: '',
       NETCABLE_DATA_DIR: path.join(TEMP, 'backend', 'data'), NETCABLE_STATIC_DIR: MODO_UNICO ? dist : path.join(TEMP, 'sem-interface') },
   })
   if (!MODO_UNICO) {
@@ -478,6 +479,35 @@ async function roteiros() {
       await page.waitForTimeout(600)
       await ok(await page.locator('.react-flow__node').count() === antes + linhas, `${linhas} equipamento(s) descoberto(s) adicionados ao mapa`)
     }
+  })
+
+  // Só com um agente SNMP simulado (snmpsim): QA_SNMPSIM=127.0.0.1:11161 e QA_PYTHON com pysnmp.
+  if (process.env.QA_SNMPSIM) await cenario('Métricas SNMP (agente simulado)', async ({ page, ok }) => {
+    const [host, porta] = process.env.QA_SNMPSIM.split(':')
+    const sw = { id: 'snmp', nome: 'Switch SNMP', ip: host, tipo: 'Switch Gerenciável', status: 'offline', posX: 0, posY: 0, width: 380, height: 28,
+      rackId: 'r1', rackU: 8, alturaU: 1, monitorMode: 'snmpv3', modeloId: null,
+      monitorConfig: { username: 'netcable', authProtocol: 'SHA', authPassword: 'authpass123', privProtocol: 'AES', privPassword: 'privpass123', port: Number(porta), context: 'public' } }
+    const modelo = await api('POST', '/modelos', { nome: 'Lab 4p', tipo: 'Switch Gerenciável', altura_u: 1, portas_rj45: 4, portas_sfp: 0, prefixo_porta: 'ge' }, TOKEN)
+    await api('POST', `/projetos/${PID}/salvar`, { ...MAPA, equipamentos: [...MAPA.equipamentos, { ...sw, modeloId: modelo.id }] }, TOKEN)
+    await entrar(page); await abrirEditor(page)
+    await ok(await existe(page, '.react-flow__node[data-id="snmp"] .rack-equip-ping:has-text("47°")', 30000), 'temperatura (47°) aparece no rack')
+    await ok(await existe(page, '.react-flow__node[data-id="snmp"] .porta-rj45.sem-link', 8000), 'porta 3 sem link aparece apagada (LED real)')
+    // O tráfego precisa de duas coletas (a taxa é a variação dos contadores).
+    let dica = ''
+    for (let i = 0; i < 20 && !dica.includes('Mb/s'); i++) {
+      dica = await page.locator('.react-flow__node[data-id="snmp"] .porta-rj45').first().getAttribute('title')
+      if (!dica.includes('Mb/s')) await page.waitForTimeout(1000)
+    }
+    await ok(dica.includes('ge-0/0/1 (uplink firewall)') && dica.includes('Mb/s'), `tooltip da porta 1 com nome, descrição e tráfego (${dica.split('\n').join(' | ')})`)
+    await print(page, 'snmp-rack')
+    await page.locator('.react-flow__node[data-id="snmp"] .rack-equip-id').click()
+    await page.click('button:has-text("Ver métricas")')
+    await ok(await existe(page, '[role=dialog][aria-label="Métricas SNMP"] >> text=47 °C'), 'modal de métricas com temperatura')
+    await ok(await existe(page, '[role=dialog] td:has-text("uplink firewall")'), 'tabela de portas com descrição')
+    await ok(await page.locator('[role=dialog] svg[role=img]').count() >= 3, 'gráficos de temperatura, CPU/memória e tráfego')
+    await print(page, 'snmp-metricas')
+    await page.locator('[role=dialog] button[aria-label="Fechar"]').click()
+    await restaurarMapa()
   })
 
   await cenario('Histórico, latência e diagnóstico', async ({ page, ok }) => {

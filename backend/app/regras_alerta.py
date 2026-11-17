@@ -117,6 +117,11 @@ def aplicar(db, eventos, agora=None):
         if eq is None:
             enviar.append(evento)
             continue
+        if evento.get("metrica"):
+            # Temperatura/CPU: só a manutenção silencia.
+            if not em_manutencao(eq, ativas):
+                enviar.append(evento)
+            continue
         if em_manutencao(eq, ativas):
             if evento["status"] == "offline":
                 _suprimidos.add(eq.id)

@@ -25,11 +25,23 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: backend/requirements.txt
-      - name: Install and run pytest
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt "snmpsim==0.4.7"
+      - name: Start SNMP simulator (real SNMPv3 integration test)
         working-directory: backend
         run: |
-          pip install -r requirements.txt
-          PYTHONDONTWRITEBYTECODE=1 pytest -q
+          python tests/snmpsim/gerar.py
+          VARIACOES="$(python -c 'import os, sys; print(os.path.join(sys.prefix, "snmpsim", "variation"))')"
+          nohup snmpsimd.py --data-dir=tests/snmpsim/dados --variation-modules-dir="$VARIACOES"             --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123             --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES > /tmp/snmpsim.log 2>&1 &
+      - name: Run pytest
+        working-directory: backend
+        env:
+          NETCABLE_SNMPSIM: 127.0.0.1:11161
+        run: PYTHONDONTWRITEBYTECODE=1 pytest -q -rs
+      - name: SNMP simulator log
+        if: failure()
+        run: tail -50 /tmp/snmpsim.log || true
 
   qa-robot:
     # Usa o NetCable como um usuário real (Playwright), servindo a interface compilada pela API,
@@ -49,10 +61,12 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             qa/package-lock.json
-      - name: Backend environment
+      - name: Backend environment and SNMP simulator
         run: |
           python -m venv backend/venv
-          backend/venv/bin/pip install -r backend/requirements.txt
+          backend/venv/bin/pip install -r backend/requirements.txt "snmpsim==0.4.7"
+          cd backend && venv/bin/python tests/snmpsim/gerar.py
+          nohup venv/bin/snmpsimd.py --data-dir=tests/snmpsim/dados --variation-modules-dir=venv/snmpsim/variation             --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123             --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES > /tmp/snmpsim.log 2>&1 &
       - name: Build the interface
         working-directory: frontend
         run: npm ci && npm run build
@@ -65,6 +79,7 @@ jobs:
         working-directory: qa
         env:
           QA_MODO: unica
+          QA_SNMPSIM: 127.0.0.1:11161
         run: node qa.mjs --rapido
       - name: Upload QA report
         if: always()

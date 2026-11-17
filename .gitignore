@@ -19,3 +19,5 @@ qa/relatorios/
 
 # Dados locais do NetCable (banco, chave secreta, backups) - nunca versionar
 backend/data/
+backend/tests/snmpsim/dados/
+backend/tests/snmpsim/dados*.dbm*

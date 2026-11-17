@@ -17,6 +17,8 @@ services:
       # Intervalo (s) do monitoramento no servidor (0 desativa) e falhas seguidas antes de "offline".
       # - MONITOR_INTERVAL=15
       # - MONITOR_FAILURE_THRESHOLD=2
+      # Intervalo (s) da coleta de métricas SNMP (CPU, temperatura, portas). 0 desativa.
+      # - SNMP_METRICS_INTERVAL=60
       # Dias de histórico mantidos no banco (0 = para sempre).
       # - HISTORY_RETENTION_DAYS=30
       # Canais de alerta. Também podem ser configurados na interface (⚙️ → Canais de alerta),
