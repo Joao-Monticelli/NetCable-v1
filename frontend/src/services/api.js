@@ -81,6 +81,12 @@ export const api = {
   salvarConfigEmail(dados) { return requisicao('/config/email', { method: 'PUT', body: JSON.stringify(dados) }, 'Não foi possível salvar a configuração de e-mail.') },
   testarEmail(destinatario) { return requisicao('/config/email/teste', { method: 'POST', body: JSON.stringify({ destinatario }) }, 'Falha no envio do e-mail de teste.') },
 
+  // --- Biblioteca de modelos de equipamento ---
+  listarModelos() { return requisicao('/modelos', {}, 'Não foi possível carregar os modelos.') },
+  criarModelo(dados) { return requisicao('/modelos', { method: 'POST', body: JSON.stringify(dados) }, 'Não foi possível criar o modelo.') },
+  atualizarModelo(id, dados) { return requisicao(`/modelos/${id}`, { method: 'PUT', body: JSON.stringify(dados) }, 'Não foi possível salvar o modelo.') },
+  excluirModelo(id) { return requisicao(`/modelos/${id}`, { method: 'DELETE' }, 'Não foi possível excluir o modelo.') },
+
   latenciaEquipamento(projetoId, equipamentoId, horas = 24) {
     return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/latencia?horas=${horas}`, {}, 'Não foi possível carregar a latência.')
   },

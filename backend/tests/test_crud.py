@@ -131,3 +131,23 @@ def test_salvar_mapa_guarda_posicao_no_rack():
         assert resumo["visual"] == 0 and resumo["offline"] == 1  # o rack não conta como equipamento
     finally:
         session.close()
+
+
+def test_biblioteca_de_modelos():
+    session = _sessao()
+    try:
+        gwn = crud.salvar_modelo(session, {"nome": "Grandstream GWN7003", "fabricante": "Grandstream", "tipo": "Firewall",
+                                          "altura_u": 1, "portas_rj45": 4, "portas_sfp": 2, "prefixo_porta": "eth"})
+        assert crud.get_modelo_por_nome(session, "grandstream gwn7003").id == gwn.id  # busca sem diferenciar maiúsculas
+        crud.salvar_modelo(session, {"portas_rj45": 5}, gwn.id)
+        assert crud.get_modelo(session, gwn.id).portas_rj45 == 5
+
+        projeto = crud.criar_projeto(session, "Mapa")
+        base = dict(posX=0, posY=0, width=200, height=80, status="offline", monitorMode="ip", monitorConfig=None)
+        crud.salvar_mapa(session, projeto.id, [{**base, "id": "fw", "nome": "FW", "ip": "10.0.0.1", "tipo": "Firewall", "modeloId": gwn.id}], [])
+        assert session.get(models.Equipamento, "fw").modelo_id == gwn.id
+        assert crud.uso_do_modelo(session, gwn.id) == 1
+        assert crud.deletar_modelo(session, gwn.id) is True
+        assert crud.listar_modelos(session) == []
+    finally:
+        session.close()

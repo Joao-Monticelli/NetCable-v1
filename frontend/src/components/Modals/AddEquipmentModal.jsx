@@ -3,9 +3,12 @@ import { X, Plus, Server, Wifi, Shield, Monitor, Activity, CheckCircle, XCircle,
 import { api } from '../../services/api'
 import { TIPOS, TIPOS_PASSIVOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre } from '../rack/rackUtils'
 
+const resumoModelo = (m) => [m.portas_rj45 && `${m.portas_rj45}× RJ45`, m.portas_sfp && `${m.portas_sfp}× SFP`].filter(Boolean).join(' + ') || 'sem portas'
 const faixaU = (u, a) => a > 1 ? `U${u}–U${u + a - 1}` : `U${u}`
 
-export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, nodes = [] }) {
+export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, nodes = [], modelos = [] }) {
+  const [modeloId, setModeloId] = useState('')
+  const modelo = modelos.find(m => m.id === Number(modeloId))
   const [nome, setNome] = useState('')
   const [ip, setIp] = useState('')
   const [tipo, setTipo] = useState('Roteador')
@@ -35,7 +38,18 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
     return lista
   }, [rack, alturaU, nodes])
 
+  const escolherModelo = (id) => {
+    setModeloId(id)
+    const m = modelos.find(x => x.id === Number(id))
+    if (!m) return
+    setTipo(m.tipo)
+    if (TIPOS_PASSIVOS.includes(m.tipo)) setSemIp(true)
+    setAlturaU(m.altura_u)
+    if (rack) setRackU(primeiraPosicaoLivre(nodes, rack, m.altura_u))
+  }
+
   const escolherTipo = (t) => {
+    setModeloId('')
     setTipo(t)
     if (TIPOS_PASSIVOS.includes(t)) setSemIp(true)
     const a = alturaPadrao(t)
@@ -148,7 +162,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
       }
     }
     
-    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar,
+    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar, modeloId: modelo ? modelo.id : null,
       rackId: rack ? rack.id : null, rackU: rack ? rackU : null, alturaU: rack ? alturaU : null })
   }
 
@@ -192,6 +206,17 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>{isRack ? 'Nome do Rack' : 'Nome do Equipamento'}</label>
             <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} placeholder={isRack ? 'Ex: Rack Principal' : 'Ex: Switch Andar 1'} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
           </div>
+
+          {!isRack && (
+            <div>
+              <label style={{ fontSize: '14px', color: '#94a3b8' }}>Modelo (opcional)</label>
+              <select aria-label="Modelo" value={modeloId} onChange={(e) => escolherModelo(e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
+                <option value="">Sem modelo (portas padrão do tipo)</option>
+                {modelos.map(m => <option key={m.id} value={m.id}>{m.nome} — {m.tipo}, {m.altura_u}U, {resumoModelo(m)}</option>)}
+              </select>
+              {modelos.length === 0 && <span style={{ fontSize: '11px', color: '#64748b' }}>Dica: cadastre seus equipamentos reais em ⚙️ → Modelos de equipamento.</span>}
+            </div>
+          )}
 
           {isRack && (
             <div>
@@ -289,7 +314,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
               </select>
               {rack && (
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <select aria-label="Altura" value={alturaU} onChange={(e) => escolherAltura(Number(e.target.value))} style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
+                  <select aria-label="Altura" value={alturaU} disabled={!!modelo} onChange={(e) => escolherAltura(Number(e.target.value))} style={{ opacity: modelo ? 0.6 : 1, flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>
                     {ALTURAS_EQUIP.filter(a => a <= rack.data.us).map(a => <option key={a} value={a}>{a}U</option>)}
                   </select>
                   <select aria-label="Posição" value={rackU || ''} onChange={(e) => setRackU(Number(e.target.value))} style={{ flex: 2, padding: '9px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#1e293b', color: 'white' }}>

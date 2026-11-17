@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, memo, useRef } from 'react'
+import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
@@ -9,9 +9,11 @@ import { api } from '../services/api'
 import toast from 'react-hot-toast'
 import { RackNode, RackDeviceNode } from './rack/RackNodes'
 import './rack/rack.css'
+import { ModelosContext } from './rack/ModelosContext'
 import {
   TRILHO, U_PX, alturaPadrao, uPelaPosicao, posicaoLivreMaisProxima, primeiraPosicaoLivre,
-  noRack, noMontado, noLivre, normalizarRacks, rackNoPonto, posicaoADireita,
+  noRack, noMontado, noLivre, normalizarRacks, rackNoPonto, posicaoADireita, handlesDoNo, ehPorta,
+  portasDoEquipamento, nomeDaPorta,
 } from './rack/rackUtils'
 
 const CustomNode = memo(({ data, selected }) => {
@@ -73,7 +75,9 @@ const calcularCorConexao = (sourceNode, targetNode) => {
 
 // readOnly: trava a edição e esconde os pontos de conexão (modo visualização / TV).
 // monitor: consulta o status mantido pelo backend (requer login e projectId). A página pública passa false.
-function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true, projectId = null }) {
+function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment = null, onMapUpdate, onAlertaQueda, readOnly = false, monitor = true, projectId = null, modelos = [], modelosProntos = true }) {
+  const mapaModelos = useMemo(() => new Map(modelos.map(m => [m.id, m])), [modelos])
+  const alturaDoEquipamento = (data) => mapaModelos.get(data.modeloId)?.altura_u || alturaPadrao(data.tipo)
   const [nodes, setNodes] = useState(initialNodes)
   const [edges, setEdges] = useState(initialEdges)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -139,6 +143,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           snmpConfig: equipment.snmpConfig || {},
           notificar: equipment.notificar !== false,
           us: equipment.us,
+          modeloId: equipment.modeloId || null,
         },
         _rack: { id: equipment.rackId, u: equipment.rackU, altura: equipment.alturaU },
       }))
@@ -152,7 +157,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
           }
           const rack = _rack.id && [...nds, ...novos].find(n => n.id === _rack.id)
           if (rack) {
-            const altura = _rack.altura || alturaPadrao(base.data.tipo)
+            const altura = _rack.altura || alturaDoEquipamento(base.data)
             const u = _rack.u || primeiraPosicaoLivre([...nds, ...novos], rack, altura)
             if (u) { novos.push(noMontado(base, rack, u, altura)); continue }
             toast.error(`Sem espaço no rack para ${base.data.label}; adicionado fora do rack.`)
@@ -253,17 +258,51 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     const centro = { x: node.position.x + largura / 2, y: node.position.y + altura / 2 }
     const rack = rackNoPonto(atuais.filter(n => n.id !== node.id), centro)
     if (!rack) return
-    const alturaU = alturaPadrao(node.data.tipo)
+    const alturaU = alturaDoEquipamento(node.data)
     const desejado = uPelaPosicao(centro.y - rack.position.y - (alturaU * U_PX) / 2, alturaU, rack.data.us)
     const u = posicaoLivreMaisProxima(atuais, rack, desejado, alturaU, node.id)
     if (u == null) { toast.error(`Não há ${alturaU}U livres no rack ${rack.data.label}.`); return }
     setNodes(nds => normalizarRacks(nds.map(n => n.id === node.id ? noMontado(n, rack, u, alturaU) : n)))
     toast.success(`${node.data.label} montado no ${rack.data.label} (U${u}${alturaU > 1 ? `-${u + alturaU - 1}` : ''})`)
-  }, [readOnly])
+  }, [readOnly, mapaModelos])
+
+  // Cabos presos a portas que deixaram de existir (equipamento saiu do rack, trocou de
+  // modelo, etc.) voltam para o ponto lateral, em vez de sumirem do mapa.
+  useEffect(() => {
+    if (!modelosProntos) return // sem os modelos, as portas reais ainda não são conhecidas
+    const porId = new Map(nodes.map(n => [n.id, n]))
+    setEdges(eds => {
+      let mudou = false
+      const corrigidas = eds.map(e => {
+        const validosOrigem = handlesDoNo(porId.get(e.source), mapaModelos)
+        const validosDestino = handlesDoNo(porId.get(e.target), mapaModelos)
+        const origemOk = !e.sourceHandle || !validosOrigem.size || validosOrigem.has(e.sourceHandle)
+        const destinoOk = !e.targetHandle || !validosDestino.size || validosDestino.has(e.targetHandle)
+        const sourceHandle = origemOk ? e.sourceHandle : 'right'
+        const targetHandle = destinoOk ? e.targetHandle : 'left'
+        // Patch cord ligado em porta fica na frente dos equipamentos, como num rack real.
+        const zIndex = ehPorta(sourceHandle) || ehPorta(targetHandle) ? 1 : undefined
+        if (origemOk && destinoOk && e.zIndex === zIndex) return e
+        mudou = true
+        return { ...e, sourceHandle, targetHandle, zIndex }
+      })
+      return mudou ? corrigidas : eds
+    })
+  }, [nodes, mapaModelos, modelosProntos])
   const onEdgesChange = useCallback((changes) => setEdges((eds) => applyEdgeChanges(changes, eds)), [])
   
+  const portaOcupada = (nodeId, handle, ignorarEdgeId = null) => ehPorta(handle) && edges.some(e => e.id !== ignorarEdgeId &&
+    ((e.source === nodeId && e.sourceHandle === handle) || (e.target === nodeId && e.targetHandle === handle)))
+  const nomePortaNo = (nodeId, handle) => {
+    const n = nodes.find(x => x.id === nodeId)
+    return n ? `${n.data.label} · ${nomeDaPorta(handle, portasDoEquipamento(n.data, mapaModelos.get(n.data.modeloId)))}` : handle
+  }
+
   const onConnect = useCallback((params) => {
     if (readOnly) return
+    for (const [no, handle] of [[params.source, params.sourceHandle], [params.target, params.targetHandle]]) {
+      if (portaOcupada(no, handle)) { toast.error(`${nomePortaNo(no, handle)} já tem um cabo conectado.`); return }
+    }
     const sourceNode = nodes.find(n => n.id === params.source)
     const targetNode = nodes.find(n => n.id === params.target)
     const cor = calcularCorConexao(sourceNode, targetNode)
@@ -273,7 +312,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       style: { stroke: cor.stroke, strokeWidth: 2.5 },
       markerEnd: { type: MarkerType.ArrowClosed, color: cor.color },
     }, eds))
-  }, [nodes, readOnly])
+  }, [nodes, edges, readOnly, mapaModelos])
 
   const onNodeClick = (event, node) => { if (!readOnly) setSelectedNode(node) }
   const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edge) }
@@ -310,14 +349,18 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     setSelectedNode(null)
   }
   
-  const handleUpdateEdge = (id, newLabel, newSource, newTarget) => {
+  const handleUpdateEdge = (id, newLabel, newSource, newTarget, sourceHandle, targetHandle) => {
     if (readOnly) return;
+    for (const [no, handle] of [[newSource, sourceHandle], [newTarget, targetHandle]]) {
+      if (portaOcupada(no, handle, id)) { toast.error(`${nomePortaNo(no, handle)} já tem outro cabo conectado.`); return }
+    }
     setEdges((eds) => eds.map((edge) => {
       if (edge.id === id) {
         const sourceNode = nodes.find(n => n.id === newSource)
         const targetNode = nodes.find(n => n.id === newTarget)
         const cor = calcularCorConexao(sourceNode, targetNode)
-        return { ...edge, source: newSource, target: newTarget, label: newLabel, labelStyle: { fill: 'white', fontWeight: 'bold' }, labelBgStyle: { fill: '#1e293b' }, style: { stroke: cor.stroke, strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: cor.color } }
+        return { ...edge, source: newSource, target: newTarget, label: newLabel,
+          sourceHandle: sourceHandle ?? edge.sourceHandle, targetHandle: targetHandle ?? edge.targetHandle, labelStyle: { fill: 'white', fontWeight: 'bold' }, labelBgStyle: { fill: '#1e293b' }, style: { stroke: cor.stroke, strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: cor.color } }
       }
       return edge
     }))
@@ -326,7 +369,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const handleDeleteEdge = (id) => { if (!readOnly) { setEdges((eds) => eds.filter((edge) => edge.id !== id)); setSelectedEdge(null) } }
 
   return (
-    <>
+    <ModelosContext.Provider value={mapaModelos}>
       <ReactFlow
         className={readOnly ? 'netmap-readonly' : ''}
         nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
@@ -335,15 +378,15 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         onEdgeMouseEnter={onEdgeMouseEnter} onEdgeMouseLeave={onEdgeMouseLeave}
         onReconnect={onReconnect} onNodeDragStop={onNodeDragStop} nodesConnectable={!readOnly} nodesDraggable={!readOnly}
         elementsSelectable={!readOnly} edgesUpdatable={!readOnly} nodesFocusable={!readOnly} edgesFocusable={!readOnly} deleteKeyCode={readOnly ? null : 'Backspace'}
-        reconnectRadius={20} connectionMode="loose" fitView
+        reconnectRadius={20} connectionRadius={18} connectionMode="loose" fitView
       >
         <Background />
         <Controls showInteractive={!readOnly} />
       </ReactFlow>
 
-      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
-      {selectedEdge && <EdgeModal edge={selectedEdge} nodes={nodes} onClose={() => setSelectedEdge(null)} onUpdate={handleUpdateEdge} onDelete={handleDeleteEdge} />}
-    </>
+      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} modelos={modelos} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
+      {selectedEdge && <EdgeModal edge={selectedEdge} nodes={nodes} edges={edges} modelos={mapaModelos} onClose={() => setSelectedEdge(null)} onUpdate={handleUpdateEdge} onDelete={handleDeleteEdge} />}
+    </ModelosContext.Provider>
   )
 }
 

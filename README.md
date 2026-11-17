@@ -43,6 +43,10 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 
 ## 🔧 Atualizações recentes
 
+✅ **Biblioteca de modelos de equipamento** — em ⚙️ → Modelos de equipamento, cadastre seus equipamentos reais (ex.: "Grandstream GWN7003": firewall 1U, 4 RJ45 + 2 SFP, portas "eth1…eth4") com prévia ao vivo. Ao adicionar um equipamento, escolha o modelo e a frente no rack é desenhada com exatamente essas portas.
+
+✅ **Cabos porta a porta** — no rack, arraste de uma porta até outra (ex.: porta 12 do switch → eth3 do firewall). O cabo sai da própria porta, a porta fica marcada como em uso e o tooltip mostra para onde ela vai. No modal do cabo também dá para escolher as portas numa lista; uma porta não aceita dois cabos.
+
 ✅ **Racks em formato real** — adicione um *Rack* (4U a 48U) e monte os equipamentos nele: cada tipo tem a frente desenhada como o equipamento real (portas RJ45/SFP com LEDs, baias de disco, display do nobreak/firewall...). Arraste um equipamento do mapa para dentro do rack e ele encaixa no U mais próximo; dentro do rack ele só se move na vertical, encaixando nos U livres. Também dá para escolher rack, altura (1U, 2U, 4U...) e posição ao adicionar ou editar. O servidor recusa sobreposições ao salvar.
 
 ✅ **Vários usuários com papéis** — o admin cria usuários em ⚙️ → Usuários e define o papel de cada um (Administrador, Editor ou Visualizador). O Visualizador abre os mapas já em modo somente leitura. O usuário de `ADMIN_USER` é sempre mantido como admin ativo (serve para recuperar o acesso).

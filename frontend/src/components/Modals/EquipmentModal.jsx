@@ -5,6 +5,7 @@ import { TIPOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosica
 const campo = { width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }
 const rotulo = { fontSize: '14px', color: '#94a3b8' }
 const caixa = { padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '10px' }
+const resumoModelo = (m) => [m.portas_rj45 && `${m.portas_rj45}× RJ45`, m.portas_sfp && `${m.portas_sfp}× SFP`].filter(Boolean).join(' + ') || 'sem portas'
 const faixaU = (u, a) => a > 1 ? `U${u}–U${u + a - 1}` : `U${u}`
 
 function Moldura({ titulo, onClose, children, rodape }) {
@@ -63,12 +64,14 @@ function RackModal({ node, nodes, onClose, onUpdate, onDelete }) {
 }
 
 // ---------------------------------------------------------- Equipamento
-export default function EquipmentModal({ node, nodes = [], onClose, onUpdate, onDelete }) {
+export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete }) {
   if (node.type === 'rack') return <RackModal node={node} nodes={nodes} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
-  return <EquipamentoModal node={node} nodes={nodes} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
+  return <EquipamentoModal node={node} nodes={nodes} modelos={modelos} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
 }
 
-function EquipamentoModal({ node, nodes, onClose, onUpdate, onDelete }) {
+function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete }) {
+  const [modeloId, setModeloId] = useState(node.data.modeloId || '')
+  const modelo = modelos.find(m => m.id === Number(modeloId))
   const [nome, setNome] = useState(node.data.label || '')
   const [semIp, setSemIp] = useState(node.data.ip === 'Sem IP')
   const [ip, setIp] = useState(node.data.ip === 'Sem IP' ? '' : (node.data.ip || ''))
@@ -79,7 +82,7 @@ function EquipamentoModal({ node, nodes, onClose, onUpdate, onDelete }) {
 
   const racks = nodes.filter(n => n.type === 'rack')
   const [rackId, setRackId] = useState(node.parentNode || '')
-  const [alturaU, setAlturaU] = useState(node.data.alturaU || alturaPadrao(node.data.tipo))
+  const [alturaU, setAlturaU] = useState(node.data.alturaU || modelos.find(m => m.id === node.data.modeloId)?.altura_u || alturaPadrao(node.data.tipo))
   const [rackU, setRackU] = useState(node.data.rackU || null)
   const rack = racks.find(r => r.id === rackId)
 
@@ -106,10 +109,16 @@ function EquipamentoModal({ node, nodes, onClose, onUpdate, onDelete }) {
     setRackU(candidatas.find(u => cabe(nodes, rack, u, a, node.id)) ?? primeiraPosicaoLivre(nodes, rack, a, node.id))
   }
 
+  const escolherModelo = (id) => {
+    setModeloId(id)
+    const m = modelos.find(x => x.id === Number(id))
+    if (m) { setTipo(m.tipo); escolherAltura(m.altura_u) }
+  }
+
   const handleSave = () => {
     const ipFinal = semIp ? 'Sem IP' : ip.trim()
     const dados = {
-      label: nome, ip: ipFinal, tipo, notificar,
+      label: nome, ip: ipFinal, tipo, notificar, modeloId: modelo ? modelo.id : null,
       monitorMode: semIp ? 'visual' : monitorMode,
       snmpConfig: !semIp && monitorMode === 'snmpv3' ? snmpConfig : null,
       rackId: rack ? rack.id : null, rackU: rack ? Number(rackU) : null, alturaU: rack ? Number(alturaU) : null,
@@ -131,8 +140,17 @@ function EquipamentoModal({ node, nodes, onClose, onUpdate, onDelete }) {
       <div><label style={rotulo}>Nome do Equipamento</label><input type="text" value={nome} onChange={(e) => setNome(e.target.value)} style={campo} /></div>
 
       <div>
+        <label style={rotulo}>Modelo</label>
+        <select aria-label="Modelo" value={modeloId} onChange={(e) => escolherModelo(e.target.value)} style={campo}>
+          <option value="">Sem modelo (portas padrão do tipo)</option>
+          {modelos.map(m => <option key={m.id} value={m.id}>{m.nome} — {m.tipo}, {m.altura_u}U, {resumoModelo(m)}</option>)}
+        </select>
+        {modelos.length === 0 && <span style={{ fontSize: '11px', color: '#64748b' }}>Cadastre modelos em ⚙️ → Modelos de equipamento.</span>}
+      </div>
+
+      <div>
         <label style={rotulo}>Tipo</label>
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={campo}>
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)} disabled={!!modelo} title={modelo ? 'Definido pelo modelo' : ''} style={{ ...campo, opacity: modelo ? 0.6 : 1 }}>
           {[...new Set([...TIPOS, tipo])].map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
@@ -179,7 +197,7 @@ function EquipamentoModal({ node, nodes, onClose, onUpdate, onDelete }) {
           {rack && (
             <div style={{ display: 'flex', gap: '8px' }}>
               <label style={{ ...rotulo, fontSize: '12px', flex: 1 }}>Altura
-                <select aria-label="Altura" value={alturaU} onChange={e => escolherAltura(Number(e.target.value))} style={campo}>
+                <select aria-label="Altura" value={alturaU} onChange={e => escolherAltura(Number(e.target.value))} disabled={!!modelo} title={modelo ? 'Definida pelo modelo' : ''} style={{ ...campo, opacity: modelo ? 0.6 : 1 }}>
                   {ALTURAS_EQUIP.filter(a => a <= rack.data.us).map(a => <option key={a} value={a}>{a}U</option>)}
                 </select>
               </label>
