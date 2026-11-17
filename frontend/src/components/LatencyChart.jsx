@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { XCircle } from 'lucide-react'
+import { t, useI18n, localeAtual } from '../i18n'
 
 // Gráfico de linha (SVG puro) da latência de UM equipamento.
 // Série única: sem caixa de legenda (o título nomeia a série). Faixas vermelhas
@@ -22,6 +23,7 @@ function topoBonito(max) {
 const fmtMs = (v) => (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10) + ' ms'
 
 export default function LatencyChart({ pontos, horas }) {
+  useI18n()
   const caixaRef = useRef(null)
   const [largura, setLargura] = useState(640)
   const [hover, setHover] = useState(null)
@@ -42,7 +44,7 @@ export default function LatencyChart({ pontos, horas }) {
   const yMax = topoBonito(Math.max(...valores, 1) * 1.1)
   const w = largura - MARGEM.left - MARGEM.right
   const h = ALTURA - MARGEM.top - MARGEM.bottom
-  const x = (t) => MARGEM.left + ((t - inicio) / (agora - inicio)) * w
+  const x = (tm) => MARGEM.left + ((tm - inicio) / (agora - inicio)) * w
   const y = (v) => MARGEM.top + h - (v / yMax) * h
 
   // Linha quebrada nos períodos offline / sem medição.
@@ -69,7 +71,7 @@ export default function LatencyChart({ pontos, horas }) {
 
   const ticksY = [0, 0.25, 0.5, 0.75, 1].map(f => f * yMax)
   const ticksX = Array.from({ length: 5 }, (_, i) => new Date(inicio.getTime() + (i / 4) * (agora - inicio)))
-  const fmtX = (d) => horas <= 24 ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' })
+  const fmtX = (d) => horas <= 24 ? d.toLocaleTimeString(localeAtual(), { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString(localeAtual(), { day: '2-digit', month: '2-digit' })
 
   const aoMover = (e) => {
     if (!dados.length) return
@@ -82,7 +84,7 @@ export default function LatencyChart({ pontos, horas }) {
 
   return (
     <div ref={caixaRef} style={{ position: 'relative', width: '100%' }}>
-      <svg width={largura} height={ALTURA} role="img" aria-label="Gráfico de latência ao longo do tempo" style={{ display: 'block' }}>
+      <svg width={largura} height={ALTURA} role="img" aria-label={t('Gráfico de latência ao longo do tempo')} style={{ display: 'block' }}>
         {ticksY.map(v => (
           <g key={v}>
             <line x1={MARGEM.left} x2={MARGEM.left + w} y1={y(v)} y2={y(v)} stroke={GRADE} strokeWidth="1" strokeDasharray={v === 0 ? '' : '2 4'} />
@@ -118,14 +120,14 @@ export default function LatencyChart({ pontos, horas }) {
         <div style={{ position: 'absolute', top: 8, left: Math.min(Math.max(x(hover.t) + 12, 0), largura - 170), width: 160, pointerEvents: 'none', background: '#0f172a', border: '1px solid #334155', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', boxShadow: '0 4px 10px rgba(0,0,0,0.4)' }}>
           {hover.status === 'online' && hover.ms != null
             ? <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: 12, height: 2, background: COR_LINHA, display: 'inline-block' }} /><b style={{ color: 'white', fontSize: '14px' }}>{fmtMs(hover.ms)}</b></div>
-            : <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', fontWeight: 'bold' }}><XCircle size={14} color={COR_OFFLINE} /> {hover.status === 'offline' ? 'Offline' : 'Sem medição'}</div>}
-          <div style={{ color: TEXTO, marginTop: '3px' }}>{hover.t.toLocaleString()}</div>
+            : <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'white', fontWeight: 'bold' }}><XCircle size={14} color={COR_OFFLINE} /> {hover.status === 'offline' ? t('Offline') : t('Sem medição')}</div>}
+          <div style={{ color: TEXTO, marginTop: '3px' }}>{hover.t.toLocaleString(localeAtual())}</div>
         </div>
       )}
 
       {faixasOffline.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: TEXTO, marginTop: '4px' }}>
-          <span style={{ width: 14, height: 10, background: COR_OFFLINE, opacity: 0.35, display: 'inline-block', borderRadius: 2 }} /> Offline
+          <span style={{ width: 14, height: 10, background: COR_OFFLINE, opacity: 0.35, display: 'inline-block', borderRadius: 2 }} /> {t('Offline')}
         </div>
       )}
     </div>

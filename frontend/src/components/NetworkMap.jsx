@@ -15,8 +15,10 @@ import {
   noRack, noMontado, noLivre, normalizarRacks, rackNoPonto, posicaoADireita, handlesDoNo, ehPorta,
   portasDoEquipamento, nomeDaPorta,
 } from './rack/rackUtils'
+import { t, useI18n } from '../i18n'
 
 const CustomNode = memo(({ data, selected }) => {
+  useI18n()
   const getIcon = () => {
     switch (data.tipo) {
       case 'Roteador': return <Wifi size={18} color="#3b82f6" />
@@ -35,7 +37,7 @@ const CustomNode = memo(({ data, selected }) => {
       
       <div className={`status-dot ${data.status === 'visual' ? 'status-visual' : (data.status === 'online' ? 'status-online' : 'status-offline')}`} />
       {data.notificar === false && data.status !== 'visual' && (
-        <span className="node-sem-alerta" title="Notificações desligadas para este equipamento"><BellOff size={12} /></span>
+        <span className="node-sem-alerta" title={t('Notificações desligadas para este equipamento')}><BellOff size={12} /></span>
       )}
       
       {getIcon()}
@@ -160,7 +162,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
             const altura = _rack.altura || alturaDoEquipamento(base.data)
             const u = _rack.u || primeiraPosicaoLivre([...nds, ...novos], rack, altura)
             if (u) { novos.push(noMontado(base, rack, u, altura)); continue }
-            toast.error(`Sem espaço no rack para ${base.data.label}; adicionado fora do rack.`)
+            toast.error(t('Sem espaço no rack para {nome}; adicionado fora do rack.', { nome: base.data.label }))
           }
           novos.push(base)
         }
@@ -203,7 +205,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         })
         if (quedas.length) {
           new Audio('/alert.mp3').play().catch(() => console.log("Navegador bloqueou o som. Interaja com a página primeiro."))
-          if (onAlertaQueda) onAlertaQueda(quedas.length === 1 ? `O equipamento ${quedas[0]} caiu!` : `${quedas.length} equipamentos caíram: ${quedas.join(', ')}`)
+          if (onAlertaQueda) onAlertaQueda(quedas.length === 1 ? t('O equipamento {nome} caiu!', { nome: quedas[0] }) : t('{n} equipamentos caíram: {nomes}', { n: quedas.length, nomes: quedas.join(', ') }))
         }
       } catch (error) {
         console.warn(error.message)
@@ -248,7 +250,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
       if (!rack) return
       const desejado = uPelaPosicao(node.position.y, node.data.alturaU, rack.data.us)
       const u = posicaoLivreMaisProxima(atuais, rack, desejado, node.data.alturaU, node.id) ?? node.data.rackU
-      if (u !== desejado) toast('Posição ocupada: encaixado no U livre mais próximo.', { icon: '🧲' })
+      if (u !== desejado) toast(t('Posição ocupada: encaixado no U livre mais próximo.'), { icon: '🧲' })
       setNodes(nds => normalizarRacks(nds.map(n => n.id === node.id ? { ...n, data: { ...n.data, rackU: u } } : n)))
       return
     }
@@ -261,9 +263,9 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
     const alturaU = alturaDoEquipamento(node.data)
     const desejado = uPelaPosicao(centro.y - rack.position.y - (alturaU * U_PX) / 2, alturaU, rack.data.us)
     const u = posicaoLivreMaisProxima(atuais, rack, desejado, alturaU, node.id)
-    if (u == null) { toast.error(`Não há ${alturaU}U livres no rack ${rack.data.label}.`); return }
+    if (u == null) { toast.error(t('Não há {u}U livres no rack {rack}.', { u: alturaU, rack: rack.data.label })); return }
     setNodes(nds => normalizarRacks(nds.map(n => n.id === node.id ? noMontado(n, rack, u, alturaU) : n)))
-    toast.success(`${node.data.label} montado no ${rack.data.label} (U${u}${alturaU > 1 ? `-${u + alturaU - 1}` : ''})`)
+    toast.success(t('{nome} montado no {rack} ({faixa})', { nome: node.data.label, rack: rack.data.label, faixa: `U${u}${alturaU > 1 ? `-${u + alturaU - 1}` : ''}` }))
   }, [readOnly, mapaModelos])
 
   // Cabos presos a portas que deixaram de existir (equipamento saiu do rack, trocou de
@@ -301,7 +303,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const onConnect = useCallback((params) => {
     if (readOnly) return
     for (const [no, handle] of [[params.source, params.sourceHandle], [params.target, params.targetHandle]]) {
-      if (portaOcupada(no, handle)) { toast.error(`${nomePortaNo(no, handle)} já tem um cabo conectado.`); return }
+      if (portaOcupada(no, handle)) { toast.error(t('{porta} já tem um cabo conectado.', { porta: nomePortaNo(no, handle) })); return }
     }
     const sourceNode = nodes.find(n => n.id === params.source)
     const targetNode = nodes.find(n => n.id === params.target)
@@ -352,7 +354,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const handleUpdateEdge = (id, newLabel, newSource, newTarget, sourceHandle, targetHandle) => {
     if (readOnly) return;
     for (const [no, handle] of [[newSource, sourceHandle], [newTarget, targetHandle]]) {
-      if (portaOcupada(no, handle, id)) { toast.error(`${nomePortaNo(no, handle)} já tem outro cabo conectado.`); return }
+      if (portaOcupada(no, handle, id)) { toast.error(t('{porta} já tem outro cabo conectado.', { porta: nomePortaNo(no, handle) })); return }
     }
     setEdges((eds) => eds.map((edge) => {
       if (edge.id === id) {
@@ -391,6 +393,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
 }
 
 export default function NetworkMap(props) {
+  useI18n()
   return (
     <ReactFlowProvider>
       <NetworkMapContent {...props} />

@@ -5,12 +5,16 @@ import Projects from './pages/Projects'
 import Editor from './pages/Editor'
 import SharedView from './pages/SharedView'
 import { api } from './services/api'
+import { useEffect } from 'react'
+import { useI18n, t } from './i18n'
 
 const PrivateRoute = () => {
   return api.isAuthenticated() ? <Outlet /> : <Navigate to="/" replace />;
 };
 
 function App() {
+  const { idioma } = useI18n()
+  useEffect(() => { document.title = t('NetCable - Mapeador de Rede') }, [idioma])
   return (
     <BrowserRouter>
       {/* COMPONENTE DE NOTIFICAÇÃO GLOBAL */}

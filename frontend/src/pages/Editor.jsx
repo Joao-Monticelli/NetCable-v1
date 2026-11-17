@@ -11,8 +11,9 @@ import ModelosModal from '../components/Modals/ModelosModal'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
 import { normalizarRacks } from '../components/rack/rackUtils'
+import { t, useI18n, SeletorIdioma, getIdioma } from '../i18n'
 
-const TITULO_PAGINA = 'NetCable - Mapeador de Rede'
+const tituloPagina = () => t('NetCable - Mapeador de Rede')
 
 // Assinatura do que é salvo no mapa (sem status/latência, que mudam sozinhos).
 const assinaturaMapa = (nodes, edges) => JSON.stringify([
@@ -23,10 +24,11 @@ const assinaturaMapa = (nodes, edges) => JSON.stringify([
 ])
 
 export default function Editor() {
+  useI18n()
   const navigate = useNavigate()
   const { projectId } = useParams()
   
-  const [projectName, setProjectName] = useState(projectId === 'novo' ? 'Novo Mapa' : `Carregando...`)
+  const [projectName, setProjectName] = useState(() => projectId === 'novo' ? t('Novo Mapa') : t('Carregando...'))
   const [isEditingName, setIsEditingName] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [newEquipment, setNewEquipment] = useState(null)
@@ -62,7 +64,7 @@ export default function Editor() {
   // Controle de alterações não salvas.
   const [mapaAlterado, setMapaAlterado] = useState(false)
   const baselineRef = useRef(null)
-  const nomeSalvoRef = useRef(projectId === 'novo' ? 'Novo Mapa' : null)
+  const nomeSalvoRef = useRef(projectId === 'novo' ? t('Novo Mapa') : null)
   const haAlteracoes = mapaAlterado || (nomeSalvoRef.current !== null && projectName !== nomeSalvoRef.current)
 
   useEffect(() => {
@@ -73,14 +75,16 @@ export default function Editor() {
   }, [haAlteracoes])
 
   const sairDoEditor = () => {
-    if (haAlteracoes && !window.confirm('Existem alterações não salvas. Sair mesmo assim?')) return
+    if (haAlteracoes && !window.confirm(t('Existem alterações não salvas. Sair mesmo assim?'))) return
     navigate('/projects')
   }
 
   useEffect(() => {
     const fetchMe = async () => {
       try {
-        setCurrentUser(await api.me())
+        const me = await api.me()
+        setCurrentUser(me)
+        if (me.idioma !== getIdioma()) api.atualizarPerfil({ idioma: getIdioma() }).catch(() => {})
       } catch (error) { console.error(error) }
     }
     fetchMe()
@@ -88,7 +92,7 @@ export default function Editor() {
 
   useEffect(() => {
     api.listarModelos().then(lista => { setModelos(lista); setModelosProntos(true) })
-      .catch(() => toast.error('Não foi possível carregar a biblioteca de modelos.'))
+      .catch(() => toast.error(t('Não foi possível carregar a biblioteca de modelos.')))
   }, [])
 
   useEffect(() => {
@@ -104,7 +108,7 @@ export default function Editor() {
         setMapNodes(formattedNodes)
         setMapEdges(formattedEdges)
       } catch (error) {
-        toast.error('Erro ao carregar o projeto.')
+        toast.error(t('Erro ao carregar o projeto.'))
         navigate('/');
       } finally {
         setIsLoadingData(false)
@@ -137,12 +141,12 @@ export default function Editor() {
     // Piscar o título da aba do navegador
     let isOriginalTitle = false;
     const interval = setInterval(() => {
-      document.title = isOriginalTitle ? '⚠️ QUEDA DETECTADA ⚠️' : TITULO_PAGINA;
+      document.title = isOriginalTitle ? t('⚠️ QUEDA DETECTADA ⚠️') : tituloPagina();
       isOriginalTitle = !isOriginalTitle;
     }, 1000);
     
     // Para de piscar depois de 10 segundos e restaura o título.
-    setTimeout(() => { clearInterval(interval); document.title = TITULO_PAGINA }, 10000);
+    setTimeout(() => { clearInterval(interval); document.title = tituloPagina() }, 10000);
     
     // Remove o alerta visual após 10 segundos
     setTimeout(() => setTemAlerta(false), 10000)
@@ -152,7 +156,7 @@ export default function Editor() {
     if (isSaving || somenteLeitura) return
     setIsSaving(true)
     try {
-      if (projectId !== 'novo' && projectName !== `Carregando...`) {
+      if (projectId !== 'novo' && projectName !== t('Carregando...')) {
         await api.editarNomeProjeto(projectId, projectName)
       }
       const equipamentosFormatados = currentNodes.current.map(nodeParaEquipamento)
@@ -170,10 +174,10 @@ export default function Editor() {
         baselineRef.current = assinaturaMapa(currentNodes.current, currentEdges.current)
         nomeSalvoRef.current = projectName
         setMapaAlterado(false)
-        toast.success('Projeto salvo com sucesso!')
+        toast.success(t('Projeto salvo com sucesso!'))
         if (projectId === 'novo') navigate(`/editor/${idParaSalvar}`, { replace: true })
       }
-    } catch (error) { toast.error(error.message || 'Erro ao salvar o projeto.', { duration: 6000 }) } finally { setIsSaving(false) }
+    } catch (error) { toast.error(error.message || t('Erro ao salvar o projeto.'), { duration: 6000 }) } finally { setIsSaving(false) }
   }
 
   // Atalho Ctrl+S / Cmd+S para salvar (ref evita registrar o listener a cada render).
@@ -208,28 +212,28 @@ export default function Editor() {
 
   const handleCopyLink = async (regenerar = false) => {
     setShowConfigMenu(false);
-    if (projectId === 'novo') { toast.error("Salve o projeto primeiro!"); return; }
-    if (regenerar && !window.confirm('Gerar um novo link? O link atual deixará de funcionar (inclusive em TVs já abertas).')) return;
+    if (projectId === 'novo') { toast.error(t('Salve o projeto primeiro!')); return; }
+    if (regenerar && !window.confirm(t('Gerar um novo link? O link atual deixará de funcionar (inclusive em TVs já abertas).'))) return;
     let token
     try {
       token = await api.gerarLinkPublico(projectId, regenerar)
     } catch (error) { toast.error(error.message); return }
     const link = `${window.location.origin}/share/${token}`;
     if (await copiarTexto(link)) {
-      toast.success(regenerar ? 'Novo link público copiado!' : 'Link público copiado!')
+      toast.success(regenerar ? t('Novo link público copiado!') : t('Link público copiado!'))
     } else {
       // Último recurso: mostra o link para o usuário copiar manualmente.
-      window.prompt('Copie o link público (Ctrl+C):', link)
+      window.prompt(t('Copie o link público (Ctrl+C):'), link)
     }
   };
 
   const handleRevogarLink = async () => {
     setShowConfigMenu(false);
     if (projectId === 'novo') return;
-    if (!window.confirm('Revogar o link público? Quem estiver com ele aberto perderá o acesso.')) return;
+    if (!window.confirm(t('Revogar o link público? Quem estiver com ele aberto perderá o acesso.'))) return;
     try {
       await api.revogarLinkPublico(projectId)
-      toast.success('Link público revogado.')
+      toast.success(t('Link público revogado.'))
     } catch (error) { toast.error(error.message) }
   };
 
@@ -238,7 +242,7 @@ export default function Editor() {
   const handleAddNeighbors = (neighbors) => {
     setNewEquipment(neighbors.map((neighbor, index) => ({ ...neighbor, id: `${Date.now()}_${index}` })))
     setIsAddModalOpen(false)
-    toast.success(`${neighbors.length} vizinho(s) adicionado(s) ao mapa. Salve o projeto para manter as alterações.`)
+    toast.success(t('{n} vizinho(s) adicionado(s) ao mapa. Salve o projeto para manter as alterações.', { n: neighbors.length }))
   }
 
   const handleExport = () => {
@@ -262,7 +266,7 @@ export default function Editor() {
     link.download = `netcable_backup_${projectName.replace(/\s+/g, '_')}.json`
     link.click()
     URL.revokeObjectURL(url)
-    toast.success('Backup exportado!')
+    toast.success(t('Backup exportado!'))
   }
 
   const handleImport = (event) => {
@@ -271,28 +275,28 @@ export default function Editor() {
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
-        if (file.size > 2 * 1024 * 1024) throw new Error('O arquivo excede o limite de 2 MB.')
+        if (file.size > 2 * 1024 * 1024) throw new Error(t('O arquivo excede o limite de 2 MB.'))
         const importedData = JSON.parse(e.target.result)
         const validNodes = Array.isArray(importedData.equipamentos) && importedData.equipamentos.every(node => node?.id && node?.data)
         const validEdges = Array.isArray(importedData.conexoes) && importedData.conexoes.every(edge => edge?.id && edge?.source && edge?.target)
-        if (!validNodes || !validEdges) throw new Error('Formato de backup inválido.')
+        if (!validNodes || !validEdges) throw new Error(t('Formato de backup inválido.'))
         setMapNodes(normalizarRacks(importedData.equipamentos))
         setMapEdges(importedData.conexoes)
-        toast.success('Backup importado!')
-      } catch (err) { toast.error('Erro ao ler o arquivo JSON.') }
+        toast.success(t('Backup importado!'))
+      } catch (err) { toast.error(t('Erro ao ler o arquivo JSON.')) }
     }
     reader.readAsText(file)
     event.target.value = null
   }
 
-  if (isLoadingData) return <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Loader2 className="spin" /> Carregando...</div>
+  if (isLoadingData) return <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Loader2 className="spin" /> {t('Carregando...')}</div>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#0f172a' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', padding: '10px 20px', borderBottom: '1px solid #334155' }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <button onClick={sairDoEditor} title="Voltar aos projetos" style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <button onClick={sairDoEditor} title={t('Voltar aos projetos')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <ArrowLeft size={20} />
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -308,7 +312,7 @@ export default function Editor() {
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           
           {/* ÍCONE DE ALERTA NO HEADER */}
-          <div title={temAlerta ? "Atenção: Queda detectada!" : "Sem alertas"} style={{ padding: '8px', backgroundColor: temAlerta ? '#ef4444' : 'transparent', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div title={temAlerta ? t('Atenção: Queda detectada!') : t('Sem alertas')} style={{ padding: '8px', backgroundColor: temAlerta ? '#ef4444' : 'transparent', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {temAlerta ? <AlertTriangle size={20} color="white" className="animate-pulse" /> : <Bell size={20} color="#64748b" />}
           </div>
 
@@ -319,26 +323,26 @@ export default function Editor() {
           </div>
 
           {somenteLeitura && (
-            <span title="Seu usuário é Visualizador: peça a um administrador para mudar o papel se precisar editar." style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', padding: '6px 10px', border: '1px solid #334155', borderRadius: '6px' }}>
-              <Eye size={15} /> Somente visualização
+            <span title={t('Seu usuário é Visualizador: peça a um administrador para mudar o papel se precisar editar.')} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', padding: '6px 10px', border: '1px solid #334155', borderRadius: '6px' }}>
+              <Eye size={15} /> {t('Somente visualização')}
             </span>
           )}
-          {!somenteLeitura && <button onClick={() => setModoVisualizacao(v => !v)} title={modoVisualizacao ? 'Voltar ao modo edição' : 'Modo visualização (somente leitura)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: modoVisualizacao ? '#3b82f6' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-            {modoVisualizacao ? <><Pencil size={18} /> Editar</> : <Eye size={18} />}
+          {!somenteLeitura && <button onClick={() => setModoVisualizacao(v => !v)} title={modoVisualizacao ? t('Voltar ao modo edição') : t('Modo visualização (somente leitura)')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: modoVisualizacao ? '#3b82f6' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+            {modoVisualizacao ? <><Pencil size={18} /> {t('Editar')}</> : <Eye size={18} />}
           </button>}
 
           <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" style={{ display: 'none' }} />
-          {!leitura && <button onClick={() => fileInputRef.current.click()} title="Importar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
-          <button onClick={handleExport} title="Exportar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
+          {!leitura && <button onClick={() => fileInputRef.current.click()} title={t('Importar JSON')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
+          <button onClick={handleExport} title={t('Exportar JSON')} style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
           {!leitura && (
             <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-              <Plus size={18} /> Adicionar
+              <Plus size={18} /> {t('Adicionar')}
             </button>
           )}
           
-          {!somenteLeitura && <button onClick={handleSaveProject} disabled={isSaving} title={haAlteracoes ? 'Há alterações não salvas (Ctrl+S)' : 'Tudo salvo (Ctrl+S)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : (haAlteracoes ? '#f59e0b' : '#10b981'), color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
-            {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : (haAlteracoes ? 'Salvar *' : 'Salvar')}
+          {!somenteLeitura && <button onClick={handleSaveProject} disabled={isSaving} title={haAlteracoes ? t('Há alterações não salvas (Ctrl+S)') : t('Tudo salvo (Ctrl+S)')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : (haAlteracoes ? '#f59e0b' : '#10b981'), color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
+            {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? t('Salvando...') : (haAlteracoes ? `${t('Salvar')} *` : t('Salvar'))}
           </button>}
           
           <div style={{ position: 'relative' }}>
@@ -348,32 +352,35 @@ export default function Editor() {
             {showConfigMenu && (
               <div style={{ position: 'absolute', top: '110%', right: 0, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '5px', minWidth: '180px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100 }}>
                 <button onClick={() => { setShowConfigMenu(false); setIsSettingsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
-                  <UserCog size={16} color="#94a3b8"/> Meu perfil e notificações
+                  <UserCog size={16} color="#94a3b8"/> {t('Meu perfil e notificações')}
                 </button>
                 <button onClick={() => { setShowConfigMenu(false); setIsDiagnosticsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <Activity size={16} color="#10b981"/> Diagnóstico
+                  <Activity size={16} color="#10b981"/> {t('Diagnóstico')}
                 </button>
                 <button onClick={() => { setShowConfigMenu(false); setIsModelosModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <Boxes size={16} color="#a78bfa"/> Modelos de equipamento
+                  <Boxes size={16} color="#a78bfa"/> {t('Modelos de equipamento')}
                 </button>
                 <button onClick={() => { setShowConfigMenu(false); setIsHistoryModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <Activity size={16} color="#f59e0b"/> Histórico
+                  <Activity size={16} color="#f59e0b"/> {t('Histórico')}
                 </button>
                 {!somenteLeitura && <>
                 <button onClick={() => handleCopyLink(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
-                  <Share2 size={16} color="#3b82f6"/> Copiar Link Público
+                  <Share2 size={16} color="#3b82f6"/> {t('Copiar Link Público')}
                 </button>
                 <button onClick={() => handleCopyLink(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <RefreshCw size={16} color="#94a3b8"/> Gerar Novo Link
+                  <RefreshCw size={16} color="#94a3b8"/> {t('Gerar Novo Link')}
                 </button>
                 <button onClick={handleRevogarLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <Link2Off size={16} color="#f59e0b"/> Revogar Link Público
+                  <Link2Off size={16} color="#f59e0b"/> {t('Revogar Link Público')}
                 </button>
                 </>}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
                 <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
-                  <LogOut size={16} /> Sair
+                  <LogOut size={16} /> {t('Sair')}
                 </button>
+                <div style={{ padding: '6px 10px 4px', display: 'flex', justifyContent: 'center' }}>
+                  <SeletorIdioma compacto onChange={(i) => api.atualizarPerfil({ idioma: i }).catch(() => {})} />
+                </div>
               </div>
             )}
           </div>

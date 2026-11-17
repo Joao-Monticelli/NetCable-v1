@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, Save, User, Key, Mail, Bell, FileText, Send, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
+import { t, useI18n } from '../../i18n'
 
 const PAPEL_ROTULO = { admin: 'Administrador', editor: 'Editor', visualizador: 'Visualizador' }
 const input = { width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }
@@ -9,6 +10,7 @@ const caixa = { padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px'
 const linhaCheck = { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', cursor: 'pointer' }
 
 export default function SettingsModal({ onClose, currentUser, onUpdated }) {
+  useI18n()
   const [email, setEmail] = useState(currentUser?.email || '')
   const [receberAlertas, setReceberAlertas] = useState(!!currentUser?.receber_alertas)
   const [relatorioDiario, setRelatorioDiario] = useState(!!currentUser?.relatorio_diario)
@@ -26,18 +28,18 @@ export default function SettingsModal({ onClose, currentUser, onUpdated }) {
         email, senha_atual: senhaAtual || null, nova_senha: novaSenha || null,
         receber_alertas: receberAlertas, relatorio_diario: relatorioDiario, relatorio_horario: relatorioHorario,
       })
-      toast.success('Perfil atualizado com sucesso!')
+      toast.success(t('Perfil atualizado com sucesso!'))
       if (onUpdated) onUpdated(atualizado)
       onClose()
     } catch (error) {
-      toast.error(error.message || 'Erro de comunicação com o servidor.')
+      toast.error(error.message || t('Erro de comunicação com o servidor.'))
     } finally {
       setIsSaving(false)
     }
   }
 
   const enviarRelatorioAgora = async () => {
-    if (!email.trim()) { toast.error('Informe seu e-mail primeiro.'); return }
+    if (!email.trim()) { toast.error(t('Informe seu e-mail primeiro.')); return }
     setEnviandoRelatorio(true)
     try {
       // O relatório vai para o e-mail salvo: se o usuário acabou de digitar, salva antes.
@@ -46,7 +48,7 @@ export default function SettingsModal({ onClose, currentUser, onUpdated }) {
         if (onUpdated) onUpdated(atualizado)
       }
       const r = await api.enviarMeuRelatorio()
-      toast.success(`Relatório enviado para ${r.para}`)
+      toast.success(t('Relatório enviado para {email}', { email: r.para }))
     } catch (error) { toast.error(error.message) } finally { setEnviandoRelatorio(false) }
   }
 
@@ -56,62 +58,62 @@ export default function SettingsModal({ onClose, currentUser, onUpdated }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <User size={20} color="#3b82f6" /> Meu Perfil
+            <User size={20} color="#3b82f6" /> {t('Meu Perfil')}
           </h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={20} /></button>
         </div>
 
         {currentUser && (
           <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '15px' }}>
-            {currentUser.username} · <span style={{ color: '#cbd5e1' }}>{PAPEL_ROTULO[currentUser.papel] || currentUser.papel}</span>
+            {currentUser.username} · <span style={{ color: '#cbd5e1' }}>{t(PAPEL_ROTULO[currentUser.papel] || currentUser.papel)}</span>
           </div>
         )}
 
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px' }}><Mail size={14}/> E-mail (para notificações)</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" style={input} />
+            <label style={{ fontSize: '14px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '5px' }}><Mail size={14}/> {t('E-mail (para notificações)')}</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('seu@email.com')} style={input} />
           </div>
 
           <div style={caixa}>
             <label style={linhaCheck}>
               <input type="checkbox" checked={receberAlertas} onChange={(e) => setReceberAlertas(e.target.checked)} />
-              <Bell size={15} color="#f59e0b" /> Receber e-mail quando um equipamento cair ou voltar
+              <Bell size={15} color="#f59e0b" /> {t('Receber e-mail quando um equipamento cair ou voltar')}
             </label>
             <span style={{ fontSize: '12px', color: '#64748b', marginTop: '-4px' }}>
-              Só equipamentos com a opção "Notificar quando cair ou voltar" ligada geram alerta. Ajuste isso em cada equipamento no mapa.
+              {t('Só equipamentos com a opção "Notificar quando cair ou voltar" ligada geram alerta. Ajuste isso em cada equipamento no mapa.')}
             </span>
             <div style={{ height: '1px', backgroundColor: '#334155' }} />
             <label style={linhaCheck}>
               <input type="checkbox" checked={relatorioDiario} onChange={(e) => setRelatorioDiario(e.target.checked)} />
-              <FileText size={15} color="#3b82f6" /> Receber relatório diário (últimas 24 h)
+              <FileText size={15} color="#3b82f6" /> {t('Receber relatório diário (últimas 24 h)')}
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', opacity: relatorioDiario ? 1 : 0.5 }}>
-              <span style={{ fontSize: '13px', color: '#94a3b8' }}>Enviar às</span>
+              <span style={{ fontSize: '13px', color: '#94a3b8' }}>{t('Enviar às')}</span>
               <input type="time" value={relatorioHorario} disabled={!relatorioDiario} onChange={(e) => setRelatorioHorario(e.target.value)} style={{ ...input, width: '120px', marginTop: 0, padding: '6px 8px' }} />
-              <button type="button" onClick={enviarRelatorioAgora} disabled={enviandoRelatorio} title="Envia agora um relatório das últimas 24 h para o seu e-mail salvo" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: '#334155', color: 'white', border: 0, borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                {enviandoRelatorio ? <Loader2 size={13} className="spin" /> : <Send size={13} />} Enviar agora
+              <button type="button" onClick={enviarRelatorioAgora} disabled={enviandoRelatorio} title={t('Envia agora um relatório das últimas 24 h para o seu e-mail salvo')} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: '#334155', color: 'white', border: 0, borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+                {enviandoRelatorio ? <Loader2 size={13} className="spin" /> : <Send size={13} />} {t('Enviar agora')}
               </button>
             </div>
             <span style={{ fontSize: '12px', color: '#64748b' }}>
-              O envio usa o servidor de e-mail configurado pelo administrador. Telegram e webhook continuam disponíveis via docker-compose.
+              {t('O envio usa o servidor de e-mail configurado pelo administrador. Telegram e webhook continuam disponíveis via docker-compose.')}
             </span>
           </div>
 
           <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
 
-          <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '5px' }}><Key size={16}/> Alterar Senha</h3>
+          <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '5px' }}><Key size={16}/> {t('Alterar Senha')}</h3>
           <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Senha Atual</label>
-            <input type="password" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} placeholder="Digite sua senha atual" style={input} />
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Senha Atual')}</label>
+            <input type="password" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} placeholder={t('Digite sua senha atual')} style={input} />
           </div>
           <div>
-            <label style={{ fontSize: '14px', color: '#94a3b8' }}>Nova Senha</label>
-            <input type="password" minLength={8} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder="Mínimo de 8 caracteres" style={input} />
+            <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Nova Senha')}</label>
+            <input type="password" minLength={8} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder={t('Mínimo de 8 caracteres')} style={input} />
           </div>
 
           <button type="submit" disabled={isSaving} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: isSaving ? '#475569' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer', marginTop: '5px' }}>
-            <Save size={18} /> {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+            <Save size={18} /> {isSaving ? t('Salvando...') : t('Salvar Alterações')}
           </button>
         </form>
       </div>

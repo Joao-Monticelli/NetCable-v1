@@ -4,12 +4,14 @@ import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Ma
 import NetworkMap from '../components/NetworkMap'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges } from '../utils/mapa'
+import { t, useI18n, SeletorIdioma } from '../i18n'
 
 const REFRESH_MS = 10000
 
 export default function SharedView() {
+  useI18n()
   const { token } = useParams()
-  const [projectName, setProjectName] = useState('Carregando...')
+  const [projectName, setProjectName] = useState(() => t('Carregando...'))
   const [mapNodes, setMapNodes] = useState([])
   const [modelos, setModelos] = useState([])
   const [mapEdges, setMapEdges] = useState([])
@@ -35,8 +37,8 @@ export default function SharedView() {
     } catch (err) {
       // Link revogado: tira o mapa do ar mesmo numa TV já aberta.
       // Falha de rede numa atualização: mantém o último estado e sinaliza.
-      if (err.status === 404) setError("Este link público é inválido ou foi revogado pelo dono do mapa.")
-      else if (inicial) setError("Não foi possível conectar ao servidor do NetCable.")
+      if (err.status === 404) setError(t('Este link público é inválido ou foi revogado pelo dono do mapa.'))
+      else if (inicial) setError(t('Não foi possível conectar ao servidor do NetCable.'))
       else setFalhaAtualizacao(true)
     } finally {
       if (inicial) setIsLoading(false)
@@ -74,14 +76,14 @@ export default function SharedView() {
 
   if (isLoading) return (
     <div style={{ color: '#94a3b8', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0f172a' }}>
-      <Loader2 className="spin" style={{marginRight: '10px'}} /> Carregando mapa público...
+      <Loader2 className="spin" style={{marginRight: '10px'}} /> {t('Carregando mapa público...')}
     </div>
   )
 
   if (error) return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#0f172a', color: 'white', padding: '20px', textAlign: 'center' }}>
       <AlertTriangle size={64} color="#ef4444" style={{ marginBottom: '20px' }} />
-      <h1 style={{ fontSize: '24px', marginBottom: '10px' }}>Falha ao carregar</h1>
+      <h1 style={{ fontSize: '24px', marginBottom: '10px' }}>{t('Falha ao carregar')}</h1>
       <p style={{ color: '#94a3b8', maxWidth: '500px', lineHeight: '1.5' }}>{error}</p>
     </div>
   )
@@ -91,12 +93,12 @@ export default function SharedView() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', padding: '10px 20px', borderBottom: '1px solid #334155' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Network size={20} color="#3b82f6" />
-          <span style={{ fontWeight: 'bold' }}>{projectName} (Visualização Pública)</span>
+          <span style={{ fontWeight: 'bold' }}>{projectName} ({t('Visualização Pública')})</span>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {ultimaAtualizacao && (
-            <span title={falhaAtualizacao ? 'Falha na última atualização — exibindo dados anteriores' : 'Atualiza automaticamente'} style={{ fontSize: '12px', color: falhaAtualizacao ? '#f59e0b' : '#64748b' }}>
-              {falhaAtualizacao && '⚠ '}Atualizado às {ultimaAtualizacao.toLocaleTimeString()}
+            <span title={falhaAtualizacao ? t('Falha na última atualização — exibindo dados anteriores') : t('Atualiza automaticamente')} style={{ fontSize: '12px', color: falhaAtualizacao ? '#f59e0b' : '#64748b' }}>
+              {falhaAtualizacao && '⚠ '}{t('Atualizado às {hora}', { hora: ultimaAtualizacao.toLocaleTimeString() })}
             </span>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#0f172a', padding: '6px 15px', borderRadius: '8px', border: '1px solid #334155' }}>
@@ -104,7 +106,8 @@ export default function SharedView() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><XCircle size={16} color="#ef4444" /> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{stats.offline}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><MinusCircle size={16} color="#64748b" /> <span style={{ color: '#64748b', fontWeight: 'bold' }}>{stats.visual}</span></div>
           </div>
-          <button onClick={alternarTelaCheia} title={telaCheia ? 'Sair da tela cheia' : 'Tela cheia (TV / NOC)'} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+          <SeletorIdioma compacto />
+          <button onClick={alternarTelaCheia} title={telaCheia ? t('Sair da tela cheia') : t('Tela cheia (TV / NOC)')} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
             {telaCheia ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
         </div>
