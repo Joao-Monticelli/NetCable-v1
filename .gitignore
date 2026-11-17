@@ -13,3 +13,6 @@ node_modules/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Robô de QA: relatórios gerados a cada execução
+qa/relatorios/

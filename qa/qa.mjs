@@ -25,7 +25,8 @@ const ipLocal = Object.values(os.networkInterfaces()).flat().find(i => i && i.fa
 const WEB = `http://${ipLocal || '127.0.0.1'}:${PORTA_WEB}`
 const API = `http://127.0.0.1:${PORTA_API}/api`
 
-const carimbo = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16)
+const agora = new Date()
+const carimbo = new Date(agora - agora.getTimezoneOffset() * 60000).toISOString().replace(/[:T]/g, '-').slice(0, 16) // hora local
 const PASTA = path.join(AQUI, 'relatorios', carimbo)
 const PRINTS = path.join(PASTA, 'prints')
 fs.mkdirSync(PRINTS, { recursive: true })
@@ -38,7 +39,9 @@ const esperar = (ms) => new Promise(r => setTimeout(r, ms))
 // ----------------------------------------------------------------------------- processos
 const processos = []
 function iniciar(nome, cmd, args, opcoes) {
-  const p = spawn(cmd, args, { ...opcoes, shell: process.platform === 'win32' && !cmd.endsWith('.exe'), windowsHide: true })
+  // No Windows, npx é um .cmd e precisa de shell: passa a linha inteira (sem argumentos soltos).
+  const viaShell = process.platform === 'win32' && !cmd.endsWith('.exe')
+  const p = viaShell ? spawn([cmd, ...args].join(' '), { ...opcoes, shell: true, windowsHide: true }) : spawn(cmd, args, { ...opcoes, windowsHide: true })
   const saida = fs.createWriteStream(path.join(TEMP, `${nome}.log`))
   p.stdout?.pipe(saida); p.stderr?.pipe(saida)
   processos.push({ nome, p })
@@ -148,9 +151,12 @@ function vigiar(ctx, onde, acoes = []) {
   })
 }
 
+// Roda em toda página nova; na página em branco inicial o localStorage é proibido (ignora).
+const DEFINIR_IDIOMA = (i) => { try { localStorage.setItem('netcable_idioma', i) } catch { /* about:blank */ } }
+
 async function novoContexto(idioma = 'pt', onde = '') {
   const ctx = await navegador.newContext({ viewport: { width: 1400, height: 880 } })
-  await ctx.addInitScript((i) => localStorage.setItem('netcable_idioma', i), idioma)
+  await ctx.addInitScript(DEFINIR_IDIOMA, idioma)
   vigiar(ctx, onde)
   return ctx
 }
@@ -240,6 +246,8 @@ async function roteiros() {
     await page.selectOption('select[aria-label="Tipo de Equipamento"]', 'Servidor')
     await page.fill('input[placeholder="Ex: Switch Andar 1"]', 'Servidor QA')
     await page.fill('input[placeholder="Ex: 192.168.0.10"]', '127.0.0.1')
+    await page.click('button:has-text("Testar")')
+    await ok(await existe(page, 'text=/Online! Resposta em/', 5000), 'botão "Testar" responde online')
     const t0 = Date.now()
     await page.click('div[style*="z-index: 1000"] button:has-text("Adicionar") >> nth=-1')
     const apareceu = await existe(page, '.react-flow__node:has-text("Servidor QA")', 8000)
@@ -389,7 +397,7 @@ const PROIBIDO = /^(Sair|Log out|Excluir|Delete|Revogar|Revoke|Gerar Novo Link|G
 async function explorar(idioma, semente) {
   const acoes = []
   const ctx = await navegador.newContext({ viewport: { width: 1400, height: 880 } })
-  await ctx.addInitScript((i) => localStorage.setItem('netcable_idioma', i), idioma)
+  await ctx.addInitScript(DEFINIR_IDIOMA, idioma)
   vigiar(ctx, `Exploração (${idioma.toUpperCase()})`, acoes)
   const page = await ctx.newPage()
   page.on('dialog', d => (Math.random() < 0.5 ? d.accept() : d.dismiss()))
@@ -407,9 +415,14 @@ async function explorar(idioma, semente) {
         .map((el, i) => {
           const r = el.getBoundingClientRect()
           const visivel = r.width > 4 && r.height > 4 && r.bottom > 0 && r.top < innerHeight && getComputedStyle(el).visibility !== 'hidden' && !el.disabled
-          return visivel ? { i, tag: el.tagName, texto: (el.innerText || el.title || el.getAttribute('aria-label') || '').trim().slice(0, 40) } : null
+          const noModal = !!el.closest('[style*="z-index: 1000"], [style*="z-index: 1100"]')
+          return visivel ? { i, tag: el.tagName, noModal, texto: (el.innerText || el.title || el.getAttribute('aria-label') || '').trim().slice(0, 40) } : null
         }).filter(Boolean))
-      const opcoes = candidatos.filter(c => !PROIBIDO.test(c.texto))
+      let opcoes = candidatos.filter(c => !PROIBIDO.test(c.texto))
+      // Com um modal aberto, explora dentro dele na maior parte das vezes (formulários, testes, abas).
+      const noModal = opcoes.filter(c => c.noModal)
+      const modalAberto = noModal.length > 0
+      if (modalAberto && rnd() < 0.8) opcoes = noModal
       if (!opcoes.length) continue
       const alvo = opcoes[Math.floor(rnd() * opcoes.length)]
       const el = (await page.$$('button, select, input[type=checkbox], [role=button]'))[alvo.i]
@@ -430,7 +443,7 @@ async function explorar(idioma, semente) {
         return (s.overflowX === 'auto' || s.overflowX === 'scroll') && d.scrollWidth > d.clientWidth + 2 && d.closest('[style*="z-index"]')
       }))
       if (estouro) R.achados.push({ tipo: 'layout', onde: `Exploração (${idioma.toUpperCase()})`, msg: 'Modal com rolagem horizontal (conteúdo mais largo que o modal)', passos: acoes.slice(-6), print: await print(page, `layout-${idioma}`) })
-      if (rnd() < 0.25) { await page.keyboard.press('Escape'); await page.locator('h2 + button').first().click({ timeout: 800 }).catch(() => {}) }
+      if (rnd() < (modalAberto ? 0.12 : 0.25)) { await page.keyboard.press('Escape'); await page.locator('h2 + button').first().click({ timeout: 800 }).catch(() => {}) }
     } catch (e) {
       // Elemento sumiu / ficou coberto entre a listagem e o clique: comum e não é bug.
     }
