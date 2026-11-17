@@ -50,9 +50,15 @@ def _m2(conexao):
     _adicionar(conexao, "equipamentos", [("depende_de", "VARCHAR")])
 
 
+def _m3(conexao):
+    """Atalhos entre mapas."""
+    _adicionar(conexao, "equipamentos", [("mapa_destino_id", "INTEGER")])
+
+
 MIGRACOES = [
     (1, "colunas de versões anteriores ao sistema de migrações", _m1),
     (2, "uplink dos equipamentos (alertas por dependência)", _m2),
+    (3, "atalhos entre mapas", _m3),
 ]
 
 

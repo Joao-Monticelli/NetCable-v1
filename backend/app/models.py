@@ -63,6 +63,8 @@ class Equipamento(Base):
     # Uplink: equipamento do qual este depende para ser alcançado (ex.: o switch onde está ligado).
     # Se o uplink cair, este fica "inalcançável" e não gera alerta próprio.
     depende_de = Column(String, nullable=True)
+    # Atalho para outro mapa (tipo "Atalho de mapa"): mostra o resumo do mapa de destino e abre ele ao clicar.
+    mapa_destino_id = Column(Integer, nullable=True)
     projeto = relationship("Projeto", back_populates="equipamentos")
 
 

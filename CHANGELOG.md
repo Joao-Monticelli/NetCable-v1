@@ -14,6 +14,7 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 - **SNMP metrics** for SNMPv3 devices: CPU, memory, temperature, uptime and per-port link/speed/traffic/errors (standard MIBs plus Cisco, MikroTik, UCD/lm-sensors), stored as history (same retention as uptime history). Shown on the map, as real port LEDs in racks and in a metrics window with charts and a port table.
 - **Temperature/CPU alerts** with configurable limits (3 readings above to alert, hysteresis to recover), respecting maintenance windows.
 - Optional SNMPv3 context.
+- **Shortcuts between maps** ("Shortcut to another map" type): live online/offline summary of the target map, red when something is down there, double-click to open; preserved in exports and re-linked by name when importing a full backup.
 - Real SNMPv3 integration tests against snmpsim in CI and in the QA robot.
 
 ### Fixed

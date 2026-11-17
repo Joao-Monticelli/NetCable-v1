@@ -9,6 +9,7 @@ export function dadosDeAlerta(eq, nomePorId) {
     inalcancavelPor: causa, inalcancavelNome: causa ? (nomePorId.get(causa) || causa) : null,
     manutencaoAte: eq.manutencao_ate || null,
     snmp: eq.snmp || null,
+    resumoMapa: eq.resumo_mapa || null,
   }
 }
 
@@ -23,6 +24,7 @@ export function equipamentosParaNodes(equipamentos) {
       notificar: eq.notificar !== false,
       modeloId: eq.modelo_id || null,
       dependeDe: eq.depende_de || null,
+      mapaDestinoId: eq.mapa_destino_id || null,
       ...dadosDeAlerta(eq, nomePorId),
     },
     _rack: { id: eq.rack_id, u: eq.rack_u, altura: eq.altura_u },
@@ -41,6 +43,8 @@ export function equipamentosParaNodes(equipamentos) {
 }
 
 // Classe do status para desenhar: offline por causa do uplink vira "inalcançável" (âmbar).
+export const TIPO_ATALHO = 'Atalho de mapa'
+
 export function classeStatus(data) {
   if (data.status === 'visual') return 'visual'
   if (data.status === 'online') return 'online'
@@ -93,5 +97,6 @@ export function nodeParaEquipamento(node) {
     alturaU: rack ? node.data.us : (node.parentNode ? node.data.alturaU : null),
     modeloId: rack ? null : (node.data.modeloId || null),
     dependeDe: rack ? null : (node.data.dependeDe || null),
+    mapaDestinoId: node.data.mapaDestinoId || null,
   }
 }

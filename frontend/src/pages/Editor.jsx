@@ -134,7 +134,7 @@ export default function Editor() {
     if (baselineRef.current === null) baselineRef.current = assinatura
     setMapaAlterado(assinatura !== baselineRef.current)
     const counts = nodes.reduce((acc, node) => {
-      if (node.type === 'rack') return acc // o gabinete não é um equipamento
+      if (node.type === 'rack' || node.data?.tipo === 'Atalho de mapa') return acc // gabinete e atalhos não são equipamentos
       if (node.data.status === 'online') acc.online++
       else if (node.data.status === 'offline') acc.offline++
       else if (node.data.status === 'visual') acc.visual++
@@ -256,6 +256,12 @@ export default function Editor() {
   }
 
   // Exporta o mapa SALVO (com os modelos do catálogo usados nele; senhas SNMP ficam de fora).
+  // Atalho para outro mapa: não perde alterações sem avisar.
+  const abrirOutroMapa = (destino) => {
+    if (haAlteracoes && !window.confirm(t('Existem alterações não salvas. Sair mesmo assim?'))) return
+    navigate(`/editor/${destino}`)
+  }
+
   const handleAdicionarDescobertos = (lista) => {
     setNewEquipment(lista.map((eq, i) => ({ ...eq, id: `${Date.now()}_d${i}` })))
     setDescobertaAberta(false)
@@ -395,10 +401,10 @@ export default function Editor() {
 
       <div style={{ flex: 1 }}>
         {descobertaAberta && <DescobertaModal nodes={currentNodes.current} onClose={() => setDescobertaAberta(false)} onAdicionar={handleAdicionarDescobertos} />}
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} onStatusProjeto={handleStatusProjeto} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} onStatusProjeto={handleStatusProjeto} onAbrirMapa={abrirOutroMapa} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>
 
-      {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} modelos={modelos} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
+      {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} modelos={modelos} projetoAtual={projectId} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
       {isHistoryModalOpen && <HistoryModal projectId={projectId} onClose={() => setIsHistoryModalOpen(false)} />}

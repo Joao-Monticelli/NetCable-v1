@@ -20,6 +20,7 @@ Roda em **um único container Docker** em qualquer lugar: mini PC, VM, NAS, Rasp
 
 - 📡 **Descoberta da rede** — varre uma faixa (ex.: `192.168.1.0/24`), mostra quem respondeu com nome, portas abertas e tipo sugerido, e adiciona ao mapa num clique.
 - 🗺️ **Mapa visual** — arrastar e soltar, cabos com rótulo, busca (`Ctrl+K`) e destaque ao passar o mouse.
+- 🧭 **Atalhos entre mapas** — monte um mapa geral (matriz → filiais → datacenter); cada atalho mostra ao vivo quantos equipamentos estão online/offline no mapa dele, fica vermelho quando algo cai lá e abre com duplo clique.
 - 🗄️ **Racks realistas** — de 4U a 48U; switches, servidores, NAS, patch panels, nobreaks… encaixando por U.
 - 🧩 **Biblioteca de modelos** — cadastre seus equipamentos reais (ex.: “4 RJ45 + 2 SFP, 1U”) e a frente é desenhada com essas portas.
 - 🔌 **Cabos porta a porta** — porta 12 do switch → eth3 do firewall; portas em uso ficam marcadas.
@@ -67,6 +68,13 @@ Imagens para **amd64** e **arm64** (Raspberry Pi 4/5). Para atualizar de forma c
 
 Tudo é opcional. E-mail (SMTP), usuários, backup e idioma ficam na interface (menu ⚙️). As variáveis de
 ambiente estão na tabela do [README em inglês](README.md#configuration) e comentadas no `docker-compose.yml`.
+
+## Redes grandes: atalhos entre mapas
+
+Divida uma rede grande em vários mapas (um por site, andar ou sala) e crie um **mapa geral** com atalhos:
+**Adicionar → tipo "Atalho para outro mapa"** e escolha o mapa de destino. O atalho mostra quantos equipamentos estão online/offline lá,
+fica vermelho quando algo cai e abre o mapa com **duplo clique** (ou um clique no modo visualização). Atalhos podem ter cabos como qualquer
+equipamento (ex.: o link WAN entre dois sites) e vão nos backups/exportações (religados pelo nome do mapa ao importar).
 
 ## Descoberta da rede
 
