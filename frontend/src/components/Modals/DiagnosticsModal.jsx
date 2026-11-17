@@ -35,8 +35,8 @@ export default function DiagnosticsModal({ onClose }) {
             ? `a cada ${data.monitor.interval}s · ${data.monitor.equipments} equipamento(s)${data.monitor.last_cycle ? ` · último ciclo ${new Date(data.monitor.last_cycle).toLocaleTimeString()} (${data.monitor.last_cycle_seconds}s)` : ' · aguardando 1º ciclo'}`
             : 'desativado (MONITOR_INTERVAL=0)'}
         </Status>
-        <Status ok={data.alerts?.telegram || data.alerts?.webhook}>
-          Alertas: {[data.alerts?.telegram && 'Telegram', data.alerts?.webhook && 'Webhook'].filter(Boolean).join(' + ') || 'nenhum canal configurado (TELEGRAM_BOT_TOKEN / ALERT_WEBHOOK_URL)'}
+        <Status ok={data.alerts?.email || data.alerts?.telegram || data.alerts?.webhook}>
+          Alertas: {[data.alerts?.email && 'E-mail', data.alerts?.telegram && 'Telegram', data.alerts?.webhook && 'Webhook'].filter(Boolean).join(' + ') || 'nenhum canal configurado (admin: ⚙️ → E-mail (SMTP))'}
         </Status>
         <div style={{ color: '#94a3b8', fontSize: '12px' }}>Histórico mantido por: {data.history_retention_days ? `${data.history_retention_days} dias` : 'tempo indeterminado'}</div>
         <div style={{ color: '#94a3b8', fontSize: '12px' }}>Versão da API: {data.version || 'desconhecida'}</div>

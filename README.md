@@ -21,13 +21,17 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 ✨ Funcionalidades
 🔐 Login seguro — autenticação via JWT
 
+👥 Equipe com papéis — Administrador (tudo + usuários e e-mail), Editor (edita mapas) e Visualizador (só vê, ideal para TV do NOC); todos enxergam os mesmos mapas
+
 🎨 Mapeamento visual — crie diagramas de rede arrastando ícones e puxando linhas (cabos)
 
 📡 Monitoramento contínuo no servidor — testa cada equipamento via TCP (portas 80, 443, 22), ICMP (ping) ou SNMPv3, mesmo sem nenhum navegador aberto
 
-🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo), alerta sonoro e notificações no **Telegram** ou webhook (queda e recuperação)
+🚨 Alertas em tempo real — bolinhas verdes/vermelhas, efeito cascata (amarelo), alerta sonoro e notificações por **e-mail**, **Telegram** ou webhook (queda e recuperação), com opção de ligar/desligar por equipamento
 
-📊 Disponibilidade — uptime %, quantidade de quedas e latência média por equipamento (24 h / 7 dias / 30 dias)
+📧 Relatório diário por e-mail — cada usuário escolhe o horário e recebe a disponibilidade, quedas e eventos das últimas 24 h
+
+📊 Disponibilidade e latência — uptime %, quedas, latência média e gráfico de latência por equipamento (24 h / 7 dias / 30 dias)
 
 🔗 Link público — compartilhe o diagrama em modo somente leitura, com link secreto revogável e atualização automática
 
@@ -36,6 +40,18 @@ O NetCable é uma ferramenta open-source e self-hosted para mapear e monitorar s
 💾 Exportar/Importar JSON — faça backup e restaure seu diagrama facilmente
 
 ## 🔧 Atualizações recentes
+
+✅ **Vários usuários com papéis** — o admin cria usuários em ⚙️ → Usuários e define o papel de cada um (Administrador, Editor ou Visualizador). O Visualizador abre os mapas já em modo somente leitura. O usuário de `ADMIN_USER` é sempre mantido como admin ativo (serve para recuperar o acesso).
+
+✅ **Notificações por e-mail** — o admin configura o servidor SMTP em ⚙️ → E-mail (SMTP) (atalhos para Gmail/Outlook/Office 365 e botão "Salvar e testar"); a senha fica cifrada no banco. Cada usuário escolhe no perfil se recebe os alertas de queda/recuperação.
+
+✅ **Relatório diário** — cada usuário define o horário (ex.: 07:30) e recebe por e-mail o resumo das últimas 24 h: disponibilidade, quedas, latência média e a lista de eventos. Há um botão "Enviar agora" para testar.
+
+✅ **Notificação por equipamento** — opção "Notificar quando cair ou voltar" em cada equipamento (impressoras, PCs etc. podem cair sem gerar alerta). Equipamentos com a notificação desligada mostram um sino riscado no mapa.
+
+✅ **Gráfico de latência** — ⚙️ → Histórico → Latência (ou clique no equipamento na aba Disponibilidade): linha de latência, períodos offline destacados, média/mín/p95/máx e alternativa em tabela.
+
+✅ **Alertas agrupados** — se vários equipamentos caem no mesmo ciclo, é enviado um único e-mail/mensagem com todos eles.
 
 ✅ **Monitoramento centralizado** — o servidor verifica todos os equipamentos (padrão a cada 15 s, `MONITOR_INTERVAL`) e o editor apenas lê o resultado. Antes, cada navegador aberto pingava todos os equipamentos a cada 5 s.
 

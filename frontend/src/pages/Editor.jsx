@@ -14,7 +14,7 @@ const TITULO_PAGINA = 'NetCable - Mapeador de Rede'
 // Assinatura do que é salvo no mapa (sem status/latência, que mudam sozinhos).
 const assinaturaMapa = (nodes, edges) => JSON.stringify([
   nodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y), n.style?.width, n.style?.height,
-    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null]),
+    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null, n.data.notificar !== false]),
   edges.map(e => [e.id, e.source, e.target, e.label || null, e.sourceHandle || null, e.targetHandle || null]),
 ])
 
@@ -39,6 +39,9 @@ export default function Editor() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [modoVisualizacao, setModoVisualizacao] = useState(false)
+  // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
+  const somenteLeitura = currentUser?.papel === 'visualizador'
+  const leitura = modoVisualizacao || somenteLeitura
 
   // Estado do Alerta
   const [temAlerta, setTemAlerta] = useState(false)
@@ -85,7 +88,7 @@ export default function Editor() {
         const formattedNodes = data.equipamentos.map(eq => ({
           id: eq.id, type: 'custom', position: { x: eq.pos_x, y: eq.pos_y },
           style: { width: eq.width, height: eq.height },
-          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {} }
+          data: { label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time, monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {}, notificar: eq.notificar !== false }
         }))
         const formattedEdges = data.conexoes.map(conn => ({
           id: conn.id, source: conn.source, target: conn.target, label: conn.label,
@@ -140,7 +143,7 @@ export default function Editor() {
   }, [])
 
   const handleSaveProject = async () => {
-    if (isSaving) return
+    if (isSaving || somenteLeitura) return
     setIsSaving(true)
     try {
       if (projectId !== 'novo' && projectName !== `Carregando...`) {
@@ -149,7 +152,8 @@ export default function Editor() {
       const equipamentosFormatados = currentNodes.current.map(node => ({
         id: node.id, nome: node.data.label, ip: node.data.ip, tipo: node.data.tipo, status: node.data.status,
         pingTime: node.data.pingTime || null, posX: node.position.x, posY: node.position.y, width: node.style?.width || 200, height: node.style?.height || 80,
-        monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null
+        monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null,
+        notificar: node.data.notificar !== false
       }))
       const conexoesFormatadas = currentEdges.current.map(edge => ({
         id: edge.id, source: edge.source, target: edge.target, label: edge.label || null,
@@ -295,7 +299,7 @@ export default function Editor() {
             {isEditingName ? (
               <input autoFocus type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === 'Enter' && setIsEditingName(false)} style={{ backgroundColor: '#0f172a', color: 'white', border: '1px solid #3b82f6', borderRadius: '4px', padding: '4px 8px', fontSize: '16px', fontWeight: 'bold' }} />
             ) : (
-              <span onClick={() => setIsEditingName(true)} style={{ fontWeight: 'bold', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', border: '1px solid transparent' }}>{projectName} ✏️</span>
+              <span onClick={() => !somenteLeitura && setIsEditingName(true)} style={{ fontWeight: 'bold', cursor: somenteLeitura ? 'default' : 'pointer', padding: '4px 8px', borderRadius: '4px', border: '1px solid transparent' }}>{projectName}{!somenteLeitura && ' ✏️'}</span>
             )}
           </div>
         </div>
@@ -313,23 +317,28 @@ export default function Editor() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px' }}><MinusCircle size={16} color="#64748b" /> <span style={{ color: '#64748b', fontWeight: 'bold' }}>{stats.visual}</span></div>
           </div>
 
-          <button onClick={() => setModoVisualizacao(v => !v)} title={modoVisualizacao ? 'Voltar ao modo edição' : 'Modo visualização (somente leitura)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: modoVisualizacao ? '#3b82f6' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+          {somenteLeitura && (
+            <span title="Seu usuário é Visualizador: peça a um administrador para mudar o papel se precisar editar." style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', padding: '6px 10px', border: '1px solid #334155', borderRadius: '6px' }}>
+              <Eye size={15} /> Somente visualização
+            </span>
+          )}
+          {!somenteLeitura && <button onClick={() => setModoVisualizacao(v => !v)} title={modoVisualizacao ? 'Voltar ao modo edição' : 'Modo visualização (somente leitura)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: modoVisualizacao ? '#3b82f6' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
             {modoVisualizacao ? <><Pencil size={18} /> Editar</> : <Eye size={18} />}
-          </button>
+          </button>}
 
           <input type="file" ref={fileInputRef} onChange={handleImport} accept=".json" style={{ display: 'none' }} />
-          {!modoVisualizacao && <button onClick={() => fileInputRef.current.click()} title="Importar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
+          {!leitura && <button onClick={() => fileInputRef.current.click()} title="Importar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Upload size={18} /></button>}
           <button onClick={handleExport} title="Exportar JSON" style={{ padding: '8px 12px', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Download size={18} /></button>
 
-          {!modoVisualizacao && (
+          {!leitura && (
             <button onClick={() => setIsAddModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
               <Plus size={18} /> Adicionar
             </button>
           )}
           
-          <button onClick={handleSaveProject} disabled={isSaving} title={haAlteracoes ? 'Há alterações não salvas (Ctrl+S)' : 'Tudo salvo (Ctrl+S)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : (haAlteracoes ? '#f59e0b' : '#10b981'), color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
+          {!somenteLeitura && <button onClick={handleSaveProject} disabled={isSaving} title={haAlteracoes ? 'Há alterações não salvas (Ctrl+S)' : 'Tudo salvo (Ctrl+S)'} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: isSaving ? '#475569' : (haAlteracoes ? '#f59e0b' : '#10b981'), color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer' }}>
             {isSaving ? <Loader2 size={18} className="spin" /> : <Save size={18} />} {isSaving ? 'Salvando...' : (haAlteracoes ? 'Salvar *' : 'Salvar')}
-          </button>
+          </button>}
           
           <div style={{ position: 'relative' }}>
             <button onClick={() => setShowConfigMenu(!showConfigMenu)} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', backgroundColor: showConfigMenu ? '#475569' : '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
@@ -338,7 +347,7 @@ export default function Editor() {
             {showConfigMenu && (
               <div style={{ position: 'absolute', top: '110%', right: 0, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '5px', minWidth: '180px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100 }}>
                 <button onClick={() => { setShowConfigMenu(false); setIsSettingsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
-                  <UserCog size={16} color="#94a3b8"/> Editar Perfil
+                  <UserCog size={16} color="#94a3b8"/> Meu perfil e notificações
                 </button>
                 <button onClick={() => { setShowConfigMenu(false); setIsDiagnosticsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#10b981"/> Diagnóstico
@@ -346,6 +355,7 @@ export default function Editor() {
                 <button onClick={() => { setShowConfigMenu(false); setIsHistoryModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#f59e0b"/> Histórico
                 </button>
+                {!somenteLeitura && <>
                 <button onClick={() => handleCopyLink(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
                   <Share2 size={16} color="#3b82f6"/> Copiar Link Público
                 </button>
@@ -355,6 +365,7 @@ export default function Editor() {
                 <button onClick={handleRevogarLink} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Link2Off size={16} color="#f59e0b"/> Revogar Link Público
                 </button>
+                </>}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
                 <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <LogOut size={16} /> Sair
@@ -366,11 +377,11 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={modoVisualizacao} projectId={projectId} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} />
       </div>
 
       {isAddModalOpen && <AddEquipmentModal onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
-      {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} />}
+      {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
       {isHistoryModalOpen && <HistoryModal projectId={projectId} onClose={() => setIsHistoryModalOpen(false)} />}
     </div>

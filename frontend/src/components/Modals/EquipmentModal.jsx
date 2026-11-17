@@ -1,15 +1,16 @@
 import { useState } from 'react'
-import { X, Trash2, Save, Maximize, Minimize } from 'lucide-react'
+import { X, Trash2, Save, Maximize, Minimize, Bell, BellOff } from 'lucide-react'
 
 export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
   const [nome, setNome] = useState(node.data.label || '')
   const [ip, setIp] = useState(node.data.ip || '')
   const [tipo, setTipo] = useState(node.data.tipo || 'Roteador')
   const [monitorMode, setMonitorMode] = useState(node.data.monitorMode || 'ip')
+  const [notificar, setNotificar] = useState(node.data.notificar !== false)
   const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161, ...(node.data.snmpConfig || {}) })
 
   const handleSave = () => {
-    onUpdate(node.id, { label: nome, ip, tipo, monitorMode: ip === 'Sem IP' ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null })
+    onUpdate(node.id, { label: nome, ip, tipo, monitorMode: ip === 'Sem IP' ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar })
   }
 
   // Função para restaurar o tamanho original
@@ -44,6 +45,13 @@ export default function EquipmentModal({ node, onClose, onUpdate, onDelete }) {
               <option value="snmpv3">SNMPv3</option>
             </select>
           </div>
+
+          {!(ip === 'Sem IP') && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title="Quando desligado, quedas deste equipamento não geram e-mail/Telegram/webhook (continuam no histórico).">
+              <input type="checkbox" checked={notificar} onChange={(e) => setNotificar(e.target.checked)} />
+              {notificar ? <Bell size={15} color="#f59e0b" /> : <BellOff size={15} color="#64748b" />} Notificar quando cair ou voltar
+            </label>
+          )}
 
           {monitorMode === 'snmpv3' && ip !== 'Sem IP' && <div style={{ padding: '12px', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155', display: 'grid', gap: '10px' }}>
             <span style={{ fontSize: '13px', color: '#94a3b8' }}>Credenciais SNMPv3 (deixe as senhas vazias para manter as atuais)</span>

@@ -39,22 +39,22 @@ def test_disponibilidade_ponderada_pelo_tempo():
     _historico(session, "sw", "offline", agora - timedelta(hours=6))
     _historico(session, "sw", "online", agora - timedelta(hours=3), 4.0)
 
-    dados = {d["equipamento_id"]: d for d in crud.calcular_disponibilidade(session, project.id, user.id, 24, agora)}
+    dados = {d["equipamento_id"]: d for d in crud.calcular_disponibilidade(session, project.id, 24, agora)}
 
     assert "pp" not in dados  # equipamentos somente visuais não entram no cálculo
     assert dados["sw"]["uptime_pct"] == 87.5
     assert dados["sw"]["quedas"] == 1
     assert dados["sw"]["latencia_media_ms"] == 4.0
     assert dados["fw"]["uptime_pct"] is None  # sem histórico ainda
-    assert crud.calcular_disponibilidade(session, project.id, 999, 24, agora) is None
+    assert crud.calcular_disponibilidade(session, 999, 24, agora) is None
 
 
 def test_resumo_projetos_conta_status():
     session = _sessao()
     user, project = _mapa(session)
-    crud.definir_share_token(session, project.id, user.id, "tok")
-    [resumo] = crud.resumo_projetos(session, user.id)
-    assert resumo == {"id": project.id, "nome": "Rack", "compartilhado": True, "online": 1, "offline": 1, "visual": 1}
+    crud.definir_share_token(session, project.id, "tok")
+    [resumo] = crud.resumo_projetos(session)
+    assert resumo == {"id": project.id, "nome": "Rack", "compartilhado": True, "criado_por": "owner", "online": 1, "offline": 1, "visual": 1}
 
 
 def test_limpeza_e_exclusao_de_projeto_removem_historico():
@@ -65,7 +65,7 @@ def test_limpeza_e_exclusao_de_projeto_removem_historico():
     assert crud.limpar_historico(session, 30) == 1
     assert session.query(models.HistoricoStatus).count() == 1
 
-    crud.deletar_projeto(session, project.id, user.id)
+    crud.deletar_projeto(session, project.id)
     assert session.query(models.HistoricoStatus).count() == 0
 
 
@@ -76,7 +76,7 @@ def test_salvar_mapa_preserva_status_do_monitor():
     crud.salvar_mapa(session, project.id, [
         {**base, "id": "sw", "ip": "10.0.0.1", "status": "offline", "pingTime": None},  # navegador desatualizado
         {**base, "id": "fw", "ip": "10.0.0.99", "status": "online", "pingTime": 1.0},   # IP mudou: aceita o enviado
-    ], [], user.id)
+    ], [])
     session.expire_all()
     assert session.get(models.Equipamento, "sw").status == "online"
     assert session.get(models.Equipamento, "fw").status == "online"
