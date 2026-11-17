@@ -3,6 +3,8 @@ FROM python:3.11-slim
 
 # Define a pasta de trabalho dentro do container
 WORKDIR /app
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 
 # Copia os arquivos de dependências
 COPY requirements.txt .

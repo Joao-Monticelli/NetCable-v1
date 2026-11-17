@@ -1,47 +1,38 @@
-# 🛠️ Guia de Instalação do NetCable (TrueNAS)
+# Installing NetCable on TrueNAS SCALE
 
-Este guia explica como instalar o NetCable no seu servidor TrueNAS usando Docker. O sistema irá rodar de forma isolada e salvar os dados (banco de dados) localmente no seu servidor.
+NetCable runs as a single container. Data (database, secret key and backups) lives in one folder on your pool.
 
-## 📋 Pré-requisitos
-- TrueNAS SCALE (versão com suporte a Apps/Docker).
-- Acesso via Shell (SSH ou painel web).
-- Um dataset (pasta) no seu pool para armazenar os dados.
+## 1. Create the data folder
 
-## 🛠️ Passo 1: Criar a pasta de dados
-No terminal do TrueNAS, crie a pasta onde o banco de dados será salvo (substitua `ssd-apps/vm` pelo caminho do seu pool):
+Create a dataset or folder, e.g. `/mnt/tank/apps/netcable`. From the shell:
+
 ```bash
-mkdir -p /mnt/ssd-apps/vm/netcable
-chmod 777 /mnt/ssd-apps/vm/netcable
+mkdir -p /mnt/tank/apps/netcable
+```
 
-📝 2: O Arquivo YAML
+## 2. Install the app
 
-Vá em Apps > Discover Apps > Custom App > Install via YAML.
+1. Apps → Discover Apps → **Custom App** → **Install via YAML**.
+2. Paste the contents of [`install/trueNAS.yml`](install/trueNAS.yml).
+3. Change the volume path `/mnt/SEU_POOL/apps/netcable` to the folder from step 1 (and `TZ` if needed).
+4. Click **Install**.
 
-Cole o conteúdo do arquivo install/trueNAS.yml (que está no repositório).
+## 3. First access
 
-⚠️ IMPORTANTE: Antes de instalar, edite o YAML e altere:
+Open `http://TRUENAS-IP:3080`. NetCable asks you to create the administrator account on the first visit.
 
-ADMIN_USER: O nome de usuário que você quer usar.
+## Backups
 
-ADMIN_PASSWORD: A sua senha (evite #, pois o YAML pode cortar).
+⚙️ → **Backup**: by default a `.zip` is written every day to `/app/data/backups` (that is, `backups/` inside the folder from step 1).
+To keep backups on another dataset, add a second volume (e.g. `/mnt/tank/backups/netcable:/backups`) and set the folder to `/backups` in the UI.
 
-O caminho do volume (/mnt/SEU_POOL/...) para o local onde você criou a pasta no Passo 1.
+## Updating
 
-Clique em Install.
+Apps → netcable → **Update** (or pin a version such as `ghcr.io/joao-monticelli/netcable:1.0.0` in the YAML).
+Database upgrades run automatically and a copy of the database is saved first.
 
-🌐 Passo 3: Acessar
-Frontend: http://IP_DO_TRUENAS:3080
+## Monitoring notes
 
-API (Documentação): http://IP_DO_TRUENAS:3080/docs
-
-🔄 Como atualizar
-Sempre que houver uma atualização no código, o GitHub Actions constrói uma nova imagem. No TrueNAS, basta ir em Apps e clicar em Update no app netcable.
-
-🖥️ Notas sobre o Monitoramento
-Linux/Switches: Funcionam de primeira (ping/TCP).
-
-Windows: Pode precisar liberar o ICMP (ping) no Firewall do Windows.
-
-Switches "Burros": Cadastre como "Sem IP" (visual).
-
-Documento gerado e mantido pela equipe NetCable.
+- Linux servers and switches usually answer TCP/ICMP out of the box.
+- Windows may need ICMP (ping) allowed in Windows Firewall.
+- Unmanaged switches: add them as "No IP" (visual only).
