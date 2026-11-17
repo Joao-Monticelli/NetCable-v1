@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements.txt "snmpsim==0.4.7"
-      - name: Run pytest (core tests: gate for the Docker image)
+      - name: Run pytest (core tests, gate for the Docker image)
         working-directory: backend
         run: |
           set -o pipefail
