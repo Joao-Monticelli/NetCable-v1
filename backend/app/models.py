@@ -98,6 +98,19 @@ class HistoricoStatus(Base):
     criado_em = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class MetricaSnmp(Base):
+    """Histórico das métricas SNMP de um equipamento (uma linha por coleta)."""
+    __tablename__ = "metricas_snmp"
+    id = Column(Integer, primary_key=True, index=True)
+    equipamento_id = Column(String, index=True, nullable=False)
+    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+    cpu_pct = Column(Float, nullable=True)
+    memoria_pct = Column(Float, nullable=True)
+    temperatura_c = Column(Float, nullable=True)
+    in_bps = Column(Float, nullable=True)   # soma das portas físicas
+    out_bps = Column(Float, nullable=True)
+
+
 class ModeloEquipamento(Base):
     """Biblioteca de modelos da equipe (ex.: "Grandstream GWN7003": firewall 1U, 4 RJ45 + 2 SFP)."""
     __tablename__ = "modelos_equipamento"

@@ -61,6 +61,13 @@ export const api = {
     salvarArquivo(await res.blob(), nome)
   },
 
+  // --- Métricas SNMP ---
+  metricasEquipamento(projetoId, equipamentoId, horas = 24) {
+    return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/metricas?horas=${horas}`, {}, t('Não foi possível carregar as métricas.'))
+  },
+  obterLimites() { return requisicao('/config/metricas', {}, t('Não foi possível carregar os limites.')) },
+  salvarLimites(dados) { return requisicao('/config/metricas', { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar os limites.')) },
+
   // --- Descoberta da rede ---
   iniciarDescoberta(faixa) { return requisicao('/descoberta', { method: 'POST', body: JSON.stringify({ faixa }) }, t('Não foi possível iniciar a varredura.')) },
   statusDescoberta(id) { return requisicao(`/descoberta/${id}`, {}, t('Não foi possível consultar a varredura.')) },

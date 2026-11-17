@@ -30,6 +30,7 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 - 📡 **Server-side monitoring** — TCP (80/443/22) + ICMP in parallel, or SNMPv3; works with no browser open.
 - 🚨 **Alerts** — email, Discord, ntfy, Telegram and webhook on down/up, grouped per cycle, per-device on/off.
 - 🧠 **Smart alerts** — set each device's uplink (or compute them from the cables): when a switch dies you get **one** alert listing what is behind it, and those devices turn amber (*unreachable*) on the map. **Maintenance windows** mute a device or a whole map for a while.
+- 🌡️ **SNMP metrics** — CPU, memory, temperature, uptime and per-port link/traffic for SNMPv3 devices, with charts, real port LEDs on the rack and temperature/CPU alerts.
 - 📊 **Uptime & latency** — availability %, outages, latency chart (24 h / 7 d / 30 d) and a daily email report.
 - 👥 **Team roles** — Admin, Editor and Viewer (great for a NOC TV).
 - 📺 **Public link & TV mode** — read-only, auto-refreshing, full screen, revocable secret link.
@@ -93,6 +94,7 @@ Everything is optional. Email (SMTP), users, backups and languages are configure
 Values set in the UI take precedence over the environment variables.
 | `ADMIN_USER` / `ADMIN_PASSWORD` | — | Create or recover an admin from the environment (instead of the first-run screen) |
 | `SECRET_KEY` | auto | Overrides the key stored in `data/secret.key` |
+| `SNMP_METRICS_INTERVAL` | `60` | Seconds between SNMP metric collections (`0` disables) |
 | `DISCOVERY_ALLOW_PUBLIC` | — | `1` allows network discovery on public IP ranges |
 | `DISCOVERY_TIMEOUT` / `DISCOVERY_WORKERS` | `0.8` / `128` | Per-probe timeout (s) and parallel probes during discovery |
 
@@ -106,6 +108,23 @@ Pick what you want, adjust names/types and click **Add to the map**, then save.
 - Only private ranges (10/8, 172.16/12, 192.168/16, 100.64/10) of up to 1024 addresses are allowed. Set `DISCOVERY_ALLOW_PUBLIC=1` to scan public ranges in a lab.
 - In Docker the default bridge network can reach your LAN, so scanning works. MAC addresses are only shown with `network_mode: host` (Linux).
 - Editors and admins can scan; viewers cannot.
+
+## SNMP metrics
+
+For devices monitored with **SNMPv3**, NetCable collects every minute (`SNMP_METRICS_INTERVAL`):
+
+| Metric | Sources (first that answers) |
+|---|---|
+| CPU | HOST-RESOURCES `hrProcessorLoad`, Cisco `cpmCPUTotal5minRev`, UCD `ssCpuIdle` (Linux/NAS) |
+| Memory | HOST-RESOURCES `hrStorageRam`, UCD `memTotalReal/memAvailReal`, Cisco memory pools |
+| Temperature | ENTITY-SENSOR (°C sensors), LM-SENSORS, MikroTik, Cisco `ciscoEnvMonTemperature` (highest sensor) |
+| Ports | IF-MIB: name, description (alias), link status, speed, traffic (64-bit counters) and errors |
+
+- On the map: temperature and CPU next to the device; in racks, **port N lights up with the real link of the N-th physical interface** (RJ45 first, then SFP) and the tooltip shows name, description, speed and traffic.
+- Click **View metrics** in the device (or click the device in view mode) for charts (1 h / 24 h / 7 days, also as a table) and the port table.
+- **Alerts:** ⚙️ → Alert channels → *Temperature and CPU limits* (default 75 °C and 95%; `0` disables). An alert fires after 3 readings in a row above the limit and again when it returns to normal. Maintenance windows mute them too.
+- SNMPv3 **context** is optional (some devices use one per VRF/instance).
+- Tested against a simulated SNMPv3 agent ([snmpsim](https://github.com/etingof/snmpsim)) in CI; please open an issue with your device model if a metric shows "—".
 
 ## Smart alerts
 

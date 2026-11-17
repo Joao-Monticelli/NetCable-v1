@@ -65,7 +65,31 @@ def montar_evento(equipamento, projeto_nome, status, status_anterior, tempo_ms=N
     }
 
 
+def montar_evento_metrica(equipamento, projeto_nome, metrica, valor, limite, situacao):
+    """Temperatura/CPU acima do limite (situacao="alerta") ou de volta ao normal ("normal")."""
+    return {
+        "evento": f"{metrica}_{'alta' if situacao == 'alerta' else 'normal'}", "metrica": metrica,
+        "equipamento_id": equipamento.id, "projeto_id": equipamento.projeto_id, "projeto": projeto_nome,
+        "equipamento": equipamento.nome, "ip": equipamento.ip, "status": situacao,
+        "valor": round(valor, 1), "limite": limite, "horario": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def texto_metrica(evento, idioma="pt"):
+    unidade = " °C" if evento["metrica"] == "temperatura" else "%"
+    if evento["metrica"] == "temperatura":
+        chave = "🌡️ Temperatura alta: {valor}{u} (limite {limite}{u})" if evento["status"] == "alerta" else "🌡️ Temperatura normalizada: {valor}{u}"
+    else:
+        chave = "🔥 CPU alta: {valor}{u} (limite {limite}{u})" if evento["status"] == "alerta" else "✅ CPU normalizada: {valor}{u}"
+    return tr(chave, idioma, valor=evento["valor"], limite=f"{evento['limite']:g}", u=unidade)
+
+
 def formatar_mensagem(evento, idioma="pt"):
+    if evento.get("metrica"):
+        linhas = [texto_metrica(evento, idioma), f"{evento['equipamento']} ({evento['ip']})"]
+        if evento.get("projeto"):
+            linhas.append(f"{tr('Mapa', idioma)}: {evento['projeto']}")
+        return "\n".join(linhas)
     titulo = tr("🔴 Equipamento OFFLINE" if evento["status"] == "offline" else "🟢 Equipamento voltou ONLINE", idioma)
     linhas = [titulo, f"{evento['equipamento']} ({evento['ip']})"]
     if evento.get("projeto"):
@@ -79,8 +103,11 @@ def formatar_mensagem(evento, idioma="pt"):
 
 def _titulo_resumo(eventos, idioma):
     quedas = sum(1 for e in eventos if e["status"] == "offline")
-    voltas = len(eventos) - quedas
+    metricas = sum(1 for e in eventos if e.get("metrica"))
+    voltas = len(eventos) - quedas - metricas
     partes = []
+    if metricas:
+        partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
     if quedas:
         partes.append(tr("{n} equipamento(s) offline", idioma, n=quedas))
     if voltas:
@@ -129,7 +156,7 @@ def enviar_webhook(c, evento):
 def _enviar(eventos, smtp_cfg, destinatarios_por_idioma, c):
     idioma = c.get("idioma") or "en"
     texto = "\n\n".join(formatar_mensagem(e, idioma) for e in eventos)
-    urgente = any(e["status"] == "offline" for e in eventos)
+    urgente = any(e["status"] in ("offline", "alerta") for e in eventos)
     tentativas = [
         ("webhook", c.get("webhook_url"), lambda: [enviar_webhook(c, e) for e in eventos]),
         ("Telegram", c.get("telegram_token") and c.get("telegram_chat"), lambda: enviar_telegram(c, texto)),

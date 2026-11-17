@@ -26,6 +26,7 @@ Roda em **um único container Docker** em qualquer lugar: mini PC, VM, NAS, Rasp
 - 📡 **Monitoramento no servidor** — TCP (80/443/22) + ICMP em paralelo, ou SNMPv3; funciona sem navegador aberto.
 - 🚨 **Alertas** — e-mail, Discord, ntfy, Telegram e webhook na queda e na volta, agrupados, com liga/desliga por equipamento.
 - 🧠 **Alertas inteligentes** — defina o uplink de cada equipamento (ou calcule pelos cabos): quando um switch cai chega **um** alerta com a lista do que está atrás dele, e esses equipamentos ficam âmbar (*inalcançáveis*) no mapa. **Janelas de manutenção** silenciam um equipamento ou o mapa inteiro por um tempo.
+- 🌡️ **Métricas SNMP** — CPU, memória, temperatura, uptime e link/tráfego por porta dos equipamentos em SNMPv3, com gráficos, LEDs reais das portas no rack e alertas de temperatura/CPU.
 - 📊 **Disponibilidade e latência** — uptime %, quedas, gráfico de latência (24 h / 7 d / 30 d) e relatório diário por e-mail.
 - 👥 **Equipe com papéis** — Administrador, Editor e Visualizador (ótimo para a TV do NOC).
 - 📺 **Link público e modo TV** — somente leitura, atualização automática, tela cheia e link revogável.
@@ -77,6 +78,18 @@ Escolha, ajuste nomes/tipos, clique em **Adicionar ao mapa** e salve.
 - Só faixas privadas (10/8, 172.16/12, 192.168/16, 100.64/10) de até 1024 endereços. `DISCOVERY_ALLOW_PUBLIC=1` libera faixas públicas (laboratório).
 - No Docker, a rede bridge padrão alcança a LAN, então a varredura funciona. O MAC só aparece com `network_mode: host` (Linux).
 - Editores e admins podem varrer; visualizadores não.
+
+## Métricas SNMP
+
+Para equipamentos monitorados por **SNMPv3**, o NetCable coleta a cada minuto (`SNMP_METRICS_INTERVAL`):
+CPU (HOST-RESOURCES, Cisco, UCD), memória (hrStorage, UCD, Cisco), temperatura (ENTITY-SENSOR, lm-sensors, MikroTik, Cisco — o maior sensor)
+e as portas pela IF-MIB (nome, descrição, link, velocidade, tráfego em contadores de 64 bits e erros).
+
+- No mapa: temperatura e CPU ao lado do equipamento; no rack, **a porta N acende com o link real da N-ª interface física** (RJ45 primeiro, depois SFP), e o tooltip mostra nome, descrição, velocidade e tráfego.
+- **Ver métricas** no equipamento (ou clique nele no modo visualização) abre os gráficos (1 h / 24 h / 7 dias, também em tabela) e a tabela de portas.
+- **Alertas:** ⚙️ → Canais de alerta → *Limites de temperatura e CPU* (padrão 75 °C e 95%; `0` desativa). Alerta após 3 leituras seguidas acima do limite e avisa de novo quando normalizar. A manutenção também silencia.
+- O **contexto** SNMPv3 é opcional (alguns equipamentos usam um por VRF/instância).
+- Testado contra um agente SNMPv3 simulado (snmpsim) no CI; se alguma métrica aparecer como "—" no seu equipamento, abra uma issue com o modelo.
 
 ## Alertas inteligentes
 

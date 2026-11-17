@@ -96,3 +96,6 @@
 .led-status.eq-inalcancavel { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
 .eq-inalcancavel .face-lcd { background: #2a1d06; color: #fbbf24; border-color: #78350f; }
 .rack-equip-manutencao { color: #38bdf8; }
+
+/* SNMP: porta sem link fica apagada; a com link acende com o LED real */
+.porta-rj45.sem-link, .porta-sfp.sem-link { opacity: .55; }

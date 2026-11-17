@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect } from 'react'
 import { Handle, Position, useStore, useUpdateNodeInternals } from 'reactflow'
-import { Server, BellOff, Activity, Wrench } from 'lucide-react'
+import { Server, BellOff, Activity, Wrench, Thermometer } from 'lucide-react'
+import { resumoPorta } from '../../utils/formatar'
 import { classeStatus } from '../../utils/mapa'
 import { U_PX, portasDoEquipamento, nomePortaRj45, nomePortaSfp, nomeDaPorta } from './rackUtils'
 import { useModelos } from './ModelosContext'
@@ -48,12 +49,15 @@ export const RackNode = memo(({ data, selected }) => {
 // ---------------------------------------------------------------------------
 const estiloHandlePorta = { top: 0, left: 0, width: '100%', height: '100%', transform: 'none', border: 0, borderRadius: 0, background: 'transparent', minWidth: 0, minHeight: 0 }
 
-function Porta({ id, nome, classe, linhaSuperior, online, uso, conectavel, piscar }) {
+function Porta({ id, nome, classe, linhaSuperior, online, uso, conectavel, piscar, link }) {
   const ligada = !!uso
-  const titulo = uso ? `${nome} → ${uso}` : `${nome} (${t('livre')})`
+  let titulo = uso ? `${nome} → ${uso}` : `${nome} (${t('livre')})`
+  if (link) titulo += `\n${resumoPorta(link)}`
+  // Com SNMP, o LED mostra o link real da porta; sem SNMP, uma simulação discreta.
+  const acesa = link ? (online && link[1]) : (online && (ligada || piscar))
   return (
-    <span className={`${classe} ${ligada ? 'em-uso' : ''}`} title={titulo}>
-      <i className={(online && (ligada || piscar)) ? 'led-porta on' : 'led-porta'} />
+    <span className={`${classe} ${ligada ? 'em-uso' : ''} ${link && !link[1] ? 'sem-link' : ''}`} title={titulo}>
+      <i className={acesa ? 'led-porta on' : 'led-porta'} />
       {/* O ponto existe sempre (os cabos precisam dele para serem desenhados, inclusive na TV);
           só não aceita novas conexões quando o mapa está em modo leitura. */}
       {conectavel !== null && (
@@ -64,8 +68,10 @@ function Porta({ id, nome, classe, linhaSuperior, online, uso, conectavel, pisca
   )
 }
 
-function Portas({ info, online, usos, conectavel }) {
+function Portas({ info, online, usos, conectavel, snmp }) {
   if (!info.rj45 && !info.sfp) return null
+  // Porta N do desenho = N-ª interface física do equipamento (RJ45 primeiro, depois SFP).
+  const links = new Map((snmp?.portas || []).map(p => [p[0], p]))
   const porLinha = Math.max(1, Math.ceil(info.rj45 / info.linhas))
   // Sem cabos cadastrados, alguns LEDs piscam só para dar vida; com cabos, só as portas em uso acendem.
   const algumUso = usos.size > 0
@@ -77,7 +83,7 @@ function Portas({ info, online, usos, conectavel }) {
             const id = `p:${i + 1}`
             return <Porta key={id} id={id} nome={nomePortaRj45(i + 1, info.prefixo)} classe="porta-rj45"
               linhaSuperior={Math.floor(i / porLinha) < info.linhas / 2} online={online} uso={usos.get(id)}
-              conectavel={conectavel} piscar={!algumUso && i % 3 !== 2} />
+              conectavel={conectavel} piscar={!algumUso && i % 3 !== 2} link={links.get(i + 1)} />
           })}
         </div>
       )}
@@ -87,7 +93,7 @@ function Portas({ info, online, usos, conectavel }) {
             const id = `s:${i + 1}`
             return <Porta key={id} id={id} nome={nomePortaSfp(i + 1)} classe="porta-sfp"
               linhaSuperior={i < Math.ceil(info.sfp / 2)} online={online} uso={usos.get(id)}
-              conectavel={conectavel} piscar={!algumUso && i < 2} />
+              conectavel={conectavel} piscar={!algumUso && i < 2} link={links.get(info.rj45 + i + 1)} />
           })}
         </div>
       )}
@@ -111,7 +117,7 @@ function Face({ data, info, usos, conectavel }) {
   const { tipo, status } = data
   const alturaU = data.alturaU || 1
   const online = status === 'online'
-  const portas = <Portas info={info} online={online} usos={usos} conectavel={conectavel} />
+  const portas = <Portas info={info} online={online} usos={usos} conectavel={conectavel} snmp={data.snmp} />
   const temPortas = info.rj45 + info.sfp > 0
   switch (tipo) {
     case 'Switch Gerenciável':
@@ -177,6 +183,7 @@ function Frente({ data, info, usos, conectavel }) {
             <div className="rack-equip-ip">
               <span className="rack-equip-ip-texto">{passivo ? (data.modeloNome || t(data.tipo)) : data.ip}</span>
               {online && data.pingTime != null && <span className="rack-equip-ping"><Activity size={8} /> {data.pingTime}ms</span>}
+              {online && data.snmp?.temp != null && <span className="rack-equip-ping" title={t('Temperatura')}><Thermometer size={8} /> {Math.round(data.snmp.temp)}°</span>}
             </div>
           </div>
           {data.manutencaoAte

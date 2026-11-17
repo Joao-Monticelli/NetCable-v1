@@ -2,10 +2,11 @@ import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower, Thermometer, Cpu } from 'lucide-react'
 import { classeStatus, dadosDeAlerta, calcularUplinks } from '../utils/mapa'
 import EquipmentModal from './Modals/EquipmentModal'
 import EdgeModal from './Modals/EdgeModal'
+import MetricasModal from './Modals/MetricasModal'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
 import { RackNode, RackDeviceNode } from './rack/RackNodes'
@@ -52,9 +53,11 @@ const CustomNode = memo(({ data, selected }) => {
         <div style={{ fontWeight: 'bold', fontSize: '14px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{data.label}</div>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{data.ip}</div>
         
-        {data.status === 'online' && data.pingTime && (
-          <div style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
-            <Activity size={10} /> {data.pingTime}ms
+        {data.status === 'online' && (data.pingTime || data.snmp) && (
+          <div style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', whiteSpace: 'nowrap' }}>
+            {data.pingTime ? <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Activity size={10} /> {data.pingTime}ms</span> : null}
+            {data.snmp?.temp != null && <span className="metrica-no" title={t('Temperatura')}><Thermometer size={10} /> {Math.round(data.snmp.temp)}°</span>}
+            {data.snmp?.cpu != null && <span className="metrica-no" title={t('CPU')}><Cpu size={10} /> {Math.round(data.snmp.cpu)}%</span>}
           </div>
         )}
       </div>
@@ -212,7 +215,8 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
             if (!atual) return node // equipamento ainda não salvo
             const alerta = dadosDeAlerta(atual, nomePorId)
             if (atual.status === node.data.status && atual.ping_time === node.data.pingTime &&
-                alerta.inalcancavelPor === (node.data.inalcancavelPor || null) && alerta.manutencaoAte === (node.data.manutencaoAte || null)) return node
+                alerta.inalcancavelPor === (node.data.inalcancavelPor || null) && alerta.manutencaoAte === (node.data.manutencaoAte || null) &&
+                alerta.snmp?.coletado_em === node.data.snmp?.coletado_em) return node
             mudou = true
             return { ...node, data: { ...node.data, status: atual.status, pingTime: atual.ping_time, ...alerta } }
           })
@@ -377,7 +381,12 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
   const onNodeMouseEnter = useCallback((event, node) => { if (node.type !== 'rack') setHoverId(node.id) }, [])
   const onNodeMouseLeave = useCallback(() => setHoverId(null), [])
 
-  const onNodeClick = (event, node) => { if (!readOnly) setSelectedNode(node) }
+  const [metricasNode, setMetricasNode] = useState(null)
+  // No modo leitura (ex.: visualizador, TV), clicar num equipamento SNMP abre as métricas.
+  const onNodeClick = (event, node) => {
+    if (!readOnly) setSelectedNode(node)
+    else if (projectId && projectId !== 'novo' && node.data?.monitorMode === 'snmpv3') setMetricasNode(node)
+  }
   const onEdgeClick = (event, edge) => { if (!readOnly) setSelectedEdge(edges.find(e => e.id === edge.id) || edge) }
   const onReconnect = useCallback((oldEdge, newConnection) => { if (!readOnly) setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds)) }, [readOnly])
   
@@ -460,7 +469,9 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
         <Controls showInteractive={!readOnly} />
       </ReactFlow>
 
-      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} modelos={modelos} projectId={projectId} onCalcularUplinks={handleCalcularUplinks} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
+      {metricasNode && <MetricasModal projectId={projectId} node={metricasNode} onClose={() => setMetricasNode(null)} />}
+      {selectedNode && <EquipmentModal node={selectedNode} nodes={nodes} modelos={modelos} projectId={projectId} onCalcularUplinks={handleCalcularUplinks}
+        onAbrirMetricas={(n) => { setSelectedNode(null); setMetricasNode(n) }} onClose={() => setSelectedNode(null)} onUpdate={handleUpdateNode} onDelete={handleDeleteNode} />}
       {selectedEdge && <EdgeModal edge={selectedEdge} nodes={nodes} edges={edges} modelos={mapaModelos} onClose={() => setSelectedEdge(null)} onUpdate={handleUpdateEdge} onDelete={handleDeleteEdge} />}
     </ModelosContext.Provider>
   )

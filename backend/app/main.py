@@ -30,7 +30,7 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal, DATA_DIR, DB_PATH
-from . import migracoes, backup, regras_alerta, descoberta
+from . import migracoes, backup, regras_alerta, descoberta, snmp_service, metricas_snmp
 from fastapi import UploadFile, File
 from fastapi.responses import FileResponse
 import zipfile
@@ -1000,10 +1000,121 @@ def _loop_relatorios():
             logger.exception("Erro ao verificar o backup agendado")
 
 
+# --- MÉTRICAS SNMP (CPU, memória, temperatura, portas) ---
+# Coletadas de equipamentos em SNMPv3 que estão online, a cada SNMP_METRICS_INTERVAL segundos.
+SNMP_METRICS_INTERVAL = int(os.getenv("SNMP_METRICS_INTERVAL", "60"))
+AMOSTRAS_PARA_ALERTAR = 3  # leituras seguidas acima do limite antes de alertar (evita picos)
+_metricas = {}       # eq_id -> última coleta completa
+_estado_snmp = {}    # eq_id -> contadores da coleta anterior (para calcular bit/s)
+_limites_estado = {}  # (eq_id, métrica) -> {"acima": n, "alertado": bool}
+
+
+def _metricas_compactas(m):
+    return {
+        "cpu": m.get("cpu_pct"), "mem": m.get("memoria_pct"), "temp": m.get("temperatura_c"), "uptime": m.get("uptime_s"),
+        "coletado_em": m.get("coletado_em"),
+        # [ordem, up, in_bps, out_bps, nome, alias, velocidade_mbps] das portas físicas
+        "portas": [[i["ordem"], i["up"], i["in_bps"], i["out_bps"], i["nome"], i["alias"], i["velocidade_mbps"]]
+                   for i in m.get("interfaces", []) if i.get("fisica")],
+    }
+
+
+def get_limites(db: Session):
+    c = crud.get_configuracoes(db, "metricas.")
+    def numero(chave, padrao):
+        try:
+            return float(c.get(chave)) if c.get(chave) not in (None, "") else padrao
+        except ValueError:
+            return padrao
+    return {"temperatura": numero("metricas.limite_temp", 75.0), "cpu": numero("metricas.limite_cpu", 95.0)}
+
+
+def avaliar_limites(eq, metricas, limites, projeto_nome=None):
+    """Eventos de métrica acima do limite (após N leituras) e de volta ao normal (com folga)."""
+    eventos = []
+    for metrica, valor, folga in (("temperatura", metricas.get("temperatura_c"), 5), ("cpu", metricas.get("cpu_pct"), 10)):
+        limite = limites.get(metrica) or 0
+        estado = _limites_estado.setdefault((eq.id, metrica), {"acima": 0, "alertado": False})
+        if not limite or valor is None:
+            continue
+        if valor >= limite:
+            estado["acima"] += 1
+            if estado["acima"] >= AMOSTRAS_PARA_ALERTAR and not estado["alertado"]:
+                estado["alertado"] = True
+                eventos.append(alerts.montar_evento_metrica(eq, projeto_nome, metrica, valor, limite, "alerta"))
+        else:
+            estado["acima"] = 0
+            if estado["alertado"] and valor <= limite - folga:
+                estado["alertado"] = False
+                eventos.append(alerts.montar_evento_metrica(eq, projeto_nome, metrica, valor, limite, "normal"))
+    return eventos
+
+
+def _coletar_um(alvo):
+    eq_id, ip, config = alvo
+    cfg = {**(config or {}), "host": ip}
+    try:
+        return eq_id, metricas_snmp.coletar(lambda *oids: snmp_service.get(cfg, *oids),
+                                            lambda oid: snmp_service.walk(cfg, oid), _estado_snmp.get(eq_id))
+    except Exception as exc:
+        logger.debug("Métricas SNMP de %s indisponíveis: %s", ip, exc)
+        return eq_id, None
+
+
+def executar_coleta_metricas():
+    try:
+        snmp_service._hlapi()
+    except SNMPUnavailableError:
+        return 0
+    db = SessionLocal()
+    try:
+        equipamentos = db.query(models.Equipamento).filter(models.Equipamento.monitor_mode == "snmpv3").all()
+        alvos = [(eq.id, eq.ip, abrir_config(eq.monitor_config)) for eq in equipamentos if eq.status == "online"]
+    finally:
+        db.close()
+    if not alvos:
+        return 0
+    with ThreadPoolExecutor(max_workers=min(8, len(alvos)), thread_name_prefix="netcable-snmp") as pool:
+        resultados = list(pool.map(_coletar_um, alvos))
+    db = SessionLocal()
+    eventos = []
+    try:
+        limites = get_limites(db)
+        agora = datetime.utcnow()
+        for eq_id, resultado in resultados:
+            if not resultado:
+                continue
+            metricas, estado = resultado
+            _estado_snmp[eq_id] = estado
+            _metricas[eq_id] = {**metricas, "coletado_em": iso_utc(agora)}
+            fisicas = [i for i in metricas["interfaces"] if i["fisica"]]
+            soma = lambda campo: sum(i[campo] for i in fisicas if i[campo] is not None) if any(i[campo] is not None for i in fisicas) else None
+            db.add(models.MetricaSnmp(equipamento_id=eq_id, criado_em=agora, cpu_pct=metricas["cpu_pct"], memoria_pct=metricas["memoria_pct"],
+                                      temperatura_c=metricas["temperatura_c"], in_bps=soma("in_bps"), out_bps=soma("out_bps")))
+            eq = crud.get_equipamento(db, eq_id)
+            if eq and eq.notificar:
+                eventos += avaliar_limites(eq, metricas, limites, eq.projeto.nome if eq.projeto else None)
+        db.commit()
+        enviar_alertas(db, regras_alerta.aplicar(db, eventos))
+    finally:
+        db.close()
+    return len([r for _, r in resultados if r])
+
+
+def _loop_metricas():
+    while not _monitor_stop.wait(SNMP_METRICS_INTERVAL):
+        try:
+            executar_coleta_metricas()
+        except Exception:
+            logger.exception("Erro na coleta de métricas SNMP")
+
+
 @app.on_event("startup")
 def iniciar_tarefas():
     if MONITOR_INTERVAL > 0:
         threading.Thread(target=_loop_monitoramento, name="netcable-monitor", daemon=True).start()
+        if SNMP_METRICS_INTERVAL > 0:
+            threading.Thread(target=_loop_metricas, name="netcable-metricas", daemon=True).start()
     threading.Thread(target=_loop_relatorios, name="netcable-relatorios", daemon=True).start()
 
 
@@ -1189,6 +1300,7 @@ class EquipamentoBase(BaseModel):
     depende_de: Optional[str] = None
     inalcancavel_por: Optional[str] = None  # uplink offline que explica a queda
     manutencao_ate: Optional[str] = None
+    snmp: Optional[dict] = None  # métricas SNMP compactas (CPU, memória, temperatura, portas)
     class Config: from_attributes = True
 
 
@@ -1381,6 +1493,8 @@ def _estado_alertas(db: Session, projeto_id: int, equipamentos=None):
     for e in equipamentos:
         if e.id in por_eq:
             extras.setdefault(e.id, {})["manutencao_ate"] = iso_utc(por_eq[e.id])
+        if e.id in _metricas:
+            extras.setdefault(e.id, {})["snmp"] = _metricas_compactas(_metricas[e.id])
     return {"manutencao_ate": iso_utc(projetos.get(projeto_id)), "por_equipamento": extras}
 
 
@@ -1447,6 +1561,41 @@ def latencia_equipamento(projeto_id: int, equipamento_id: str, horas: int = 24, 
         "equipamento_id": equipamento.id, "nome": equipamento.nome, "ip": equipamento.ip, "horas": horas,
         "pontos": [{"t": iso_utc(p.criado_em), "status": p.status, "ms": p.tempo_ms} for p in pontos],
     }
+
+
+@app.get("/api/projetos/{projeto_id}/equipamentos/{equipamento_id}/metricas")
+def metricas_equipamento(projeto_id: int, equipamento_id: str, horas: int = 24, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    equipamento = crud.get_equipamento(db, equipamento_id)
+    if not equipamento or equipamento.projeto_id != projeto_id:
+        raise HTTPException(status_code=404, detail="Equipamento não encontrado")
+    horas = max(1, min(horas, 24 * 90))
+    limite = datetime.utcnow() - timedelta(hours=horas)
+    pontos = db.query(models.MetricaSnmp).filter(models.MetricaSnmp.equipamento_id == equipamento_id, models.MetricaSnmp.criado_em >= limite).order_by(models.MetricaSnmp.criado_em).all()
+    return {
+        "equipamento_id": equipamento.id, "nome": equipamento.nome, "ip": equipamento.ip, "horas": horas,
+        "snmp": equipamento.monitor_mode == "snmpv3", "intervalo_s": SNMP_METRICS_INTERVAL,
+        "atual": _metricas.get(equipamento_id), "limites": get_limites(db),
+        "historico": [{"t": iso_utc(p.criado_em), "cpu": p.cpu_pct, "mem": p.memoria_pct, "temp": p.temperatura_c,
+                       "in": p.in_bps, "out": p.out_bps} for p in pontos],
+    }
+
+
+class LimitesIn(BaseModel):
+    temperatura: float = 75
+    cpu: float = 95
+
+
+@app.get("/api/config/metricas")
+def obter_limites(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    return get_limites(db)
+
+
+@app.put("/api/config/metricas")
+def salvar_limites(dados: LimitesIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    if not (0 <= dados.temperatura <= 150 and 0 <= dados.cpu <= 100):
+        raise HTTPException(status_code=400, detail="Limites inválidos (temperatura 0–150 °C, CPU 0–100%; 0 desativa).")
+    crud.salvar_configuracoes(db, {"metricas.limite_temp": str(dados.temperatura), "metricas.limite_cpu": str(dados.cpu)})
+    return get_limites(db)
 
 
 # --- INTERFACE WEB (imagem única) ---

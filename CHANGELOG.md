@@ -11,6 +11,13 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 - Map export/import keeps the uplinks.
 - **Network discovery:** scan a private range (CIDR, start-end or single IP, up to 1024 addresses) from the editor; results show reverse-DNS name, open ports, suggested type and whether the IP is already on a map; add the selected ones in one click.
 - New device types: Access Point, Printer and Camera.
+- **SNMP metrics** for SNMPv3 devices: CPU, memory, temperature, uptime and per-port link/speed/traffic/errors (standard MIBs plus Cisco, MikroTik, UCD/lm-sensors), stored as history (same retention as uptime history). Shown on the map, as real port LEDs in racks and in a metrics window with charts and a port table.
+- **Temperature/CPU alerts** with configurable limits (3 readings above to alert, hysteresis to recover), respecting maintenance windows.
+- Optional SNMPv3 context.
+- Real SNMPv3 integration tests against snmpsim in CI and in the QA robot.
+
+### Fixed
+- SNMP engine reuse is per thread **and per credential**, so a changed password (or two devices with the same user and different passwords) never reuses old keys.
 
 ### Security
 - Alert channel errors no longer echo tokens or secret URLs (the Telegram token is part of its URL).

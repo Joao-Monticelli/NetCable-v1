@@ -28,12 +28,14 @@ def test_discovery_reports_snmp_walk_errors(
             "SnmpEngine": object,
             "UsmUserData": lambda *args, **kwargs: object(),
             "UdpTransportTarget": lambda *args, **kwargs: object(),
-            "ContextData": lambda: object(),
+            "ContextData": lambda *args, **kwargs: object(),
             "ObjectType": lambda value: value,
             "ObjectIdentity": lambda value: value,
             "nextCmd": next_cmd,
+            "bulkCmd": next_cmd,
         },
     )
+    monkeypatch.setattr(snmp_service._local, "motores", {}, raising=False)
 
     with pytest.raises(RuntimeError, match=message):
         snmp_service.discover_neighbors({"host": "192.0.2.1", "username": "monitor"})

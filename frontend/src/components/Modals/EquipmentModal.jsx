@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2 } from 'lucide-react'
+import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { TIPOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre, ocupados } from '../rack/rackUtils'
@@ -67,10 +67,10 @@ function RackModal({ node, nodes, onClose, onUpdate, onDelete }) {
 }
 
 // ---------------------------------------------------------- Equipamento
-export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete, projectId, onCalcularUplinks }) {
+export default function EquipmentModal({ node, nodes = [], modelos = [], onClose, onUpdate, onDelete, projectId, onCalcularUplinks, onAbrirMetricas }) {
   useI18n()
   if (node.type === 'rack') return <RackModal node={node} nodes={nodes} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} />
-  return <EquipamentoModal node={node} nodes={nodes} modelos={modelos} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} projectId={projectId} onCalcularUplinks={onCalcularUplinks} />
+  return <EquipamentoModal node={node} nodes={nodes} modelos={modelos} onClose={onClose} onUpdate={onUpdate} onDelete={onDelete} projectId={projectId} onCalcularUplinks={onCalcularUplinks} onAbrirMetricas={onAbrirMetricas} />
 }
 
 const DURACOES = [[1, '1 h'], [4, '4 h'], [8, '8 h'], [24, '24 h']]
@@ -113,7 +113,7 @@ function Manutencao({ node, projectId }) {
 
 const botaoPequeno = { padding: '5px 10px', border: 0, borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px' }
 
-function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, projectId, onCalcularUplinks }) {
+function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, projectId, onCalcularUplinks, onAbrirMetricas }) {
   const [modeloId, setModeloId] = useState(node.data.modeloId || '')
   const modelo = modelos.find(m => m.id === Number(modeloId))
   const [nome, setNome] = useState(node.data.label || '')
@@ -246,7 +246,15 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
         <input value={snmpConfig.username} onChange={(e) => setSnmpConfig({ ...snmpConfig, username: e.target.value })} placeholder={t('Usuário')} style={{ ...campo, marginTop: 0, backgroundColor: '#1e293b' }} />
         <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.authProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, authProtocol: e.target.value })} style={{ ...campo, marginTop: 0, flex: 1, backgroundColor: '#1e293b' }}><option>{t('SHA')}</option><option>{t('MD5')}</option></select><input type="password" value={snmpConfig.authPassword || ''} onChange={(e) => setSnmpConfig({ ...snmpConfig, authPassword: e.target.value })} placeholder={t('Senha de autenticação')} style={{ ...campo, marginTop: 0, flex: 2, backgroundColor: '#1e293b' }} /></div>
         <div style={{ display: 'flex', gap: '8px' }}><select value={snmpConfig.privProtocol} onChange={(e) => setSnmpConfig({ ...snmpConfig, privProtocol: e.target.value })} style={{ ...campo, marginTop: 0, flex: 1, backgroundColor: '#1e293b' }}><option>{t('AES')}</option><option>{t('DES')}</option><option>{t('3DES')}</option></select><input type="password" value={snmpConfig.privPassword || ''} onChange={(e) => setSnmpConfig({ ...snmpConfig, privPassword: e.target.value })} placeholder={t('Senha de privacidade')} style={{ ...campo, marginTop: 0, flex: 2, backgroundColor: '#1e293b' }} /></div>
-        <input type="number" min="1" max="65535" value={snmpConfig.port || 161} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder={t('Porta SNMP (padrão 161)')} style={{ ...campo, marginTop: 0 }} />
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input type="number" min="1" max="65535" value={snmpConfig.port || 161} onChange={(e) => setSnmpConfig({ ...snmpConfig, port: Number(e.target.value) })} placeholder={t('Porta SNMP (padrão 161)')} style={{ ...campo, marginTop: 0, flex: 1 }} />
+          <input value={snmpConfig.context || ''} onChange={(e) => setSnmpConfig({ ...snmpConfig, context: e.target.value })} placeholder={t('Contexto (opcional)')} aria-label={t('Contexto SNMPv3 (opcional)')} style={{ ...campo, marginTop: 0, flex: 2 }} />
+        </div>
+        {onAbrirMetricas && node.data.monitorMode === 'snmpv3' && projectId && projectId !== 'novo' && (
+          <button type="button" onClick={() => onAbrirMetricas(node)} style={{ ...botaoPequeno, background: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '6px', width: 'fit-content' }}>
+            <Gauge size={13} /> {t('Ver métricas (CPU, temperatura, portas)')}
+          </button>
+        )}
       </div>}
 
       {racks.length > 0 && (

@@ -60,3 +60,4 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
 /* Inalcançável: offline porque o uplink (do qual depende) caiu — âmbar, sem alarme próprio */
 .status-inalcancavel { background-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .25); }
 .node-manutencao { color: #38bdf8; }
+.metrica-no { display: flex; align-items: center; gap: 2px; color: #cbd5e1; }

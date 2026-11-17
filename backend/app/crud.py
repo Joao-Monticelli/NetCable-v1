@@ -275,6 +275,7 @@ def limpar_historico(db: Session, dias: int):
     """Remove registros mais antigos que `dias`. Retorna quantos foram apagados."""
     limite = datetime.utcnow() - timedelta(days=dias)
     apagados = db.query(models.HistoricoStatus).filter(models.HistoricoStatus.criado_em < limite).delete(synchronize_session=False)
+    apagados += db.query(models.MetricaSnmp).filter(models.MetricaSnmp.criado_em < limite).delete(synchronize_session=False)
     db.commit()
     return apagados
 
@@ -393,6 +394,8 @@ def deletar_projeto(db: Session, projeto_id: int):
             db.query(models.HistoricoStatus).filter(models.HistoricoStatus.equipamento_id.in_(ids)).delete(synchronize_session=False)
         db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).delete()
         db.query(models.Manutencao).filter(models.Manutencao.projeto_id == projeto_id).delete()
+        if ids:
+            db.query(models.MetricaSnmp).filter(models.MetricaSnmp.equipamento_id.in_(ids)).delete(synchronize_session=False)
         db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).delete()
         db.delete(db_projeto)
         db.commit()

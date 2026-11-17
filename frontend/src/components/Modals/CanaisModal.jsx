@@ -37,6 +37,30 @@ function Cabecalho({ titulo, ativo, canal, testando, onTestar }) {
   )
 }
 
+// Limites para alertas de temperatura e CPU (equipamentos em SNMPv3).
+function Limites() {
+  const [lim, setLim] = useState(null)
+  const [salvando, setSalvando] = useState(false)
+  useEffect(() => { api.obterLimites().then(setLim).catch(() => {}) }, [])
+  if (!lim) return null
+  const salvar = async () => {
+    setSalvando(true)
+    try { setLim(await api.salvarLimites({ temperatura: Number(lim.temperatura), cpu: Number(lim.cpu) })); toast.success(t('Limites salvos.')) }
+    catch (err) { toast.error(err.message) } finally { setSalvando(false) }
+  }
+  return (
+    <div style={cartao}>
+      <strong style={{ fontSize: '14px' }}>{t('Limites de temperatura e CPU (SNMP)')}</strong>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
+        <label style={rotulo}>{t('Temperatura máx. (°C)')}<input type="number" min="0" max="150" aria-label={t('Temperatura máx. (°C)')} value={lim.temperatura} onChange={e => setLim({ ...lim, temperatura: e.target.value })} style={campo} /></label>
+        <label style={rotulo}>{t('CPU máx. (%)')}<input type="number" min="0" max="100" aria-label={t('CPU máx. (%)')} value={lim.cpu} onChange={e => setLim({ ...lim, cpu: e.target.value })} style={campo} /></label>
+        <button type="button" onClick={salvar} disabled={salvando} style={{ ...botao, background: '#334155', height: 38 }}>{salvando ? <Loader2 size={13} className="spin" /> : <Save size={13} />} {t('Salvar limites')}</button>
+      </div>
+      <span style={{ fontSize: '11px', color: '#64748b' }}>{t('Alerta após 3 leituras seguidas acima do limite; avisa de novo quando normalizar. Use 0 para desativar.')}</span>
+    </div>
+  )
+}
+
 export default function CanaisModal({ onClose }) {
   useI18n()
   const [cfg, setCfg] = useState(null)
@@ -100,6 +124,7 @@ export default function CanaisModal({ onClose }) {
               <Cabecalho titulo={t('Webhook (JSON)')} ativo={cfg.ativos.webhook} canal="webhook" testando={testando} onTestar={testar} />
               <Segredo rotuloCampo={t('URL que recebe um POST por evento')} nome="webhook_url" placeholder="https://..." {...p} />
             </div>
+            <Limites />
             <label style={rotulo}>{t('Idioma das mensagens destes canais')}
               <select value={valores.idioma || 'en'} onChange={e => setValores({ ...valores, idioma: e.target.value })} style={campo}>
                 <option value="en">English</option>
