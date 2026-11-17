@@ -370,7 +370,7 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
             monitor_config=eq.get('monitorConfig'),  # já cifrado pelo main.py
             notificar=eq.get('notificar', True) is not False,
             rack_id=eq.get('rackId'), rack_u=eq.get('rackU'), altura_u=eq.get('alturaU'),
-            modelo_id=eq.get('modeloId'),
+            modelo_id=eq.get('modeloId'), depende_de=eq.get('dependeDe') or None,
         ))
 
     for conn in conexoes:
@@ -392,6 +392,7 @@ def deletar_projeto(db: Session, projeto_id: int):
         if ids:
             db.query(models.HistoricoStatus).filter(models.HistoricoStatus.equipamento_id.in_(ids)).delete(synchronize_session=False)
         db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).delete()
+        db.query(models.Manutencao).filter(models.Manutencao.projeto_id == projeto_id).delete()
         db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).delete()
         db.delete(db_projeto)
         db.commit()

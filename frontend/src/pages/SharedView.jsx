@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Maximize, Minimize, Cable, Unplug } from 'lucide-react'
+import { Network, Loader2, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Maximize, Minimize, Cable, Unplug, Wrench } from 'lucide-react'
 import NetworkMap from '../components/NetworkMap'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges } from '../utils/mapa'
@@ -27,11 +27,13 @@ export default function SharedView() {
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null)
   const [falhaAtualizacao, setFalhaAtualizacao] = useState(false)
   const [telaCheia, setTelaCheia] = useState(false)
+  const [manutencaoAte, setManutencaoAte] = useState(null)
 
   const carregarProjeto = useCallback(async (inicial = false) => {
     try {
       const data = await api.obterMapaPublico(token)
       setProjectName(data.nome)
+      setManutencaoAte(data.manutencao_ate || null)
       const formattedNodes = equipamentosParaNodes(data.equipamentos)
       const formattedEdges = conexoesParaEdges(data.conexoes)
       setModelos(data.modelos || [])
@@ -102,6 +104,11 @@ export default function SharedView() {
           <span style={{ fontWeight: 'bold' }}>{projectName} ({t('Visualização Pública')})</span>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {manutencaoAte && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#38bdf8', border: '1px solid #0369a1', borderRadius: '6px', padding: '5px 10px' }}>
+              <Wrench size={14} /> {t('Em manutenção até {hora}', { hora: new Date(manutencaoAte).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
+            </span>
+          )}
           {ultimaAtualizacao && (
             <span title={falhaAtualizacao ? t('Falha na última atualização — exibindo dados anteriores') : t('Atualiza automaticamente')} style={{ fontSize: '12px', color: falhaAtualizacao ? '#f59e0b' : '#64748b' }}>
               {falhaAtualizacao && '⚠ '}{t('Atualizado às {hora}', { hora: ultimaAtualizacao.toLocaleTimeString() })}

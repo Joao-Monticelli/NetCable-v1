@@ -64,7 +64,25 @@ _ESTILO = "font-family:Segoe UI,Arial,sans-serif;color:#0f172a"
 _COR = {"online": "#059669", "offline": "#dc2626", "visual": "#64748b"}
 
 
+LIMITE_DEPENDENTES = 15  # nomes listados por mensagem; o resto vira "+N"
+
+
+def texto_dependentes(evento, idioma="pt"):
+    """Equipamentos atrás deste (uplink) que ficaram inalcançáveis ou voltaram junto."""
+    nomes = evento.get("dependentes") or []
+    if not nomes:
+        return ""
+    lista = ", ".join(nomes[:LIMITE_DEPENDENTES]) + (f" +{len(nomes) - LIMITE_DEPENDENTES}" if len(nomes) > LIMITE_DEPENDENTES else "")
+    chave = "{n} equipamento(s) atrás dele inalcançável(is): {lista}" if evento["status"] == "offline" else "{n} equipamento(s) atrás dele voltaram junto: {lista}"
+    return tr(chave, idioma, n=len(nomes), lista=lista)
+
+
 def _linha_evento(e, idioma):
+    dep = texto_dependentes(e, idioma)
+    return _linha_evento_base(e, idioma) + (f"\n      ↳ {dep}" if dep else "")
+
+
+def _linha_evento_base(e, idioma):
     mapa = f"{tr('mapa', idioma)} {e.get('projeto') or '-'}"
     if e["status"] == "offline":
         return f"🔴 OFFLINE  {e['equipamento']} ({e['ip']}) — {mapa}"
@@ -87,6 +105,7 @@ def montar_email_alerta(eventos, idioma="pt"):
         f"<td style='padding:6px 10px'>{escape(e['equipamento'])}</td>"
         f"<td style='padding:6px 10px;color:#64748b'>{escape(e['ip'] or '')}</td>"
         f"<td style='padding:6px 10px;color:#64748b'>{escape(e.get('projeto') or '-')}</td></tr>"
+        + (f"<tr><td></td><td colspan='3' style='padding:0 10px 8px;color:#b45309;font-size:13px'>↳ {escape(texto_dependentes(e, idioma))}</td></tr>" if e.get('dependentes') else "")
         for e in eventos
     )
     th = lambda texto_: f"<th style='padding:6px 10px'>{escape(tr(texto_, idioma))}</th>"

@@ -11,26 +11,6 @@ from app import main, crud, models, backup
 from app.database import SessionLocal
 
 
-@pytest.fixture()
-def cliente(tmp_path):
-    """Admin temporário (removido no fim, para não afetar o teste de primeiro acesso)."""
-    db = SessionLocal()
-    user = crud.criar_usuario(db, "backup-admin", main.pwd_context.hash("senha-forte-1"), papel="admin")
-    c = TestClient(main.app)
-    c.headers["Authorization"] = f"Bearer {main.criar_token({'sub': user.username})}"
-    c.headers["Accept-Language"] = "pt"
-    crud.salvar_configuracoes(db, {"backup.diretorio": str(tmp_path / "bkp"), "backup.ultimo": "", "backup.ativo": "1"})
-    yield c, db
-    for p in crud.get_projetos(db):
-        crud.deletar_projeto(db, p.id)
-    for m in crud.listar_modelos(db):
-        crud.deletar_modelo(db, m.id)
-    db.query(models.Configuracao).filter(models.Configuracao.chave.like("backup.%")).delete(synchronize_session=False)
-    db.delete(db.get(models.Usuario, user.id))
-    db.commit()
-    db.close()
-
-
 def _mapa_com_rack(c, db):
     modelo = crud.salvar_modelo(db, {"nome": "GWN Teste", "fabricante": "Grandstream", "tipo": "Switch", "altura_u": 1, "portas_rj45": 4, "portas_sfp": 2})
     pid = c.post("/api/projetos", params={"nome": "Matriz"}).json()["id"]

@@ -7,6 +7,7 @@
 import { chromium } from 'playwright-core'
 import { spawn, execSync } from 'node:child_process'
 import fs from 'node:fs'
+import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -401,6 +402,60 @@ async function roteiros() {
     await ok(await existe(page, 'text=/importado\\(s\\) como projeto novo/', 10000), 'importar o .zip do backup recupera os mapas')
     // limpa os projetos extras para não afetar os próximos cenários
     for (const p of await api('GET', '/projetos', null, TOKEN)) if (p.id !== PID) await api('DELETE', `/projetos/${p.id}`, null, TOKEN)
+  })
+
+  await cenario('Alertas inteligentes: uplink, manutenção e canais', async ({ page, ok }) => {
+    // Servidor HTTP local fazendo papel do ntfy.
+    const recebidos = []
+    const srv = http.createServer((req, res) => {
+      let corpo = ''
+      req.on('data', c => { corpo += c })
+      req.on('end', () => { recebidos.push({ url: req.url, corpo, prioridade: req.headers.priority }); res.end('ok') })
+    })
+    await new Promise(r => srv.listen(0, '127.0.0.1', r))
+    try {
+      const cam = { id: 'cam', nome: 'Câmera QA', ip: '192.0.2.51', tipo: 'PC', status: 'offline', posX: 900, posY: 40, width: 200, height: 80 }
+      await api('POST', `/projetos/${PID}/salvar`, { equipamentos: [...MAPA.equipamentos, cam], conexoes: [...MAPA.conexoes, { id: 'e2', source: 'ap', target: 'cam', sourceHandle: 'right', targetHandle: 'left' }] }, TOKEN)
+      await entrar(page); await abrirEditor(page)
+      await page.locator('.react-flow__node[data-id="sw"] .rack-equip-id').click()
+      await page.click('button:has-text("Usar como raiz e calcular uplinks pelos cabos")')
+      await ok(await existe(page, 'text=/uplink\\(s\\) definidos/'), 'uplinks calculados pelos cabos')
+      await page.keyboard.press('Control+s')
+      await page.waitForTimeout(1200)
+      const dados = await api('GET', `/projetos/${PID}/dados`, null, TOKEN)
+      const dep = Object.fromEntries(dados.equipamentos.map(e => [e.id, e.depende_de]))
+      await ok(dep.ap === 'sw' && dep.cam === 'ap', `uplinks salvos (ap→${dep.ap}, cam→${dep.cam})`)
+      await ok(await existe(page, '.react-flow__node[data-id="cam"] .status-inalcancavel', 12000), 'câmera atrás do AP offline aparece como inalcançável (âmbar)')
+      await page.locator('.react-flow__node[data-id="cam"]').click()
+      const uplink = await page.locator('select[aria-label="Depende de (uplink)"] option:checked').innerText()
+      await ok(uplink.includes('AP Solto'), `modal mostra o uplink (${uplink})`)
+      await page.click('button:has-text("Silenciar")')
+      await ok(await existe(page, 'text=/Alertas de Câmera QA silenciados/'), 'manutenção do equipamento')
+      await page.locator('h2:has-text("Editar Equipamento") + button').click()
+      await ok(await existe(page, '.react-flow__node[data-id="cam"] .node-manutencao', 8000), 'ícone de manutenção no mapa')
+
+      await page.click('button[title="Manutenção: silenciar os alertas deste mapa"]')
+      await page.click('[role=menuitem]:has-text("1 h")')
+      await ok(await existe(page, 'button[aria-pressed="true"]:has-text("até")'), 'mapa inteiro em manutenção (botão mostra "até HH:MM")')
+      await page.locator('button[aria-pressed="true"]:has-text("até")').click()
+      await page.click('[role=menuitem]:has-text("Encerrar manutenção")')
+      await ok(await existe(page, 'button[title="Manutenção: silenciar os alertas deste mapa"]'), 'manutenção do mapa encerrada')
+
+      await page.goto(`${WEB}/projects`)
+      await page.locator('button[title="Configurações"]').click()
+      await page.click('button:has-text("Canais de alerta")')
+      await page.fill('input[placeholder="https://ntfy.sh/meu-topico-secreto"]', `http://127.0.0.1:${srv.address().port}/qa-topico`)
+      await page.click('[role=dialog] button[type=submit]')
+      await ok(await existe(page, 'text=Canais de alerta salvos.'), 'canais salvos')
+      await page.locator('[role=dialog] button:has-text("Testar")').nth(1).click()
+      await ok(await existe(page, 'text=Mensagem de teste enviada.', 10000), 'teste do ntfy enviado')
+      await ok(recebidos.some(r => r.url === '/qa-topico' && r.corpo.includes('NetCable')), `ntfy recebeu a mensagem (${recebidos.length})`)
+    } finally {
+      srv.close()
+      await api('PUT', '/config/alertas', { ntfy_url: '' }, TOKEN).catch(() => {})
+      await api('DELETE', `/projetos/${PID}/manutencao?equipamento_id=cam`, null, TOKEN).catch(() => {})
+      await restaurarMapa()
+    }
   })
 
   await cenario('Histórico, latência e diagnóstico', async ({ page, ok }) => {

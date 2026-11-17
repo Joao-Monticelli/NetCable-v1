@@ -61,6 +61,16 @@ export const api = {
     salvarArquivo(await res.blob(), nome)
   },
 
+  // --- Manutenção e canais de alerta ---
+  iniciarManutencao(projetoId, dados) { return requisicao(`/projetos/${projetoId}/manutencao`, { method: 'POST', body: JSON.stringify(dados) }, t('Não foi possível iniciar a manutenção.')) },
+  encerrarManutencao(projetoId, equipamentoId = null) {
+    const q = equipamentoId ? `?equipamento_id=${encodeURIComponent(equipamentoId)}` : ''
+    return requisicao(`/projetos/${projetoId}/manutencao${q}`, { method: 'DELETE' }, t('Não foi possível encerrar a manutenção.'))
+  },
+  obterCanais() { return requisicao('/config/alertas', {}, t('Não foi possível carregar os canais de alerta.')) },
+  salvarCanais(dados) { return requisicao('/config/alertas', { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar os canais de alerta.')) },
+  testarCanal(canal) { return requisicao('/config/alertas/teste', { method: 'POST', body: JSON.stringify({ canal }) }, t('Falha ao enviar o teste.')) },
+
   async login(username, password) {
     const formData = new URLSearchParams();
     formData.append('username', username);

@@ -9,6 +9,7 @@ import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import HistoryModal from '../components/Modals/HistoryModal'
 import ModelosModal from '../components/Modals/ModelosModal'
 import BuscaEquipamento from '../components/BuscaEquipamento'
+import ManutencaoProjeto from '../components/ManutencaoProjeto'
 import { usePreferenciaCabos, useResumoMapa } from '../components/visaoMapa'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
@@ -54,6 +55,8 @@ export default function Editor() {
   const [mostrarCabos, alternarCabos] = usePreferenciaCabos()
   const { itens: itensBusca, cabosPorta, atualizar: atualizarResumo } = useResumoMapa()
   const [foco, setFoco] = useState(null)
+  const [manutencaoAte, setManutencaoAte] = useState(null)
+  const handleStatusProjeto = useCallback((s) => setManutencaoAte(s.manutencao_ate || null), [])
   // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
   const somenteLeitura = currentUser?.papel === 'visualizador'
   const leitura = modoVisualizacao || somenteLeitura
@@ -310,6 +313,7 @@ export default function Editor() {
             </span>
           )}
           <BuscaEquipamento itens={itensBusca} onEscolher={(id) => setFoco({ id, n: Date.now() })} />
+          <ManutencaoProjeto projectId={projectId} ate={manutencaoAte} podeEditar={!somenteLeitura} onMudou={setManutencaoAte} />
 
           <button onClick={alternarCabos} title={mostrarCabos ? t('Ocultar cabos entre portas') : t('Mostrar cabos entre portas')} aria-pressed={!mostrarCabos}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: mostrarCabos ? '#334155' : '#7c2d12', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
@@ -377,7 +381,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} onStatusProjeto={handleStatusProjeto} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>
 
       {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} modelos={modelos} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}

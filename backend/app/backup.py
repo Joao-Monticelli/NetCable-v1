@@ -41,7 +41,7 @@ def exportar_projeto(db, projeto, abrir_config, versao_app="dev"):
             "pos_x": eq.pos_x, "pos_y": eq.pos_y, "width": eq.width, "height": eq.height,
             "monitor_mode": eq.monitor_mode or "ip", "snmp": snmp, "notificar": eq.notificar,
             "rack_id": eq.rack_id, "rack_u": eq.rack_u, "altura_u": eq.altura_u,
-            "modelo": modelo.nome if modelo else None,
+            "modelo": modelo.nome if modelo else None, "depende_de": eq.depende_de,
         })
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto.id).all()
     return {
@@ -139,6 +139,7 @@ def _preencher_projeto(db, projeto, dados, novo_id, sufixo, ids_modelo, modelos_
             "rackId": novo_id.get(eq.get("rack_id")) if eq.get("rack_id") else None,
             "rackU": eq.get("rack_u"), "alturaU": eq.get("altura_u"),
             "modeloId": ids_modelo.get(eq.get("modelo")),
+            "dependeDe": novo_id.get(eq.get("depende_de")) if eq.get("depende_de") else None,
         })
     erro = crud.validar_racks(equipamentos)
     if erro:

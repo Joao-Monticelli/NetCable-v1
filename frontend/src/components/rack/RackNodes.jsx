@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect } from 'react'
 import { Handle, Position, useStore, useUpdateNodeInternals } from 'reactflow'
-import { Server, BellOff, Activity } from 'lucide-react'
+import { Server, BellOff, Activity, Wrench } from 'lucide-react'
+import { classeStatus } from '../../utils/mapa'
 import { U_PX, portasDoEquipamento, nomePortaRj45, nomePortaSfp, nomeDaPorta } from './rackUtils'
 import { useModelos } from './ModelosContext'
 import { t, useI18n } from '../../i18n'
@@ -164,13 +165,13 @@ function Face({ data, info, usos, conectavel }) {
 function Frente({ data, info, usos, conectavel }) {
   const passivo = data.status === 'visual'
   const online = data.status === 'online'
-  const classeStatus = passivo ? 'eq-passivo' : online ? 'eq-online' : 'eq-offline'
+  const classe = classeStatusDe(data)
   return (
     <>
       <span className="rack-orelha"><i /><i /></span>
       <div className="rack-equip-frente">
         <div className="rack-equip-id">
-          <span className={`led-status ${classeStatus}`} />
+          <span className={`led-status ${classe}`} />
           <div className="rack-equip-textos">
             <div className="rack-equip-nome">{data.label}</div>
             <div className="rack-equip-ip">
@@ -178,7 +179,9 @@ function Frente({ data, info, usos, conectavel }) {
               {online && data.pingTime != null && <span className="rack-equip-ping"><Activity size={8} /> {data.pingTime}ms</span>}
             </div>
           </div>
-          {data.notificar === false && !passivo && <BellOff size={10} className="rack-equip-sino" />}
+          {data.manutencaoAte
+            ? <Wrench size={10} className="rack-equip-sino rack-equip-manutencao" aria-label={t('Em manutenção')} />
+            : data.notificar === false && !passivo && <BellOff size={10} className="rack-equip-sino" />}
         </div>
         <div className="rack-equip-face">
           <Face data={data} info={info} usos={usos} conectavel={conectavel} />
@@ -189,12 +192,13 @@ function Frente({ data, info, usos, conectavel }) {
   )
 }
 
-const classeStatusDe = (status) => status === 'visual' ? 'eq-passivo' : status === 'online' ? 'eq-online' : 'eq-offline'
+const CLASSES = { visual: 'eq-passivo', online: 'eq-online', offline: 'eq-offline', inalcancavel: 'eq-inalcancavel' }
+function classeStatusDe(data) { return CLASSES[classeStatus(data)] }
 
 export function FrentePreview({ data, modelo }) {
   const info = portasDoEquipamento(data, modelo)
   return (
-    <div className={`rack-equip ${classeStatusDe(data.status)}`} style={{ width: 380, height: (data.alturaU || 1) * U_PX }}>
+    <div className={`rack-equip ${classeStatusDe(data)}`} style={{ width: 380, height: (data.alturaU || 1) * U_PX }}>
       {/* Prévia fora do mapa: sem pontos de conexão (null) */}
       <Frente data={data} info={info} usos={new Map()} conectavel={null} />
     </div>
@@ -235,8 +239,8 @@ export const RackDeviceNode = memo(({ id, data, selected, isConnectable }) => {
   const usos = new Map(JSON.parse(chave))
 
   return (
-    <div className={`rack-equip ${classeStatusDe(data.status)} ${selected ? 'rack-equip-selecionado' : ''}`}
-      title={`${data.label}${data.ip && data.ip !== 'Sem IP' ? ` — ${data.ip}` : ''}${modelo ? ` · ${modelo.nome}` : ''} · U${data.rackU}${data.alturaU > 1 ? `-${data.rackU + data.alturaU - 1}` : ''}`}>
+    <div className={`rack-equip ${classeStatusDe(data)} ${selected ? 'rack-equip-selecionado' : ''}`}
+      title={`${data.inalcancavelPor ? t('Inalcançável: {nome} (uplink) está offline', { nome: data.inalcancavelNome }) + '\n' : ''}${data.label}${data.ip && data.ip !== 'Sem IP' ? ` — ${data.ip}` : ''}${modelo ? ` · ${modelo.nome}` : ''} · U${data.rackU}${data.alturaU > 1 ? `-${data.rackU + data.alturaU - 1}` : ''}`}>
       <Handle type="source" position={Position.Left} id="left" style={handleLateral} />
       <Handle type="source" position={Position.Right} id="right" style={handleLateral} />
       {/* Mantidos (invisíveis) para conexões criadas quando o equipamento estava fora do rack */}

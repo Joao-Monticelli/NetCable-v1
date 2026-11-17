@@ -19,11 +19,15 @@ services:
       # - MONITOR_FAILURE_THRESHOLD=2
       # Dias de histórico mantidos no banco (0 = para sempre).
       # - HISTORY_RETENTION_DAYS=30
-      # Alertas no Telegram (idioma: en ou pt) e webhook. E-mail é configurado na interface.
+      # Canais de alerta. Também podem ser configurados na interface (⚙️ → Canais de alerta),
+      # que tem prioridade sobre estas variáveis. E-mail é configurado só na interface.
       # - TELEGRAM_BOT_TOKEN=123456:ABC...
       # - TELEGRAM_CHAT_ID=-1001234567890
-      # - ALERT_LANGUAGE=en
+      # - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+      # - NTFY_URL=https://ntfy.sh/meu-topico-secreto
+      # - NTFY_TOKEN=tk_...
       # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
+      # - ALERT_LANGUAGE=en
       # Criar/recuperar um admin por variável (em vez do assistente de primeiro acesso):
       # - ADMIN_USER=admin
       # - ADMIN_PASSWORD=uma_senha_forte

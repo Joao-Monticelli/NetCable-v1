@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes, Upload, Download, Archive } from 'lucide-react'
+import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes, Upload, Download, Archive, BellRing } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import SettingsModal from '../components/Modals/SettingsModal'
@@ -8,6 +8,7 @@ import UsersModal from '../components/Modals/UsersModal'
 import EmailConfigModal from '../components/Modals/EmailConfigModal'
 import ModelosModal from '../components/Modals/ModelosModal'
 import BackupModal from '../components/Modals/BackupModal'
+import CanaisModal from '../components/Modals/CanaisModal'
 import { t, useI18n, SeletorIdioma, getIdioma } from '../i18n'
 
 const itemMenu = { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }
@@ -123,6 +124,7 @@ export default function Projects() {
                 {isAdmin && <>
                   <button onClick={() => abrir('usuarios')} style={itemMenu}><Users size={16} color="#3b82f6"/> {t('Usuários')}</button>
                   <button onClick={() => abrir('email')} style={itemMenu}><Mail size={16} color="#f59e0b"/> {t('E-mail (SMTP)')}</button>
+                  <button onClick={() => abrir('canais')} style={itemMenu}><BellRing size={16} color="#f59e0b"/> {t('Canais de alerta')}</button>
                   <button onClick={() => abrir('backup')} style={itemMenu}><Archive size={16} color="#10b981"/> {t('Backup')}</button>
                 </>}
                 <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
@@ -172,6 +174,7 @@ export default function Projects() {
       {modal === 'perfil' && <SettingsModal onClose={() => setModal(null)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {modal === 'usuarios' && <UsersModal onClose={() => setModal(null)} currentUser={currentUser} />}
       {modal === 'modelos' && <ModelosModal podeEditar={podeEditar} onClose={() => setModal(null)} />}
+      {modal === 'canais' && <CanaisModal onClose={() => setModal(null)} />}
       {modal === 'backup' && <BackupModal onClose={() => setModal(null)} />}
       {modal === 'email' && <EmailConfigModal onClose={() => setModal(null)} currentUser={currentUser} />}
     </div>

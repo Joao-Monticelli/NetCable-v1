@@ -60,7 +60,22 @@ class Equipamento(Base):
     altura_u = Column(Integer, nullable=True)
     # Modelo da biblioteca (define portas RJ45/SFP e altura desenhadas na frente).
     modelo_id = Column(Integer, ForeignKey("modelos_equipamento.id"), nullable=True)
+    # Uplink: equipamento do qual este depende para ser alcançado (ex.: o switch onde está ligado).
+    # Se o uplink cair, este fica "inalcançável" e não gera alerta próprio.
+    depende_de = Column(String, nullable=True)
     projeto = relationship("Projeto", back_populates="equipamentos")
+
+
+class Manutencao(Base):
+    """Janela de manutenção: silencia alertas de um equipamento (ou do projeto inteiro) até `ate` (UTC)."""
+    __tablename__ = "manutencoes"
+    id = Column(Integer, primary_key=True, index=True)
+    projeto_id = Column(Integer, ForeignKey("projetos.id"), index=True, nullable=False)
+    equipamento_id = Column(String, nullable=True, index=True)  # None = projeto inteiro
+    ate = Column(DateTime, nullable=False, index=True)
+    motivo = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
 
 
 class Conexao(Base):
