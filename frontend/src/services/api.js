@@ -54,6 +54,23 @@ export const api = {
     return data;
   },
 
+  // Primeiro acesso: enquanto não houver usuários, a tela de login vira "criar administrador".
+  async statusSetup() {
+    const res = await fetch(`${API_URL}/setup`, { headers: { 'Accept-Language': getIdioma() } });
+    if (!res.ok) throw new Error(t('Falha na comunicação com o servidor.'));
+    return res.json();
+  },
+
+  async concluirSetup(dados) {
+    const res = await fetch(`${API_URL}/setup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept-Language': getIdioma() }, body: JSON.stringify(dados)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || t('Falha na comunicação com o servidor.'));
+    localStorage.setItem('netcable_token', data.access_token);
+    return data;
+  },
+
   async me() {
     const res = await fetch(`${API_URL}/me`, { headers: getHeaders() });
     if (!res.ok) throw new Error('Não autorizado');

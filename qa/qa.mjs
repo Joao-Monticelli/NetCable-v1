@@ -79,7 +79,8 @@ async function subirAmbiente() {
   iniciar('smtp', python, [path.join(AQUI, 'fake_smtp.py'), String(PORTA_SMTP), CAIXA_EMAIL], { cwd: TEMP })
   iniciar('backend', python, ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', String(PORTA_API)], {
     cwd: path.join(TEMP, 'backend'),
-    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', MONITOR_INTERVAL: '3', ADMIN_USER: ADMIN.usuario, ADMIN_PASSWORD: ADMIN.senha, SECRET_KEY: 'qa-chave-secreta-longa-123456' },
+    // Sem ADMIN_PASSWORD nem SECRET_KEY: como uma instalação nova da loja (assistente + chave automática).
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', MONITOR_INTERVAL: '3', ADMIN_PASSWORD: '', SECRET_KEY: '' },
   })
   iniciar('frontend', 'npx', ['vite'], {
     cwd: path.join(RAIZ, 'frontend'),
@@ -542,6 +543,20 @@ try {
   log(`subindo ambiente isolado em ${TEMP} ...`)
   await subirAmbiente()
   navegador = await chromium.launch({ channel: canal, headless: !process.env.QA_VER })
+  await cenario('Primeiro acesso (instalação nova)', async ({ page, ok }) => {
+    await page.goto(WEB + '/')
+    await ok(await existe(page, 'text=Primeiro acesso'), 'tela de primeiro acesso aparece numa instalação nova')
+    await page.fill('input[aria-label="Usuário"]', ADMIN.usuario)
+    await page.fill('input[aria-label="Senha (mín. 8)"]', ADMIN.senha)
+    await page.fill('input[aria-label="Confirmar senha"]', 'diferente-123')
+    await page.click('button:has-text("Criar administrador e entrar")')
+    await ok(await existe(page, 'text=As senhas não conferem.'), 'avisa quando as senhas não conferem')
+    await page.fill('input[aria-label="Confirmar senha"]', ADMIN.senha)
+    await page.click('button:has-text("Criar administrador e entrar")')
+    await ok(await page.waitForURL(/projects/, { timeout: 10000 }).then(() => true).catch(() => false), 'cria o admin e entra direto')
+    const r = await fetch(`${API}/setup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'intruso', senha: 'intruso-123' }) })
+    await ok(r.status === 409, `não dá para criar outro "primeiro admin" depois (HTTP ${r.status})`)
+  })
   await popularDados()
   log(`ambiente pronto: ${WEB}`)
   await roteiros()

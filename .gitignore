@@ -16,3 +16,6 @@ Thumbs.db
 
 # Robô de QA: relatórios gerados a cada execução
 qa/relatorios/
+
+# Dados locais do NetCable (banco, chave secreta, backups) - nunca versionar
+backend/data/
