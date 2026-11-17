@@ -129,7 +129,14 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
     })))
   }
 
+  const [adicionando, setAdicionando] = useState(false)
   const handleAdd = async () => {
+    if (adicionando) return
+    setAdicionando(true)
+    try { await adicionar() } finally { setAdicionando(false) }
+  }
+
+  const adicionar = async () => {
     if (!nome) { alert('Preencha o Nome.'); return }
     if (isRack) {
       onAdd({ nome, ip: 'Sem IP', tipo: 'Rack', status: 'visual', monitorMode: 'visual', snmpConfig: null, us: Number(rackUs) })
@@ -331,7 +338,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '30px', gap: '10px' }}>
           <button onClick={onClose} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #334155', borderRadius: '6px', cursor: 'pointer' }}>Cancelar</button>
-          <button onClick={handleAdd} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}><Plus size={18} /> Adicionar</button>
+          <button onClick={handleAdd} disabled={adicionando} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: adicionando ? '#475569' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: adicionando ? 'wait' : 'pointer' }}>{adicionando ? <><Activity size={18} className="spin" /> Verificando IP...</> : <><Plus size={18} /> Adicionar</>}</button>
         </div>
 
       </div>

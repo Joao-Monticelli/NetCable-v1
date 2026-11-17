@@ -17,7 +17,7 @@ import hashlib
 import logging
 import secrets
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel
@@ -717,26 +717,48 @@ def ping_rota(ip: str, user: models.Usuario = Depends(requer_editor)):
     return ping_equipamento(ip)
 
 
-def ping_equipamento(ip: str):
-    try:
-        # 1. Tenta conectar em portas comuns (TCP) e mede o tempo
-        for porta in [80, 443, 22]:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1.5)
-            inicio = time.time()
-            resultado = sock.connect_ex((ip, porta))
-            fim = time.time()
-            sock.close()
-            if resultado == 0:
-                return {"ip": ip, "status": "online", "tempo_ms": round((fim - inicio) * 1000, 2)}
+# Pool compartilhado: as sondagens de cada equipamento rodam em paralelo.
+_POOL_PING = ThreadPoolExecutor(max_workers=64, thread_name_prefix="netcable-ping")
+PING_TIMEOUT = 1.5
+PORTAS_TCP = (80, 443, 22)
 
-        # 2. Se não conectou em nenhuma porta, tenta o ping ICMP tradicional
-        resposta = ping3.ping(ip, timeout=1.5)
-        if resposta is not None:
-            return {"ip": ip, "status": "online", "tempo_ms": round(resposta * 1000, 2)}
-        return {"ip": ip, "status": "offline", "tempo_ms": None}
+
+def _sonda_tcp(ip, porta):
+    inicio = time.perf_counter()
+    try:
+        with socket.create_connection((ip, porta), timeout=PING_TIMEOUT):
+            return round((time.perf_counter() - inicio) * 1000, 2)
+    except OSError:
+        return None
+
+
+def _sonda_icmp(ip):
+    try:
+        resposta = ping3.ping(ip, timeout=PING_TIMEOUT)
     except Exception:
-        return {"ip": ip, "status": "offline", "tempo_ms": None}
+        return None
+    # ping3 devolve None (sem resposta) ou False (erro, ex.: sem permissão / host inválido).
+    if resposta is None or resposta is False:
+        return None
+    return round(resposta * 1000, 2)
+
+
+def ping_equipamento(ip: str):
+    """Online se qualquer sonda responder (TCP 80/443/22 ou ICMP), todas em paralelo.
+    Antes eram sequenciais: um equipamento fora do ar levava ~6 s para ser verificado."""
+    sondas = [_POOL_PING.submit(_sonda_tcp, ip, porta) for porta in PORTAS_TCP]
+    sondas.append(_POOL_PING.submit(_sonda_icmp, ip))
+    try:
+        for sonda in as_completed(sondas, timeout=PING_TIMEOUT + 1):
+            tempo = sonda.result()
+            if tempo is not None:
+                return {"ip": ip, "status": "online", "tempo_ms": tempo}
+    except Exception:
+        pass
+    finally:
+        for sonda in sondas:
+            sonda.cancel()
+    return {"ip": ip, "status": "offline", "tempo_ms": None}
 
 
 class EquipamentoCreate(BaseModel):
