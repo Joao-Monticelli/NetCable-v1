@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye } from 'lucide-react'
+import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import SettingsModal from '../components/Modals/SettingsModal'
 import UsersModal from '../components/Modals/UsersModal'
 import EmailConfigModal from '../components/Modals/EmailConfigModal'
+import ModelosModal from '../components/Modals/ModelosModal'
 
 const itemMenu = { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }
 
@@ -86,6 +87,7 @@ export default function Projects() {
             {showConfigMenu && (
               <div style={{ position: 'absolute', top: '110%', right: 0, backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px', padding: '5px', minWidth: '210px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)', zIndex: 100 }}>
                 <button onClick={() => abrir('perfil')} style={itemMenu}><UserCog size={16} color="#94a3b8"/> Meu perfil e notificações</button>
+                <button onClick={() => abrir('modelos')} style={itemMenu}><Boxes size={16} color="#a78bfa"/> Modelos de equipamento</button>
                 {isAdmin && <>
                   <button onClick={() => abrir('usuarios')} style={itemMenu}><Users size={16} color="#3b82f6"/> Usuários</button>
                   <button onClick={() => abrir('email')} style={itemMenu}><Mail size={16} color="#f59e0b"/> E-mail (SMTP)</button>
@@ -133,6 +135,7 @@ export default function Projects() {
 
       {modal === 'perfil' && <SettingsModal onClose={() => setModal(null)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {modal === 'usuarios' && <UsersModal onClose={() => setModal(null)} currentUser={currentUser} />}
+      {modal === 'modelos' && <ModelosModal podeEditar={podeEditar} onClose={() => setModal(null)} />}
       {modal === 'email' && <EmailConfigModal onClose={() => setModal(null)} currentUser={currentUser} />}
     </div>
   )

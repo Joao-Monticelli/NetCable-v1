@@ -1,12 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes } from 'lucide-react'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
 import SettingsModal from '../components/Modals/SettingsModal'
 import DiagnosticsModal from '../components/Modals/DiagnosticsModal'
 import HistoryModal from '../components/Modals/HistoryModal'
+import ModelosModal from '../components/Modals/ModelosModal'
 import { api } from '../services/api'
 import { equipamentosParaNodes, conexoesParaEdges, nodeParaEquipamento } from '../utils/mapa'
 import { normalizarRacks } from '../components/rack/rackUtils'
@@ -40,6 +41,11 @@ export default function Editor() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState(false)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+  const [isModelosModalOpen, setIsModelosModalOpen] = useState(false)
+  // Biblioteca de modelos (portas reais dos equipamentos). O mapa só corrige cabos
+  // presos a portas inexistentes depois que os modelos estiverem carregados.
+  const [modelos, setModelos] = useState([])
+  const [modelosProntos, setModelosProntos] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [modoVisualizacao, setModoVisualizacao] = useState(false)
   // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
@@ -78,6 +84,11 @@ export default function Editor() {
       } catch (error) { console.error(error) }
     }
     fetchMe()
+  }, [])
+
+  useEffect(() => {
+    api.listarModelos().then(lista => { setModelos(lista); setModelosProntos(true) })
+      .catch(() => toast.error('Não foi possível carregar a biblioteca de modelos.'))
   }, [])
 
   useEffect(() => {
@@ -342,6 +353,9 @@ export default function Editor() {
                 <button onClick={() => { setShowConfigMenu(false); setIsDiagnosticsModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#10b981"/> Diagnóstico
                 </button>
+                <button onClick={() => { setShowConfigMenu(false); setIsModelosModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Boxes size={16} color="#a78bfa"/> Modelos de equipamento
+                </button>
                 <button onClick={() => { setShowConfigMenu(false); setIsHistoryModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#f59e0b"/> Histórico
                 </button>
@@ -367,13 +381,14 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} />
       </div>
 
-      {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
+      {isAddModalOpen && <AddEquipmentModal nodes={currentNodes.current} modelos={modelos} onClose={() => setIsAddModalOpen(false)} onAdd={handleAddEquipment} onAddNeighbors={handleAddNeighbors} />}
       {isSettingsModalOpen && <SettingsModal onClose={() => setIsSettingsModalOpen(false)} currentUser={currentUser} onUpdated={setCurrentUser} />}
       {isDiagnosticsModalOpen && <DiagnosticsModal onClose={() => setIsDiagnosticsModalOpen(false)} />}
       {isHistoryModalOpen && <HistoryModal projectId={projectId} onClose={() => setIsHistoryModalOpen(false)} />}
+      {isModelosModalOpen && <ModelosModal podeEditar={!somenteLeitura} onChange={setModelos} onClose={() => setIsModelosModalOpen(false)} />}
     </div>
   )
 }

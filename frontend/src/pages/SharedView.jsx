@@ -11,6 +11,7 @@ export default function SharedView() {
   const { token } = useParams()
   const [projectName, setProjectName] = useState('Carregando...')
   const [mapNodes, setMapNodes] = useState([])
+  const [modelos, setModelos] = useState([])
   const [mapEdges, setMapEdges] = useState([])
   const [stats, setStats] = useState({ online: 0, offline: 0, visual: 0 })
   const [isLoading, setIsLoading] = useState(true)
@@ -26,6 +27,7 @@ export default function SharedView() {
       setProjectName(data.nome)
       const formattedNodes = equipamentosParaNodes(data.equipamentos)
       const formattedEdges = conexoesParaEdges(data.conexoes)
+      setModelos(data.modelos || [])
       setMapNodes(formattedNodes)
       setMapEdges(formattedEdges)
       setUltimaAtualizacao(new Date())
@@ -108,7 +110,7 @@ export default function SharedView() {
         </div>
       </div>
       <div style={{ flex: 1 }}>
-        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} onMapUpdate={handleMapUpdate} readOnly={true} monitor={false} />
+        <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} onMapUpdate={handleMapUpdate} readOnly={true} monitor={false} modelos={modelos} />
       </div>
     </div>
   )

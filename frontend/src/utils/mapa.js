@@ -10,6 +10,7 @@ export function equipamentosParaNodes(equipamentos) {
       label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time,
       monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {},
       notificar: eq.notificar !== false,
+      modeloId: eq.modelo_id || null,
     },
     _rack: { id: eq.rack_id, u: eq.rack_u, altura: eq.altura_u },
   }))
@@ -46,5 +47,6 @@ export function nodeParaEquipamento(node) {
     rackId: node.parentNode || null,
     rackU: node.parentNode ? node.data.rackU : null,
     alturaU: rack ? node.data.us : (node.parentNode ? node.data.alturaU : null),
+    modeloId: rack ? null : (node.data.modeloId || null),
   }
 }

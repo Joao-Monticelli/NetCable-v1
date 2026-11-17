@@ -84,6 +84,45 @@ def salvar_configuracoes(db: Session, valores: dict):
     db.commit()
 
 
+# --- MODELOS DE EQUIPAMENTO ---
+def listar_modelos(db: Session):
+    return db.query(models.ModeloEquipamento).order_by(models.ModeloEquipamento.tipo, models.ModeloEquipamento.nome).all()
+
+
+def get_modelo(db: Session, modelo_id: int):
+    return db.query(models.ModeloEquipamento).filter(models.ModeloEquipamento.id == modelo_id).first()
+
+
+def get_modelo_por_nome(db: Session, nome: str):
+    return db.query(models.ModeloEquipamento).filter(func.lower(models.ModeloEquipamento.nome) == nome.lower()).first()
+
+
+def salvar_modelo(db: Session, dados: dict, modelo_id: int = None):
+    modelo = get_modelo(db, modelo_id) if modelo_id else models.ModeloEquipamento()
+    if modelo is None:
+        return None
+    for campo, valor in dados.items():
+        setattr(modelo, campo, valor)
+    if not modelo_id:
+        db.add(modelo)
+    db.commit()
+    db.refresh(modelo)
+    return modelo
+
+
+def uso_do_modelo(db: Session, modelo_id: int):
+    return db.query(models.Equipamento).filter(models.Equipamento.modelo_id == modelo_id).count()
+
+
+def deletar_modelo(db: Session, modelo_id: int):
+    modelo = get_modelo(db, modelo_id)
+    if not modelo:
+        return False
+    db.delete(modelo)
+    db.commit()
+    return True
+
+
 # --- PROJETOS ---
 def get_projetos(db: Session):
     return db.query(models.Projeto).order_by(models.Projeto.nome).all()
@@ -331,6 +370,7 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
             monitor_config=eq.get('monitorConfig'),  # já cifrado pelo main.py
             notificar=eq.get('notificar', True) is not False,
             rack_id=eq.get('rackId'), rack_u=eq.get('rackU'), altura_u=eq.get('alturaU'),
+            modelo_id=eq.get('modeloId'),
         ))
 
     for conn in conexoes:

@@ -42,7 +42,7 @@ with engine.begin() as connection:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN monitor_config VARCHAR")
     if "notificar" not in columns:
         connection.exec_driver_sql("ALTER TABLE equipamentos ADD COLUMN notificar BOOLEAN NOT NULL DEFAULT 1")
-    for coluna, ddl in [("rack_id", "VARCHAR"), ("rack_u", "INTEGER"), ("altura_u", "INTEGER")]:
+    for coluna, ddl in [("rack_id", "VARCHAR"), ("rack_u", "INTEGER"), ("altura_u", "INTEGER"), ("modelo_id", "INTEGER")]:
         if coluna not in columns:
             connection.exec_driver_sql(f"ALTER TABLE equipamentos ADD COLUMN {coluna} {ddl}")
     project_columns = _colunas("projetos")
@@ -745,6 +745,7 @@ class EquipamentoCreate(BaseModel):
     monitorMode: str = "ip"; monitorConfig: Optional[dict] = None
     notificar: bool = True
     rackId: Optional[str] = None; rackU: Optional[int] = None; alturaU: Optional[int] = None
+    modeloId: Optional[int] = None
 
 
 class ConexaoCreate(BaseModel):
@@ -793,6 +794,7 @@ class EquipamentoBase(BaseModel):
     monitor_mode: str = "ip"; monitor_config: Optional[dict] = None
     notificar: bool = True
     rack_id: Optional[str] = None; rack_u: Optional[int] = None; altura_u: Optional[int] = None
+    modelo_id: Optional[int] = None
     class Config: from_attributes = True
 
 
@@ -802,9 +804,16 @@ class ConexaoBase(BaseModel):
     class Config: from_attributes = True
 
 
+class ModeloBase(BaseModel):
+    id: int; nome: str; fabricante: Optional[str] = None; tipo: str
+    altura_u: int; portas_rj45: int; portas_sfp: int; prefixo_porta: str = ""
+    class Config: from_attributes = True
+
+
 class ProjetoResponse(BaseModel):
     id: int; nome: str
     equipamentos: List[EquipamentoBase]; conexoes: List[ConexaoBase]
+    modelos: List[ModeloBase] = []  # modelos usados neste mapa
     class Config: from_attributes = True
 
 
@@ -814,11 +823,13 @@ def _obter_dados_projeto(projeto_id: int, db: Session, projeto, publico: bool = 
     conexoes = db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).all()
     equipamentos = []
     for equipamento in projeto.equipamentos:
-        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u')}
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u', 'modelo_id')}
         config = abrir_config(equipamento.monitor_config)
         item['monitor_config'] = {} if publico else {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
         equipamentos.append(item)
-    return {"id": projeto.id, "nome": projeto.nome, "equipamentos": equipamentos, "conexoes": conexoes}
+    ids_modelos = {eq.modelo_id for eq in projeto.equipamentos if eq.modelo_id}
+    modelos_usados = [m for m in crud.listar_modelos(db) if m.id in ids_modelos]
+    return {"id": projeto.id, "nome": projeto.nome, "equipamentos": equipamentos, "conexoes": conexoes, "modelos": modelos_usados}
 
 
 @app.get("/api/projetos/{projeto_id}/dados", response_model=ProjetoResponse)
@@ -827,6 +838,70 @@ def obter_dados_projeto(projeto_id: int, db: Session = Depends(get_db), user: mo
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     return _obter_dados_projeto(projeto_id, db, projeto)
+
+
+# --- BIBLIOTECA DE MODELOS DE EQUIPAMENTO ---
+class ModeloIn(BaseModel):
+    nome: str
+    fabricante: Optional[str] = None
+    tipo: str
+    altura_u: int = 1
+    portas_rj45: int = 0
+    portas_sfp: int = 0
+    prefixo_porta: str = ""
+
+
+def _validar_modelo(dados: ModeloIn):
+    nome = dados.nome.strip()
+    if not 2 <= len(nome) <= 60:
+        raise HTTPException(status_code=400, detail="O nome do modelo precisa ter de 2 a 60 caracteres.")
+    if dados.tipo == "Rack":
+        raise HTTPException(status_code=400, detail="Rack não é um modelo de equipamento.")
+    if not 1 <= dados.altura_u <= 8:
+        raise HTTPException(status_code=400, detail="Altura deve ser de 1U a 8U.")
+    # Cabem até 2 fileiras de 24 portas RJ45 por U na frente desenhada.
+    if not 0 <= dados.portas_rj45 <= 48 * dados.altura_u:
+        raise HTTPException(status_code=400, detail=f"Para {dados.altura_u}U, use de 0 a {48 * dados.altura_u} portas RJ45.")
+    if not 0 <= dados.portas_sfp <= 8:
+        raise HTTPException(status_code=400, detail="Use de 0 a 8 portas SFP.")
+    if len(dados.prefixo_porta) > 12:
+        raise HTTPException(status_code=400, detail="Prefixo das portas muito longo (máx. 12).")
+    return {**dados.dict(), "nome": nome, "fabricante": (dados.fabricante or "").strip() or None, "prefixo_porta": dados.prefixo_porta.strip()}
+
+
+@app.get("/api/modelos", response_model=List[ModeloBase])
+def listar_modelos(db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    return crud.listar_modelos(db)
+
+
+@app.post("/api/modelos", response_model=ModeloBase)
+def criar_modelo(dados: ModeloIn, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    valores = _validar_modelo(dados)
+    if crud.get_modelo_por_nome(db, valores["nome"]):
+        raise HTTPException(status_code=400, detail="Já existe um modelo com esse nome.")
+    return crud.salvar_modelo(db, valores)
+
+
+@app.put("/api/modelos/{modelo_id}", response_model=ModeloBase)
+def atualizar_modelo(modelo_id: int, dados: ModeloIn, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    valores = _validar_modelo(dados)
+    existente = crud.get_modelo_por_nome(db, valores["nome"])
+    if existente and existente.id != modelo_id:
+        raise HTTPException(status_code=400, detail="Já existe um modelo com esse nome.")
+    modelo = crud.salvar_modelo(db, valores, modelo_id)
+    if not modelo:
+        raise HTTPException(status_code=404, detail="Modelo não encontrado")
+    return modelo
+
+
+@app.delete("/api/modelos/{modelo_id}")
+def excluir_modelo(modelo_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    em_uso = crud.uso_do_modelo(db, modelo_id)
+    if em_uso:
+        raise HTTPException(status_code=400, detail=f"Modelo em uso por {em_uso} equipamento(s). Troque o modelo deles antes de excluir.")
+    if not crud.deletar_modelo(db, modelo_id):
+        raise HTTPException(status_code=404, detail="Modelo não encontrado")
+    return {"status": "sucesso"}
 
 
 # --- LINK PÚBLICO (token aleatório, revogável) ---

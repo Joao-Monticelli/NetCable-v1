@@ -57,6 +57,8 @@ class Equipamento(Base):
     rack_id = Column(String, nullable=True, index=True)
     rack_u = Column(Integer, nullable=True)
     altura_u = Column(Integer, nullable=True)
+    # Modelo da biblioteca (define portas RJ45/SFP e altura desenhadas na frente).
+    modelo_id = Column(Integer, ForeignKey("modelos_equipamento.id"), nullable=True)
     projeto = relationship("Projeto", back_populates="equipamentos")
 
 
@@ -78,6 +80,19 @@ class HistoricoStatus(Base):
     status = Column(String, nullable=False)
     tempo_ms = Column(Float, nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ModeloEquipamento(Base):
+    """Biblioteca de modelos da equipe (ex.: "Grandstream GWN7003": firewall 1U, 4 RJ45 + 2 SFP)."""
+    __tablename__ = "modelos_equipamento"
+    id = Column(Integer, primary_key=True, index=True)
+    nome = Column(String, unique=True, nullable=False)
+    fabricante = Column(String, nullable=True)
+    tipo = Column(String, nullable=False)
+    altura_u = Column(Integer, default=1, nullable=False)
+    portas_rj45 = Column(Integer, default=0, nullable=False)
+    portas_sfp = Column(Integer, default=0, nullable=False)
+    prefixo_porta = Column(String, default="", nullable=False)  # ex.: "eth" -> eth1, eth2...
 
 
 class Configuracao(Base):

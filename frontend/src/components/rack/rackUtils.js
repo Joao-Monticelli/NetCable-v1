@@ -146,3 +146,52 @@ export function posicaoADireita(nodes, margem = 80) {
   const topo = Math.min(...soltos.map(n => n.position.y))
   return { x: direita + margem, y: topo }
 }
+
+// --- Portas -------------------------------------------------------------------
+// Sem modelo, cada tipo usa uma quantidade padrão de portas.
+function portasPadrao(tipo, alturaU = 1) {
+  switch (tipo) {
+    case 'Switch Gerenciável': return { rj45: alturaU >= 2 ? 48 : 24, sfp: 4 }
+    case 'Switch Não Gerenciável': return { rj45: alturaU >= 2 ? 48 : 24, sfp: 0 }
+    case 'Patch Panel': return { rj45: 24 * Math.min(alturaU, 2), sfp: 0 }
+    case 'Roteador': return { rj45: 8, sfp: 2 }
+    case 'Firewall': return { rj45: 6, sfp: 0 }
+    default: return { rj45: 0, sfp: 0 }
+  }
+}
+
+// Portas de um equipamento: do modelo (se houver) ou o padrão do tipo.
+export function portasDoEquipamento(data, modelo) {
+  const alturaU = data.alturaU || modelo?.altura_u || 1
+  const { rj45, sfp } = modelo ? { rj45: modelo.portas_rj45, sfp: modelo.portas_sfp } : portasPadrao(data.tipo, alturaU)
+  // Até 8 portas numa fileira; acima disso, 2 fileiras por U (até 24 por fileira).
+  const linhas = rj45 <= 8 ? 1 : Math.min(2 * alturaU, Math.max(2, Math.ceil(rj45 / 24)))
+  return { rj45, sfp, linhas, prefixo: modelo?.prefixo_porta || '' }
+}
+
+export const nomePortaRj45 = (n, prefixo) => prefixo ? `${prefixo}${n}` : `Porta ${n}`
+export const nomePortaSfp = (n) => `SFP${n}`
+
+export function listarPortas(info) {
+  return [
+    ...Array.from({ length: info.rj45 }, (_, i) => ({ id: `p:${i + 1}`, nome: nomePortaRj45(i + 1, info.prefixo) })),
+    ...Array.from({ length: info.sfp }, (_, i) => ({ id: `s:${i + 1}`, nome: nomePortaSfp(i + 1) })),
+  ]
+}
+
+export const ehPorta = (handle) => typeof handle === 'string' && /^[ps]:\d+$/.test(handle)
+
+export function nomeDaPorta(handle, info) {
+  if (!ehPorta(handle)) return null
+  const [t, n] = handle.split(':')
+  return t === 'p' ? nomePortaRj45(Number(n), info.prefixo) : nomePortaSfp(Number(n))
+}
+
+// Pontos de conexão que existem num nó (as portas só existem nos equipamentos montados em rack).
+export function handlesDoNo(node, modelos) {
+  if (!node || node.type === 'rack') return new Set()
+  const laterais = ['top', 'left', 'right', 'bottom']
+  if (node.type !== 'rackDevice') return new Set(laterais)
+  const info = portasDoEquipamento(node.data, modelos?.get(node.data.modeloId))
+  return new Set([...laterais, ...listarPortas(info).map(p => p.id)])
+}
