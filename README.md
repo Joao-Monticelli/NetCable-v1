@@ -94,6 +94,7 @@ Values set in the UI take precedence over the environment variables.
 | `ADMIN_USER` / `ADMIN_PASSWORD` | — | Create or recover an admin from the environment (instead of the first-run screen) |
 | `SECRET_KEY` | auto | Overrides the key stored in `data/secret.key` |
 | `SNMP_METRICS_INTERVAL` | `60` | Seconds between SNMP metric collections (`0` disables) |
+| `PORT` | `8080` | Port NetCable listens on inside the container; only useful with `network_mode: host` |
 | `DISCOVERY_ALLOW_PUBLIC` | — | `1` allows network discovery on public IP ranges |
 | `DISCOVERY_TIMEOUT` / `DISCOVERY_WORKERS` | `0.8` / `128` | Per-probe timeout (s) and parallel probes during discovery |
 
@@ -108,11 +109,23 @@ like any device (e.g. the WAN link between two sites) and are kept in backups/ex
 
 Click the 📡 radar button in the editor toolbar, enter a range (`192.168.1.0/24`, `10.0.0.10-10.0.0.60` or a single IP) and **Scan**.
 The NetCable server pings every address and checks common ports (SSH, HTTP/S, SMB, RDP, DNS, printers, cameras, Proxmox, Synology),
-then lists what answered with its reverse-DNS name and a suggested type. Devices already on a map are flagged and unchecked.
+then lists what answered with its reverse-DNS name and a suggested type (from the open ports and hints in the name, such as
+`printer`, `cam`, `sw-`, `ap-`, `nas`; phones, VoIP and IoT devices, or anything without evidence, are suggested as **Other**). Devices already on a map are flagged and unchecked.
 Pick what you want, adjust names/types and click **Add to the map**, then save.
 
 - Only private ranges (10/8, 172.16/12, 192.168/16, 100.64/10) of up to 1024 addresses are allowed. Set `DISCOVERY_ALLOW_PUBLIC=1` to scan public ranges in a lab.
-- In Docker the default bridge network can reach your LAN, so scanning works. MAC addresses are only shown with `network_mode: host` (Linux).
+- In Docker the default bridge network can reach your LAN, so scanning works. **MAC addresses** are only shown with host networking,
+  because in bridge mode the container cannot see your LAN's ARP table. To enable it, replace `ports:` with `network_mode: host`
+  and, if port 8080 is already taken on the host, set `PORT` (e.g. `PORT=3080` on TrueNAS):
+
+  ```yaml
+  services:
+    netcable:
+      image: ghcr.io/joao-monticelli/netcable:latest
+      network_mode: host        # instead of ports:
+      environment:
+        - PORT=3080             # NetCable listens here: http://SERVER-IP:3080
+  ```
 - Editors and admins can scan; viewers cannot.
 
 ## SNMP metrics

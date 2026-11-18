@@ -14,7 +14,7 @@ mkdir -p /mnt/tank/apps/netcable
 
 1. Apps → Discover Apps → **Custom App** → **Install via YAML**.
 2. Paste the contents of [`install/trueNAS.yml`](install/trueNAS.yml).
-3. Change the volume path `/mnt/SEU_POOL/apps/netcable` to the folder from step 1 (and `TZ` if needed).
+3. Change the volume path `/mnt/YOUR_POOL/apps/netcable` to the folder from step 1 (and `TZ` if needed).
 4. Click **Install**.
 
 ## 3. First access

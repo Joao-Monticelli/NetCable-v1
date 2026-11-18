@@ -80,11 +80,23 @@ equipamento (ex.: o link WAN entre dois sites) e vão nos backups/exportações 
 
 No editor, clique no botão 📡 (radar), informe a faixa (`192.168.1.0/24`, `10.0.0.10-10.0.0.60` ou um IP) e clique em **Varrer**.
 O servidor do NetCable pinga cada endereço e testa portas comuns (SSH, HTTP/S, SMB, RDP, DNS, impressoras, câmeras, Proxmox, Synology)
-e lista quem respondeu, com o nome DNS reverso e um tipo sugerido. O que já está em algum mapa aparece marcado e desmarcado.
+e lista quem respondeu, com o nome DNS reverso e um tipo sugerido (pelas portas abertas e por pistas no nome, como
+`printer`, `cam`, `sw-`, `ap-`, `nas`; celulares, VoIP, IoT ou qualquer coisa sem evidência aparecem como **Outro**). O que já está em algum mapa aparece marcado e desmarcado.
 Escolha, ajuste nomes/tipos, clique em **Adicionar ao mapa** e salve.
 
 - Só faixas privadas (10/8, 172.16/12, 192.168/16, 100.64/10) de até 1024 endereços. `DISCOVERY_ALLOW_PUBLIC=1` libera faixas públicas (laboratório).
-- No Docker, a rede bridge padrão alcança a LAN, então a varredura funciona. O MAC só aparece com `network_mode: host` (Linux).
+- No Docker, a rede bridge padrão alcança a LAN, então a varredura funciona. O **endereço MAC** só aparece com a rede do host,
+  porque no modo bridge o container não enxerga a tabela ARP da sua LAN. Para ativar, troque `ports:` por `network_mode: host`
+  e, se a porta 8080 já estiver ocupada no servidor, defina `PORT` (ex.: `PORT=3080` no TrueNAS):
+
+  ```yaml
+  services:
+    netcable:
+      image: ghcr.io/joao-monticelli/netcable:latest
+      network_mode: host        # no lugar de ports:
+      environment:
+        - PORT=3080             # o NetCable escuta aqui: http://IP-DO-SERVIDOR:3080
+  ```
 - Editores e admins podem varrer; visualizadores não.
 
 ## Métricas SNMP

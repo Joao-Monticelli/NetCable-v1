@@ -29,6 +29,9 @@ First stable release: one Docker image, first-run setup, automatic backups, smar
 - End-to-end QA robot (`qa/`) and real SNMPv3 integration tests (snmpsim), both running in CI.
 
 ### Changed
+- Network discovery suggests the type from the device name too (`printer`, `cam`, `sw-`, `ap-`, `nas`, `pfsense`…); phones, VoIP, IoT and devices without evidence are suggested as the new **Other** type instead of *Server*.
+- `PORT` variable: the port NetCable listens on inside the container, so it can run with `network_mode: host` (needed to show MAC addresses in discovery). The discovery window explains this when no MAC is visible.
+- Build artifacts, `node_modules`, Python caches and local data are no longer tracked in the repository.
 - Monitoring runs on the server (TCP + ICMP in parallel, or SNMPv3) instead of in each browser.
 - Public links use a random, revocable token.
 - Repository docs, compose files and CI comments are now in English (Portuguese README kept as `README.pt-BR.md`); example `TZ` defaults to `Etc/UTC`.
