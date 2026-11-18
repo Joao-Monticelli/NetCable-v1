@@ -1,0 +1,112 @@
+{
+  "formato": "netcable-mapa",
+  "versao": 2,
+  "app_versao": "dev",
+  "exportado_em": "2026-11-17T19:13:46Z",
+  "projeto": {
+    "nome": "QA Homelab"
+  },
+  "modelos": [],
+  "equipamentos": [
+    {
+      "id": "r1",
+      "nome": "Rack QA",
+      "ip": "Sem IP",
+      "tipo": "Rack",
+      "pos_x": 0,
+      "pos_y": 0,
+      "width": 440,
+      "height": 384,
+      "monitor_mode": "visual",
+      "snmp": null,
+      "notificar": true,
+      "rack_id": null,
+      "rack_u": null,
+      "altura_u": 12,
+      "modelo": null,
+      "depende_de": null
+    },
+    {
+      "id": "fw",
+      "nome": "Firewall QA",
+      "ip": "127.0.0.1",
+      "tipo": "Firewall",
+      "pos_x": 0,
+      "pos_y": 0,
+      "width": 380,
+      "height": 28,
+      "monitor_mode": "ip",
+      "snmp": null,
+      "notificar": true,
+      "rack_id": "r1",
+      "rack_u": 12,
+      "altura_u": 1,
+      "modelo": null,
+      "depende_de": null
+    },
+    {
+      "id": "sw",
+      "nome": "Switch QA",
+      "ip": "127.0.0.1",
+      "tipo": "Switch Gerenciável",
+      "pos_x": 0,
+      "pos_y": 0,
+      "width": 380,
+      "height": 28,
+      "monitor_mode": "ip",
+      "snmp": null,
+      "notificar": true,
+      "rack_id": "r1",
+      "rack_u": 10,
+      "altura_u": 1,
+      "modelo": null,
+      "depende_de": null
+    },
+    {
+      "id": "nas",
+      "nome": "NAS QA",
+      "ip": "127.0.0.1",
+      "tipo": "Storage/NAS",
+      "pos_x": 0,
+      "pos_y": 0,
+      "width": 380,
+      "height": 56,
+      "monitor_mode": "ip",
+      "snmp": null,
+      "notificar": true,
+      "rack_id": "r1",
+      "rack_u": 6,
+      "altura_u": 2,
+      "modelo": null,
+      "depende_de": null
+    },
+    {
+      "id": "ap",
+      "nome": "AP Solto",
+      "ip": "192.0.2.50",
+      "tipo": "Roteador",
+      "pos_x": 620,
+      "pos_y": 40,
+      "width": 200,
+      "height": 80,
+      "monitor_mode": "ip",
+      "snmp": null,
+      "notificar": true,
+      "rack_id": null,
+      "rack_u": null,
+      "altura_u": null,
+      "modelo": null,
+      "depende_de": null
+    }
+  ],
+  "conexoes": [
+    {
+      "id": "e1",
+      "source": "sw",
+      "target": "ap",
+      "label": null,
+      "source_handle": "right",
+      "target_handle": "left"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>QA NetCable 2026-11-17-16-18</title><style>
+  body{font-family:Segoe UI,Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:32px;max-width:1100px}
+  h1{margin:0 0 6px} .st{font-size:20px;font-weight:bold;margin:10px 0 24px} .ok{color:#22c55e} .ruim{color:#ef4444} .aviso{color:#f59e0b}
+  .card{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px 18px;margin:10px 0}
+  .card h3{margin:0 0 8px;font-size:16px} li{margin:3px 0} small{color:#94a3b8} img{max-width:100%;border:1px solid #334155;border-radius:6px;margin-top:8px}
+  code{background:#0b1120;padding:1px 5px;border-radius:4px}
+  </style></head><body>
+  <h1>Relatório de QA do NetCable</h1><small>17/11/2026, 16:18:28 · 2.2 min · http://192.168.83.155:8011</small>
+  <div class="st ok">✅ TUDO CERTO</div>
+  <h2>Roteiros (14)</h2>
+  <div class="card"><h3 class="ok">✅ Primeiro acesso (instalação nova) <small>2.0s</small></h3>
+    <ul><li class="">✔ tela de primeiro acesso aparece numa instalação nova</li><li class="">✔ avisa quando as senhas não conferem</li><li class="">✔ cria o admin e entra direto</li><li class="">✔ não dá para criar outro &quot;primeiro admin&quot; depois (HTTP 409)</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Login e idioma <small>1.2s</small></h3>
+    <ul><li class="">✔ login em inglês</li><li class="">✔ erro da API traduzido para inglês</li><li class="">✔ troca para português na hora</li><li class="">✔ login com senha correta</li><li class="">✔ mapa aparece na lista de projetos</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Adicionar equipamento solto (rapidez) <small>2.3s</small></h3>
+    <ul><li class="">✔ botão &quot;Testar&quot; responde online</li><li class="">✔ equipamento aparece no mapa</li><li class="">✔ aparece rápido (0.1s, limite 4s)</li><li class="">✔ exatamente um nó novo</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Racks: montar, mover e salvar <small>4.8s</small></h3>
+    <ul><li class="">✔ switch encaixa no U8 ao arrastar</li><li class="">✔ equipamento solto é montado ao soltar no rack</li><li class="">✔ salvar (Ctrl+S)</li><li class="">✔ posições continuam após recarregar</li><li class="">✔ cabo continua ligado</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Modelos e cabos por porta <small>9.9s</small></h3>
+    <ul><li class="">✔ modelo criado na biblioteca</li><li class="">✔ frente com 4 portas RJ45 do modelo</li><li class="">✔ cabo porta→porta criado</li><li class="">✔ porta em uso mostra o destino</li><li class="">✔ porta ocupada recusa segundo cabo</li><li class="">✔ cabo SFP criado após trocar o modelo</li><li class="">✔ cabos por porta visíveis no modo visualização</li><li class="">✔ salvar</li><li class="">✔ portas gravadas no servidor</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Usuários e papéis <small>2.7s</small></h3>
+    <ul><li class="">✔ visualizador não vê &quot;Criar Novo Projeto&quot;</li><li class="">✔ editor em somente leitura para o visualizador</li><li class="">✔ sem botão Salvar</li><li class="">✔ API recusa salvar para visualizador (HTTP 403)</li></ul>
+    </div><div class="card"><h3 class="ok">✅ E-mail (SMTP falso) <small>3.5s</small></h3>
+    <ul><li class="">✔ e-mail de teste enviado</li><li class="">✔ SMTP recebeu o e-mail (1)</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Backup, exportar e importar <small>3.4s</small></h3>
+    <ul><li class="">✔ tela de backup abre</li><li class="">✔ backup manual criado</li><li class="">✔ arquivo aparece na lista</li><li class="">✔ download do .zip (6064 bytes)</li><li class="">✔ mapa exportado no formato novo</li><li class="">✔ importação cria projeto novo</li><li class="">✔ novo card aparece na lista</li><li class="">✔ importar o .zip do backup recupera os mapas</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Alertas inteligentes: uplink, manutenção e canais <small>12.6s</small></h3>
+    <ul><li class="">✔ uplinks calculados pelos cabos</li><li class="">✔ uplinks salvos (ap→sw, cam→ap)</li><li class="">✔ câmera atrás do AP offline aparece como inalcançável (âmbar)</li><li class="">✔ modal mostra o uplink (AP Solto — 192.0.2.50)</li><li class="">✔ manutenção do equipamento</li><li class="">✔ ícone de manutenção no mapa</li><li class="">✔ mapa inteiro em manutenção (botão mostra &quot;até HH:MM&quot;)</li><li class="">✔ manutenção do mapa encerrada</li><li class="">✔ canais salvos</li><li class="">✔ teste do ntfy enviado</li><li class="">✔ ntfy recebeu a mensagem (1)</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Descoberta da rede <small>9.0s</small></h3>
+    <ul><li class="">✔ tela de descoberta abre</li><li class="">✔ recusa faixa pública</li><li class="">✔ varredura termina</li><li class="">✔ 3 equipamento(s) descoberto(s) adicionados ao mapa</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Métricas SNMP (agente simulado) <small>18.3s</small></h3>
+    <ul><li class="">✔ temperatura (47°) aparece no rack</li><li class="">✔ porta 3 sem link aparece apagada (LED real)</li><li class="">✔ tooltip da porta 1 com nome, descrição e tráfego (ge1 (livre) | ge-0/0/1 (uplink firewall) · link ativo 1G · ↓10.1 Mb/s ↑2.0 Mb/s)</li><li class="">✔ modal de métricas com temperatura</li><li class="">✔ tabela de portas com descrição</li><li class="">✔ gráficos de temperatura, CPU/memória e tráfego</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Histórico, latência e diagnóstico <small>2.6s</small></h3>
+    <ul><li class="">✔ aba disponibilidade lista equipamentos</li><li class="">✔ gráfico de latência abre</li><li class="">✔ aba eventos abre</li><li class="">✔ diagnóstico abre</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Barra: cabos entre portas, busca e destaque <small>4.2s</small></h3>
+    <ul><li class="">✔ cabo entre portas desenhado</li><li class="">✔ botão oculta os cabos entre portas (o cabo lateral continua)</li><li class="">✔ porta continua marcada como em uso</li><li class="">✔ preferência lembrada após recarregar</li><li class="">✔ passar o mouse no switch revela os cabos dele</li><li class="">✔ equipamentos sem ligação ficam apagados</li><li class="">✔ botão volta a mostrar os cabos</li><li class="">✔ busca (Ctrl+K) encontra pelo nome</li><li class="">✔ Enter centraliza e destaca o equipamento</li><li class="">✔ busca também encontra pelo IP</li></ul>
+    </div><div class="card"><h3 class="ok">✅ Alterações não salvas <small>2.9s</small></h3>
+    <ul><li class="">✔ botão vira &quot;Salvar *&quot;</li><li class="">✔ aviso ao sair sem salvar (cancelado = continua no editor)</li></ul>
+    </div>
+  <h2>Achados da exploração e erros de fundo (0)</h2>
+  <p class="ok">Nenhum.</p>
+  </body></html>
