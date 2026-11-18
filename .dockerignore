@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+docs
+qa
+install
+**/node_modules
+**/__pycache__
+**/*.pyc
+frontend/dist
+backend/venv
+backend/data
+backend/tests
+backend/.pytest_cache

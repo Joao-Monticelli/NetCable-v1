@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/venv/
+.venv/
+
+# Node
+node_modules/
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Robô de QA: relatórios gerados a cada execução
+qa/relatorios/
+
+# Dados locais do NetCable (banco, chave secreta, backups) - nunca versionar
+backend/data/
+backend/tests/snmpsim/dados/
+backend/tests/snmpsim/dados*.dbm*
