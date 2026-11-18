@@ -17,7 +17,7 @@ export const ALTURAS_EQUIP = [1, 2, 3, 4, 5, 6, 8]
 export const TIPOS = [
   'Roteador', 'Switch Gerenciável', 'Switch Não Gerenciável', 'Firewall', 'Servidor',
   'Storage/NAS', 'Patch Panel', 'Nobreak', 'Organizador de Cabos', 'PC',
-  'Access Point', 'Impressora', 'Câmera',
+  'Access Point', 'Impressora', 'Câmera', 'Outro',
 ]
 
 // Altura padrão (em U) de cada tipo ao montar no rack.

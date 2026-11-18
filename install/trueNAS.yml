@@ -5,8 +5,12 @@ services:
     restart: unless-stopped
     ports:
       - "3080:8080"   # open http://TRUENAS-IP:3080
+    # Optional: to see MAC addresses in network discovery, delete the two "ports" lines above,
+    # uncomment "network_mode: host" and the "PORT=3080" line below.
+    # network_mode: host
     environment:
       - TZ=Etc/UTC   # your timezone, e.g. America/New_York, Europe/Berlin, America/Sao_Paulo
+      # - PORT=3080   # only with network_mode: host
       # Optional: Telegram alerts
       # - TELEGRAM_BOT_TOKEN=123456:ABC...
       # - TELEGRAM_CHAT_ID=-1001234567890

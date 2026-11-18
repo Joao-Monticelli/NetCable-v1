@@ -143,6 +143,9 @@ export default function DescobertaModal({ nodes = [], onClose, onAdicionar }) {
               </tbody>
             </table>
           </div>
+          {!job.resultados.some(r => r.mac) && (
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>{t('Endereços MAC não aparecem porque o container usa a rede bridge do Docker. Para vê-los, rode o NetCable com network_mode: host (veja o README).')}</div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
             <span style={{ fontSize: '12px', color: '#64748b' }}>{t('Dica: depois de adicionar, ligue os cabos e use "calcular uplinks" para ter alertas por dependência.')}</span>
             <button onClick={adicionar} disabled={!marcados.length} style={{ ...botao, background: marcados.length ? '#3b82f6' : '#475569', cursor: marcados.length ? 'pointer' : 'not-allowed' }}>

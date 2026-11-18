@@ -7,6 +7,7 @@ backend/venv/
 
 # Node
 node_modules/
+frontend/dist/
 
 # Editores / SO
 .vscode/

@@ -519,6 +519,8 @@ const en = {
   "Access Point": "Access Point",
   "Impressora": "Printer",
   "Câmera": "Camera",
+  "Outro": "Other",
+  "Endereços MAC não aparecem porque o container usa a rede bridge do Docker. Para vê-los, rode o NetCable com network_mode: host (veja o README).": "MAC addresses are not shown because the container uses Docker's bridge network. To see them, run NetCable with network_mode: host (see the README).",
   "Atalho para outro mapa": "Shortcut to another map",
   "Administrador": "Administrator",
   "Editor": "Editor",

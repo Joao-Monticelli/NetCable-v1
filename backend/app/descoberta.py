@@ -9,6 +9,7 @@ endereços; DISCOVERY_ALLOW_PUBLIC=1 libera faixas públicas (ex.: laboratório)
 
 import ipaddress
 import os
+import re
 import socket
 import threading
 import time
@@ -101,22 +102,51 @@ def ler_tabela_arp():
     return macs
 
 
-def sugerir_tipo(ip, portas):
-    """Palpite do tipo pelo conjunto de portas abertas (o usuário pode trocar antes de adicionar)."""
+# Pistas no nome (DNS/PTR) quando as portas não bastam. Ordem importa: a primeira que casar vence.
+PISTAS_NOME = (
+    ("Impressora", r"printer|print|epson|brother|canon|lexmark|ricoh|kyocera|xerox|laserjet|officejet|npi[0-9a-f]{6}|hp[0-9a-f]{6}"),
+    ("Câmera", r"cam|camera|ipc|nvr|dvr|hikvision|dahua|intelbras|reolink|axis"),
+    ("Storage/NAS", r"nas|truenas|freenas|synology|diskstation|qnap|unas"),
+    ("Firewall", r"fw|firewall|pfsense|opnsense|fortigate|fortinet|sophos|sonicwall"),
+    ("Access Point", r"ap|wap|uap|eap|unifi-?ap|access-?point"),
+    ("Switch Gerenciável", r"sw|switch|usw"),
+    ("Roteador", r"router|gw|gateway|mikrotik|edgerouter|udm"),
+    ("PC", r"pc|desktop|laptop|notebook|inspiron|latitude|optiplex|thinkpad|macbook|imac|workstation"),
+    ("Servidor", r"srv|server|proxmox|pve|esxi|hyperv|vm"),
+)
+# Celulares, telefones VoIP, TVs e IoT: nenhum tipo do mapa encaixa, então "Outro".
+PISTAS_OUTRO = r"android|iphone|ipad|galaxy|xiaomi|redmi|m2\d{3}|grandstream|yealink|fanvil|polycom|voip|tv|chromecast|roku|echo|alexa|tasmota|shelly|esp"
+
+
+def _casa(padrao, nome):
+    # Compara termo a termo (separados por . - _ ou dígitos) para "ap" não casar com "laptop".
+    return re.search(rf"(^|[^a-z])({padrao})([^a-z]|$)", nome) is not None
+
+
+def sugerir_tipo(ip, portas, nome=None):
+    """Palpite do tipo pelas portas abertas e pelo nome DNS (o usuário pode trocar antes de adicionar).
+    Sem nenhuma evidência devolve "Outro" em vez de chutar "Servidor"."""
     p = set(portas)
+    nome = (nome or "").lower().replace("_", "-")
     if p & {9100}:
         return "Impressora"
+    if 554 in p:
+        return "Câmera"
     if p & {5000, 5001} or ({445, 139} & p and {80, 443} & p and 3389 not in p):
         return "Storage/NAS"
     if 3389 in p or (p & {445, 139} and not p & {22}):
         return "PC"
-    if 554 in p:
-        return "Câmera"
+    if nome:
+        if _casa(PISTAS_OUTRO, nome):
+            return "Outro"
+        for tipo, padrao in PISTAS_NOME:
+            if _casa(padrao, nome):
+                return tipo
     if 53 in p or ip.endswith(".1") or ip.endswith(".254"):
         return "Roteador"
     if 8006 in p or 22 in p:
         return "Servidor"
-    return "Servidor"
+    return "Outro"
 
 
 # --------------------------------------------------------------------------- execução
@@ -164,7 +194,7 @@ def _executar(job, ips, sondas):
     chave = lambda ip: tuple(int(x) for x in ip.split("."))
     job["resultados"] = [{
         "ip": ip, "nome": info.get("nome"), "mac": macs.get(ip), "portas": sorted(info["portas"]),
-        "tipo_sugerido": sugerir_tipo(ip, info["portas"]),
+        "tipo_sugerido": sugerir_tipo(ip, info["portas"], info.get("nome")),
     } for ip, info in sorted(vivos.items(), key=lambda kv: chave(kv[0]))]
     job["status"] = "cancelado" if job["cancelado"] else "concluido"
     job["fim"] = time.time()

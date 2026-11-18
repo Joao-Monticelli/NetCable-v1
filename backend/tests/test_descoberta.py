@@ -37,6 +37,26 @@ def test_varredura_com_sondas_simuladas():
     assert descoberta.obter(job["id"], user_id=1) is None, "outro usuário não vê a varredura"
 
 
+
+@pytest.mark.parametrize("ip, portas, nome, esperado", [
+    ("10.0.0.5", [80, 443], "truenas.lan", "Storage/NAS"),
+    ("10.0.0.5", [80, 443], "unifi-ap-sala.lan", "Access Point"),
+    ("10.0.0.5", [80], "sw-core-01.lan", "Switch Gerenciável"),
+    ("10.0.0.5", [80], "pfsense.home", "Firewall"),
+    ("10.0.0.5", [], "HP3C2A1B.lan", "Impressora"),
+    ("10.0.0.5", [80, 443], "cam01.lan", "Câmera"),
+    ("10.0.0.5", [], "laptop-joao.lan", "PC"),
+    ("10.0.0.5", [22, 80, 443], "Grandstream-ENGENHARIA.lan", "Outro"),  # telefone VoIP
+    ("10.0.0.5", [], "M2012K11AG.lan", "Outro"),  # celular
+    ("10.0.0.5", [22], "espaco-server.lan", "Servidor"),  # "esp" só casa como termo inteiro
+    ("10.0.0.5", [80, 443], None, "Outro"),  # sem evidência: não chuta "Servidor"
+    ("10.0.0.5", [22, 80], None, "Servidor"),
+    ("10.0.0.5", [554, 80], "nas-sala", "Câmera"),  # porta forte vence o nome
+])
+def test_sugerir_tipo(ip, portas, nome, esperado):
+    assert descoberta.sugerir_tipo(ip, portas, nome) == esperado
+
+
 def test_api_descoberta(cliente, monkeypatch):
     c, db = cliente
     monkeypatch.setattr(descoberta, "sonda_tcp", lambda ip, porta, timeout=None: ip == "192.168.50.10" and porta == 80)

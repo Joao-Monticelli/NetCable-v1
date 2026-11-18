@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"   # open http://SERVER-IP:8080
+    # To see MAC addresses in network discovery, remove "ports:" above and use host networking:
+    # network_mode: host
     volumes:
       # Database, secret key and backups. Use an absolute path if you prefer
       # (e.g. /mnt/pool/apps/netcable:/app/data).
@@ -30,6 +32,8 @@ services:
       # - NTFY_TOKEN=tk_...
       # - ALERT_WEBHOOK_URL=https://your-endpoint.example/alerts
       # - ALERT_LANGUAGE=en
+      # Port inside the container. Only needed with network_mode: host (shows MAC addresses in discovery).
+      # - PORT=8080
       # Create/recover an admin from variables (instead of the first-access wizard):
       # - ADMIN_USER=admin
       # - ADMIN_PASSWORD=a_strong_password
