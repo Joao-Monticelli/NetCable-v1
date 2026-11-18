@@ -1,44 +1,186 @@
-name: Build and Push NetCable Images
+name: CI and Docker images
 
+# main  -> tests + image :latest (and :sha)
+# v1.2.3 (tag) -> tests + images :1.2.3, :1.2, :latest
+# Other branches -> tests + image build (not published), to validate before merging
+# Pull requests -> tests only (nothing is published)
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "**" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-push:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt "snmpsim==0.4.7"
+      - name: Run pytest (core tests, gate for the Docker image)
+        working-directory: backend
+        run: |
+          set -o pipefail
+          PYTHONDONTWRITEBYTECODE=1 pytest -q -rfE -p no:cacheprovider 2>&1 | tee /tmp/pytest.log
+      - name: Report pytest failures as annotations
+        if: failure()
+        run: grep -E "^(FAILED|ERROR) |^E  " /tmp/pytest.log | head -30 | sed 's/^/::error title=pytest::/' || true
+      - name: Start SNMP simulator
+        working-directory: backend
+        run: |
+          python tests/snmpsim/gerar.py
+          VARIACOES="$(python -c 'import os, sys; print(os.path.join(sys.prefix, "snmpsim", "variation"))')"
+          echo "variation modules: $VARIACOES"; ls "$VARIACOES" | head -3 || true
+          nohup snmpsimd.py --data-dir=tests/snmpsim/dados --variation-modules-dir="$VARIACOES" --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123 --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES > /tmp/snmpsim.log 2>&1 &
+      - name: SNMPv3 integration tests (real agent, informative)
+        id: snmp
+        continue-on-error: true
+        working-directory: backend
+        env:
+          NETCABLE_SNMPSIM: 127.0.0.1:11161
+        run: |
+          set -o pipefail
+          PYTHONDONTWRITEBYTECODE=1 pytest -q -rfE -p no:cacheprovider tests/test_snmp_integracao.py 2>&1 | tee /tmp/snmp.log
+      - name: Report SNMP integration problems
+        if: steps.snmp.outcome == 'failure'
+        run: |
+          grep -E "^(FAILED|ERROR) |^E  " /tmp/snmp.log | head -20 | sed 's/^/::warning title=snmp-integration::/' || true
+          grep -iE "error|exception|traceback" /tmp/snmpsim.log | head -10 | sed 's/^/::warning title=snmpsim::/' || true
+
+  qa-robot:
+    # Uses NetCable like a real user (Playwright), with the built UI served by the API,
+    # exactly as in the Docker image.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            qa/package-lock.json
+      - name: Backend environment and SNMP simulator
+        run: |
+          python -m venv backend/venv
+          backend/venv/bin/pip install -r backend/requirements.txt "snmpsim==0.4.7"
+          cd backend && venv/bin/python tests/snmpsim/gerar.py
+          nohup venv/bin/snmpsimd.py --data-dir=tests/snmpsim/dados --variation-modules-dir=venv/snmpsim/variation             --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123             --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES > /tmp/snmpsim.log 2>&1 &
+      - name: Build the interface
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Install the QA robot and Chromium
+        working-directory: qa
+        run: |
+          npm ci || npm install
+          npx playwright-core install --with-deps chromium
+      - name: Run the QA robot
+        working-directory: qa
+        env:
+          QA_MODO: unica
+          QA_SNMPSIM: 127.0.0.1:11161
+        run: node qa.mjs --rapido
+      - name: Report QA problems as annotations
+        if: failure()
+        working-directory: qa
+        run: |
+          f=$(ls -t relatorios/*/resumo.md 2>/dev/null | head -1)
+          [ -n "$f" ] && grep -E "falhou|❌|erro" "$f" | head -30 | sed 's/^/::error title=qa::/' || true
+          grep -iE "error|exception|traceback" /tmp/snmpsim.log 2>/dev/null | head -10 | sed 's/^/::warning title=snmpsim::/' || true
+      - name: Upload QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-report
+          path: qa/relatorios/
+          retention-days: 14
+
+  docker:
+    # The image depends on the backend tests; the QA robot runs in parallel and shows up in Actions.
+    needs: [ backend-tests ]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
+    env:
+      PUBLICAR: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: App version
+        id: versao
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "app=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=$(cat VERSION)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/joao-monticelli/netcable
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
+        if: env.PUBLICAR == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Validate backend
-        working-directory: backend
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          PYTHONDONTWRITEBYTECODE=1 pytest -q
+      # Single image (UI + API on port 8080) for PC/server (amd64) and Raspberry Pi/ARM (arm64).
+      - name: Build and push NetCable
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLICAR == 'true' }}
+          build-args: APP_VERSION=${{ steps.versao.outputs.app }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build and push Backend
-        uses: docker/build-push-action@v5
+      # Legacy images (separate backend + frontend), kept for a while for people
+      # still on the old docker-compose. New installs should use the single image.
+      - name: Build and push legacy backend image
+        uses: docker/build-push-action@v6
         with:
           context: ./backend
-          push: true
+          push: ${{ env.PUBLICAR == 'true' }}
+          build-args: APP_VERSION=${{ steps.versao.outputs.app }}
           tags: ghcr.io/joao-monticelli/netcable-backend:latest
 
-      - name: Build and push Frontend
-        uses: docker/build-push-action@v5
+      - name: Build and push legacy frontend image
+        uses: docker/build-push-action@v6
         with:
           context: ./frontend
-          push: true
+          push: ${{ env.PUBLICAR == 'true' }}
           tags: ghcr.io/joao-monticelli/netcable-frontend:latest
