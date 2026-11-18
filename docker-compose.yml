@@ -4,32 +4,32 @@ services:
     container_name: netcable
     restart: unless-stopped
     ports:
-      - "8080:8080"   # acesse http://IP-DO-SERVIDOR:8080
+      - "8080:8080"   # open http://SERVER-IP:8080
     volumes:
-      # Banco de dados, chave secreta e backups. Troque por um caminho absoluto se preferir
-      # (ex.: /mnt/pool/apps/netcable:/app/data).
+      # Database, secret key and backups. Use an absolute path if you prefer
+      # (e.g. /mnt/pool/apps/netcable:/app/data).
       - ./data:/app/data
-    # Nada é obrigatório: no primeiro acesso a tela pede para criar o administrador
-    # e a chave secreta é gerada automaticamente na pasta de dados.
+    # Nothing is required: on first access the UI asks you to create the admin account
+    # and the secret key is generated automatically in the data folder.
     environment:
-      - TZ=America/Sao_Paulo
-      # --- Opcionais ---
-      # Intervalo (s) do monitoramento no servidor (0 desativa) e falhas seguidas antes de "offline".
+      - TZ=Etc/UTC   # your timezone, e.g. America/New_York, Europe/Berlin, America/Sao_Paulo
+      # --- Optional ---
+      # Server-side monitoring interval in seconds (0 disables) and consecutive failures before "offline".
       # - MONITOR_INTERVAL=15
       # - MONITOR_FAILURE_THRESHOLD=2
-      # Intervalo (s) da coleta de métricas SNMP (CPU, temperatura, portas). 0 desativa.
+      # SNMP metrics collection interval in seconds (CPU, temperature, ports). 0 disables.
       # - SNMP_METRICS_INTERVAL=60
-      # Dias de histórico mantidos no banco (0 = para sempre).
+      # Days of history kept in the database (0 = forever).
       # - HISTORY_RETENTION_DAYS=30
-      # Canais de alerta. Também podem ser configurados na interface (⚙️ → Canais de alerta),
-      # que tem prioridade sobre estas variáveis. E-mail é configurado só na interface.
+      # Alert channels. They can also be set in the UI (⚙️ → Alert channels),
+      # which takes precedence over these variables. Email is configured in the UI only.
       # - TELEGRAM_BOT_TOKEN=123456:ABC...
       # - TELEGRAM_CHAT_ID=-1001234567890
       # - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-      # - NTFY_URL=https://ntfy.sh/meu-topico-secreto
+      # - NTFY_URL=https://ntfy.sh/my-secret-topic
       # - NTFY_TOKEN=tk_...
-      # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
+      # - ALERT_WEBHOOK_URL=https://your-endpoint.example/alerts
       # - ALERT_LANGUAGE=en
-      # Criar/recuperar um admin por variável (em vez do assistente de primeiro acesso):
+      # Create/recover an admin from variables (instead of the first-access wizard):
       # - ADMIN_USER=admin
-      # - ADMIN_PASSWORD=uma_senha_forte
+      # - ADMIN_PASSWORD=a_strong_password

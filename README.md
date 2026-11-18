@@ -179,6 +179,22 @@ cd qa && npm install && npm run qa      # end-to-end robot, report in qa/relator
 
 Stack: React 18, Vite, React Flow · FastAPI, SQLAlchemy, SQLite · Docker, GitHub Actions.
 
+### Project layout
+
+| Path | What lives there |
+|---|---|
+| `backend/app/main.py` | FastAPI app: REST API, auth, background monitoring loop, serves the built UI |
+| `backend/app/models.py`, `schemas.py`, `crud.py`, `database.py`, `migracoes.py` | Database models, API schemas, queries and automatic migrations (SQLite) |
+| `backend/app/ping_service.py`, `snmp_service.py`, `metricas_snmp.py` | Reachability checks, SNMP queries and SNMP metrics collection |
+| `backend/app/alerts.py`, `regras_alerta.py`, `email_service.py` | Alert channels (Telegram, Discord, ntfy, webhook, email) and smart alert rules |
+| `backend/app/descoberta.py`, `backup.py`, `i18n.py` | Network discovery, backups/restore, server-side translations |
+| `backend/tests/` | pytest suite (plus an SNMPv3 simulator used in CI) |
+| `frontend/src/pages/` | Screens: login, projects, map editor, public shared view |
+| `frontend/src/components/` | Network map (React Flow), racks, charts, sidebar and all modals |
+| `frontend/src/i18n/` | UI translations (English and Portuguese) |
+| `qa/` | End-to-end QA robot ([qa/README.md](qa/README.md)) |
+| `install/` | Ready-made compose file for TrueNAS SCALE |
+
 ## Contributing
 
 Issues and pull requests are welcome — bug reports with screenshots help a lot.

@@ -1,9 +1,9 @@
-// Robô de QA do NetCable.
+// NetCable QA robot.
 //
-// Sobe uma instância ISOLADA (backend + frontend + SMTP falso, banco temporário),
-// usa o sistema como um usuário real (roteiros + exploração livre) e gera um
-// relatório em qa/relatorios/<data-hora>/ (relatorio.html e resumo.md).
-// Não usa IA: roda sem gastar tokens. Uso: `npm run qa` (ou `npm run qa:rapido`).
+// Starts an ISOLATED instance (backend + frontend + fake SMTP, temporary database),
+// uses the app like a real user (scripted scenarios + free exploration) and writes a
+// report to qa/relatorios/<date-time>/ (relatorio.html and resumo.md).
+// No AI involved: runs without spending tokens. Usage: `npm run qa` (or `npm run qa:quick`).
 import { chromium } from 'playwright-core'
 import { spawn, execSync } from 'node:child_process'
 import fs from 'node:fs'
