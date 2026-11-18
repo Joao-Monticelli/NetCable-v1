@@ -1,28 +1,17 @@
 services:
-  backend:
-    container_name: netcable_backend
-    environment:
-      - PYTHONUNBUFFERED=1
-      # =======================================================
-      # 👇 ALTERE AQUI: DEFINA SEU USUÁRIO E SENHA 👇
-      # =======================================================
-      - ADMIN_USER=seu_usuario_aqui
-      - ADMIN_PASSWORD=sua_senha_forte_aqui
-      - SECRET_KEY=gere_uma_chave_longa_e_aleatoria_aqui
-      - ALLOWED_ORIGINS=http://IP_DO_TRUENAS:3080
-    image: ghcr.io/joao-monticelli/netcable-backend:latest
+  netcable:
+    image: ghcr.io/joao-monticelli/netcable:latest
+    container_name: netcable
     restart: unless-stopped
+    ports:
+      - "3080:8080"   # acesse http://IP_DO_TRUENAS:3080
+    environment:
+      - TZ=America/Sao_Paulo
+      # Opcional: alertas no Telegram
+      # - TELEGRAM_BOT_TOKEN=123456:ABC...
+      # - TELEGRAM_CHAT_ID=-1001234567890
     volumes:
       # =======================================================
       # 👇 ALTERE AQUI: CAMINHO DO POOL ONDE OS DADOS SERÃO SALVOS 👇
       # =======================================================
       - /mnt/SEU_POOL/apps/netcable:/app/data
-
-  frontend:
-    container_name: netcable_frontend
-    depends_on:
-      - backend
-    image: ghcr.io/joao-monticelli/netcable-frontend:latest
-    ports:
-      - "3080:80"
-    restart: unless-stopped

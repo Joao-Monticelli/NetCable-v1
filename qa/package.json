@@ -1,0 +1,13 @@
+{
+  "name": "netcable-qa",
+  "private": true,
+  "type": "module",
+  "description": "Robô de QA do NetCable: usa o sistema como um usuário real e gera um relatório.",
+  "scripts": {
+    "qa": "node qa.mjs",
+    "qa:rapido": "node qa.mjs --rapido"
+  },
+  "dependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

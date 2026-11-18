@@ -36,3 +36,32 @@ body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-
   border: 2px solid #1e293b;
   z-index: 10;
 }
+/* Modo visualização (somente leitura / TV de NOC):
+   os pontos de conexão continuam no DOM (o React Flow usa a posição deles
+   para desenhar as linhas), mas ficam invisíveis e sem interação. */
+.netmap-readonly .react-flow__handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.netmap-readonly .react-flow__edge,
+.netmap-readonly .react-flow__node {
+  cursor: default !important;
+}
+
+/* Ícone discreto quando o equipamento está com notificações desligadas */
+.node-sem-alerta { position: absolute; top: 8px; right: 28px; color: #64748b; display: flex; }
+
+/* Destaque ao passar o mouse: equipamentos sem ligação com o apontado ficam apagados */
+.react-flow__node.no-esmaecido { opacity: .35; transition: opacity .15s; }
+/* Equipamento encontrado pela busca: pisca algumas vezes */
+.react-flow__node.no-destaque > * { animation: pisca-destaque .65s ease-in-out 4; }
+@keyframes pisca-destaque { 50% { box-shadow: 0 0 0 4px #fbbf24, 0 0 22px #fbbf24; } }
+
+/* Inalcançável: offline porque o uplink (do qual depende) caiu — âmbar, sem alarme próprio */
+.status-inalcancavel { background-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, .25); }
+.node-manutencao { color: #38bdf8; }
+.metrica-no { display: flex; align-items: center; gap: 2px; color: #cbd5e1; }
+
+/* Atalho para outro mapa */
+.custom-node.no-atalho { border-style: dashed; border-color: #6366f1; cursor: pointer; }
+.custom-node.no-atalho.atalho-alerta { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, .25); }

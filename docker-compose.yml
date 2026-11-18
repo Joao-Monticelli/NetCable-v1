@@ -1,25 +1,35 @@
 services:
-  backend:
-    image: ghcr.io/joao-monticelli/netcable-backend:latest
-    container_name: netcable_backend
-    restart: unless-stopped
-    # A porta fica disponível apenas na rede interna do Compose.
-    volumes:
-      - /mnt/ssd-apps/vm/netcable:/app/data
-    environment:
-      - PYTHONUNBUFFERED=1
-      - ADMIN_USER=admin
-      - ADMIN_PASSWORD=altere_esta_senha
-      - SECRET_KEY=altere_esta_chave_por_uma_string_longa_e_aleatoria
-      - ALLOWED_ORIGINS=http://localhost
-      # Opcional: URL que receberá alertas quando um equipamento ficar offline.
-      # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
-
-  frontend:
-    image: ghcr.io/joao-monticelli/netcable-frontend:latest
-    container_name: netcable_frontend
+  netcable:
+    image: ghcr.io/joao-monticelli/netcable:latest
+    container_name: netcable
     restart: unless-stopped
     ports:
-      - "80:80"
-    depends_on:
-      - backend
+      - "8080:8080"   # acesse http://IP-DO-SERVIDOR:8080
+    volumes:
+      # Banco de dados, chave secreta e backups. Troque por um caminho absoluto se preferir
+      # (ex.: /mnt/pool/apps/netcable:/app/data).
+      - ./data:/app/data
+    # Nada é obrigatório: no primeiro acesso a tela pede para criar o administrador
+    # e a chave secreta é gerada automaticamente na pasta de dados.
+    environment:
+      - TZ=America/Sao_Paulo
+      # --- Opcionais ---
+      # Intervalo (s) do monitoramento no servidor (0 desativa) e falhas seguidas antes de "offline".
+      # - MONITOR_INTERVAL=15
+      # - MONITOR_FAILURE_THRESHOLD=2
+      # Intervalo (s) da coleta de métricas SNMP (CPU, temperatura, portas). 0 desativa.
+      # - SNMP_METRICS_INTERVAL=60
+      # Dias de histórico mantidos no banco (0 = para sempre).
+      # - HISTORY_RETENTION_DAYS=30
+      # Canais de alerta. Também podem ser configurados na interface (⚙️ → Canais de alerta),
+      # que tem prioridade sobre estas variáveis. E-mail é configurado só na interface.
+      # - TELEGRAM_BOT_TOKEN=123456:ABC...
+      # - TELEGRAM_CHAT_ID=-1001234567890
+      # - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+      # - NTFY_URL=https://ntfy.sh/meu-topico-secreto
+      # - NTFY_TOKEN=tk_...
+      # - ALERT_WEBHOOK_URL=https://seu-endpoint.example/alertas
+      # - ALERT_LANGUAGE=en
+      # Criar/recuperar um admin por variável (em vez do assistente de primeiro acesso):
+      # - ADMIN_USER=admin
+      # - ADMIN_PASSWORD=uma_senha_forte
