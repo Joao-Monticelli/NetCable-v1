@@ -31,6 +31,7 @@ First stable release: one Docker image, first-run setup, automatic backups, smar
 ### Changed
 - Monitoring runs on the server (TCP + ICMP in parallel, or SNMPv3) instead of in each browser.
 - Public links use a random, revocable token.
+- Repository docs, compose files and CI comments are now in English (Portuguese README kept as `README.pt-BR.md`); example `TZ` defaults to `Etc/UTC`.
 
 ### Deprecated
 - The separate `netcable-backend` and `netcable-frontend` images are still published for now, but new installs should use the single image.

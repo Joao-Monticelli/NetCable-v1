@@ -1,9 +1,9 @@
 name: CI and Docker images
 
-# main  -> testes + imagem :latest (e :sha)
-# v1.2.3 (tag) -> testes + imagens :1.2.3, :1.2, :latest
-# Outras branches -> testes + build das imagens (sem publicar), para validar antes do merge
-# Pull requests -> só testes (nada é publicado)
+# main  -> tests + image :latest (and :sha)
+# v1.2.3 (tag) -> tests + images :1.2.3, :1.2, :latest
+# Other branches -> tests + image build (not published), to validate before merging
+# Pull requests -> tests only (nothing is published)
 on:
   push:
     branches: [ "**" ]
@@ -59,8 +59,8 @@ jobs:
           grep -iE "error|exception|traceback" /tmp/snmpsim.log | head -10 | sed 's/^/::warning title=snmpsim::/' || true
 
   qa-robot:
-    # Usa o NetCable como um usuário real (Playwright), servindo a interface compilada pela API,
-    # exatamente como na imagem Docker.
+    # Uses NetCable like a real user (Playwright), with the built UI served by the API,
+    # exactly as in the Docker image.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +112,7 @@ jobs:
           retention-days: 14
 
   docker:
-    # A imagem depende dos testes do backend; o robô de QA roda em paralelo e aparece no Actions.
+    # The image depends on the backend tests; the QA robot runs in parallel and shows up in Actions.
     needs: [ backend-tests ]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -155,7 +155,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Imagem única (interface + API na porta 8080) para PC/servidor (amd64) e Raspberry Pi/ARM (arm64).
+      # Single image (UI + API on port 8080) for PC/server (amd64) and Raspberry Pi/ARM (arm64).
       - name: Build and push NetCable
         uses: docker/build-push-action@v6
         with:
@@ -168,8 +168,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Imagens antigas (backend + frontend separados), mantidas por um tempo para quem
-      # ainda usa o docker-compose antigo. Novas instalações devem usar a imagem única.
+      # Legacy images (separate backend + frontend), kept for a while for people
+      # still on the old docker-compose. New installs should use the single image.
       - name: Build and push legacy backend image
         uses: docker/build-push-action@v6
         with:

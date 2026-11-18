@@ -4,14 +4,14 @@ services:
     container_name: netcable
     restart: unless-stopped
     ports:
-      - "3080:8080"   # acesse http://IP_DO_TRUENAS:3080
+      - "3080:8080"   # open http://TRUENAS-IP:3080
     environment:
-      - TZ=America/Sao_Paulo
-      # Opcional: alertas no Telegram
+      - TZ=Etc/UTC   # your timezone, e.g. America/New_York, Europe/Berlin, America/Sao_Paulo
+      # Optional: Telegram alerts
       # - TELEGRAM_BOT_TOKEN=123456:ABC...
       # - TELEGRAM_CHAT_ID=-1001234567890
     volumes:
       # =======================================================
-      # 👇 ALTERE AQUI: CAMINHO DO POOL ONDE OS DADOS SERÃO SALVOS 👇
+      # 👇 CHANGE THIS: POOL PATH WHERE THE DATA WILL BE STORED 👇
       # =======================================================
-      - /mnt/SEU_POOL/apps/netcable:/app/data
+      - /mnt/YOUR_POOL/apps/netcable:/app/data

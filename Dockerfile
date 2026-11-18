@@ -1,7 +1,7 @@
-# NetCable — imagem única (interface + API numa só porta).
+# NetCable — single image (UI + API on one port).
 # docker build -t netcable . && docker run -p 8080:8080 -v netcable-data:/app/data netcable
 
-# 1) Build da interface (React/Vite)
+# 1) Build the UI (React/Vite)
 FROM node:20-alpine AS interface
 WORKDIR /src
 COPY frontend/package*.json ./
@@ -9,7 +9,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# 2) Servidor (FastAPI) servindo a API e a interface
+# 2) Server (FastAPI) serving the API and the UI
 FROM python:3.11-slim
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="NetCable" \
