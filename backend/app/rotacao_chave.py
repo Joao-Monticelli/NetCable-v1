@@ -134,7 +134,12 @@ def main(argv=None):
 
     if not args.sim:
         print(f"Data folder: {DATA_DIR}\nNetCable must be stopped. Everybody will have to log in again.")
-        if input("Rotate the secret key now? [y/N] ").strip().lower() not in ("y", "yes", "s", "sim"):
+        try:
+            resposta = input("Rotate the secret key now? [y/N] ")
+        except EOFError:  # no terminal (docker without -it, scripts)
+            print("\nNo terminal to confirm: run it again with --sim to rotate without asking.", file=sys.stderr)
+            return 1
+        if resposta.strip().lower() not in ("y", "yes", "s", "sim"):
             print("Cancelled.")
             return 1
     r = rotacionar(DATA_DIR, chave_atual, args.nova_chave, gravar_arquivo=not pela_variavel)

@@ -12,11 +12,17 @@ Config (stored encrypted in the device's monitor_config):
 import socket
 import ssl
 import time
+import warnings
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 import requests
 from cryptography import x509
+from urllib3.exceptions import InsecureRequestWarning
+
+# Skipping verification is an explicit per-device choice (self-signed panels); don't log a warning every check.
+# (catch_warnings() is not thread-safe, so the filter is set once here.)
+warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
 TIMEOUT = 8
 DIAS_CERT_PADRAO = 14

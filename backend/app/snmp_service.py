@@ -4,6 +4,7 @@ PySNMP is optional at import time so old installations keep starting and can
 still use the original IP/ICMP monitor until the dependency is installed.
 """
 
+import asyncio
 import threading
 from collections import defaultdict
 
@@ -14,9 +15,9 @@ class SNMPUnavailableError(RuntimeError):
 
 def _hlapi():
     try:
-        from pysnmp.hlapi import (
+        from pysnmp.hlapi.v3arch.asyncio import (
             SnmpEngine, UsmUserData, UdpTransportTarget, ContextData,
-            ObjectType, ObjectIdentity, getCmd, nextCmd, bulkCmd,
+            ObjectType, ObjectIdentity, get_cmd, bulk_walk_cmd,
             usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol,
             usmDESPrivProtocol, usm3DESEDEPrivProtocol, usmAesCfb128Protocol,
         )
@@ -40,18 +41,31 @@ PRIV_PROTOCOLS = {
 _local = threading.local()
 
 
+def _rodar(corotina):
+    """Runs an SNMP coroutine on this thread's own event loop.
+    pysnmp 7 is asyncio-only and an SnmpEngine is bound to the loop it first ran on, so each worker
+    thread keeps one loop (and its engines) for its whole life instead of using asyncio.run()."""
+    loop = getattr(_local, "loop", None)
+    if loop is None or loop.is_closed():
+        loop = _local.loop = asyncio.new_event_loop()
+        _local.motores = {}
+    return loop.run_until_complete(corotina)
+
+
 def _snmp_engine(config):
     """Motor SNMP reaproveitado por thread E por credencial.
     Reaproveitar é bem mais rápido que criar um por consulta, mas o pysnmp guarda no motor as
     chaves do usuário SNMPv3: compartilhar entre credenciais diferentes usaria a senha antiga.
-    O motor do pysnmp 4.x também não pode ser usado por duas threads."""
+    O motor também fica preso ao event loop da thread (veja _rodar)."""
     chave = tuple(config.get(k) or "" for k in ("username", "authPassword", "privPassword", "authProtocol", "privProtocol"))
-    motores = getattr(_local, "motores", None)
-    if motores is None:
-        motores = _local.motores = {}
+    motores = _local.motores
     if chave not in motores:
         if len(motores) >= 32:  # limita a memória (muitos equipamentos com credenciais distintas)
-            motores.pop(next(iter(motores)))
+            antigo = motores.pop(next(iter(motores)))
+            try:
+                antigo.close_dispatcher()
+            except Exception:
+                pass
         motores[chave] = _hlapi()["SnmpEngine"]()
     return motores[chave]
 
@@ -71,12 +85,15 @@ def _user_data(config):
     )
 
 
-def _target(config):
+async def _target(config):
     h = _hlapi()
-    return h["UdpTransportTarget"](
-        (config["host"], int(config.get("port", 161))),
-        timeout=float(config.get("timeout", 2)), retries=0,
-    )
+    try:
+        return await h["UdpTransportTarget"].create(
+            (config["host"], int(config.get("port", 161))),
+            timeout=float(config.get("timeout", 2)), retries=0,
+        )
+    except Exception as exc:  # DNS name that does not resolve, invalid address
+        raise RuntimeError(str(exc)) from exc
 
 
 def _context(config):
@@ -86,11 +103,13 @@ def _context(config):
 
 def _request(config, *oids):
     h = _hlapi()
-    iterator = h["getCmd"](
-        _snmp_engine(config), _user_data(config), _target(config), _context(config),
-        *[h["ObjectType"](h["ObjectIdentity"](oid)) for oid in oids],
-    )
-    error_indication, error_status, error_index, var_binds = next(iterator)
+
+    async def consulta():
+        return await h["get_cmd"](
+            _snmp_engine(config), _user_data(config), await _target(config), _context(config),
+            *[h["ObjectType"](h["ObjectIdentity"](oid)) for oid in oids],
+        )
+    error_indication, error_status, error_index, var_binds = _rodar(consulta())
     if error_indication:
         raise RuntimeError(str(error_indication))
     if error_status:
@@ -110,21 +129,23 @@ def get(config, *oids):
 def walk(config, oid, limite=2000):
     """{sufixo_do_indice: valor} de uma coluna de tabela (GETBULK: 25 linhas por pacote)."""
     h = _hlapi()
-    iterator = h["bulkCmd"](
-        _snmp_engine(config), _user_data(config), _target(config), _context(config), 0, 25,
-        h["ObjectType"](h["ObjectIdentity"](oid)), lexicographicMode=False, maxRows=limite,
-    )
-    linhas = {}
-    for error_indication, error_status, error_index, var_binds in iterator:
-        if error_indication:
-            raise RuntimeError(str(error_indication))
-        if error_status:
-            raise RuntimeError(str(error_status.prettyPrint()))
-        for name, value in var_binds:
-            nome = str(name)
-            if nome.startswith(oid + "."):
-                linhas[nome[len(oid) + 1:]] = value.prettyPrint()
-    return linhas
+
+    async def consulta():
+        linhas = {}
+        async for error_indication, error_status, error_index, var_binds in h["bulk_walk_cmd"](
+            _snmp_engine(config), _user_data(config), await _target(config), _context(config), 0, 25,
+            h["ObjectType"](h["ObjectIdentity"](oid)), lexicographicMode=False, maxRows=limite,
+        ):
+            if error_indication:
+                raise RuntimeError(str(error_indication))
+            if error_status:
+                raise RuntimeError(str(error_status.prettyPrint()))
+            for name, value in var_binds:
+                nome = str(name)
+                if nome.startswith(oid + "."):
+                    linhas[nome[len(oid) + 1:]] = value.prettyPrint()
+        return linhas
+    return _rodar(consulta())
 
 
 def test(config):

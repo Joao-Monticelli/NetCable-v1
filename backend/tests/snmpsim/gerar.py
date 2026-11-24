@@ -1,8 +1,9 @@
 """Gera public.snmprec: um switch de laboratório para o snmpsim (teste de integração SNMP).
 
-Uso (Python 3.11 com pysnmp 4.4 e snmpsim 0.4.7):
+Usage (pysnmp 7 and snmpsim 1.x: pip install "snmpsim>=1.1,<2" pysmi):
   python tests/snmpsim/gerar.py
-  snmpsimd.py --data-dir=tests/snmpsim/dados --variation-modules-dir=<venv>/snmpsim/variation \
+  snmpsim-command-responder --data-dir="$PWD/tests/snmpsim/dados" --cache-dir=/tmp/snmpsim-cache \
+    --variation-modules-dir=<site-packages>/snmpsim/variation \
     --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123 \
     --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES
   NETCABLE_SNMPSIM=127.0.0.1:11161 pytest tests/test_snmp_integracao.py

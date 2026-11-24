@@ -14,6 +14,14 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 
 ### Security
 - A development `backend/data/` folder (database, `secret.key`, backups) was committed to the repository by mistake and is no longer tracked. Docker installs are not affected (they create their own key in their data volume); anyone who ran NetCable straight from a repository checkout using that folder should rotate the key and change the stored passwords and tokens.
+- Login tokens are now signed with **PyJWT** instead of `python-jose`, which (with its `ecdsa` dependency) has known vulnerabilities and no fixed release. Existing sessions stay valid.
+- **pysnmp 7** replaces pysnmp 4.4, so `pyasn1` can be updated past several known vulnerabilities in the decoding of SNMP responses. `pip-audit` reports no known vulnerabilities in the backend dependencies.
+
+### Changed
+- The monitor and SNMP metrics thread pools now live for the whole process, so SNMP engines are reused between cycles instead of being recreated every cycle.
+- `python -m app.rotacao_chave` exits with a clear message instead of a traceback when there is no terminal to confirm (use `--sim`).
+- Unverified HTTPS checks (certificate verification turned off for a device) no longer write a warning to the log on every check.
+- CI uses snmpsim 1.x for the SNMPv3 integration tests.
 
 ## [1.0.0] — 2026-11
 

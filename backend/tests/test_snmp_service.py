@@ -18,8 +18,13 @@ class FakeErrorStatus:
 def test_discovery_reports_snmp_walk_errors(
     monkeypatch, error_indication, error_status, message
 ):
-    def next_cmd(*args, **kwargs):
-        return iter([(error_indication, error_status, 0, [])])
+    async def bulk_walk_cmd(*args, **kwargs):
+        yield error_indication, error_status, 0, []
+
+    class Target:
+        @staticmethod
+        async def create(*args, **kwargs):
+            return object()
 
     monkeypatch.setattr(
         snmp_service,
@@ -27,15 +32,13 @@ def test_discovery_reports_snmp_walk_errors(
         lambda: {
             "SnmpEngine": object,
             "UsmUserData": lambda *args, **kwargs: object(),
-            "UdpTransportTarget": lambda *args, **kwargs: object(),
+            "UdpTransportTarget": Target,
             "ContextData": lambda *args, **kwargs: object(),
             "ObjectType": lambda value: value,
             "ObjectIdentity": lambda value: value,
-            "nextCmd": next_cmd,
-            "bulkCmd": next_cmd,
+            "bulk_walk_cmd": bulk_walk_cmd,
         },
     )
-    monkeypatch.setattr(snmp_service._local, "motores", {}, raising=False)
 
     with pytest.raises(RuntimeError, match=message):
         snmp_service.discover_neighbors({"host": "192.0.2.1", "username": "monitor"})

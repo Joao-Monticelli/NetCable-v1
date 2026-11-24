@@ -6,7 +6,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, timedelta, timezone
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
 import ping3
 import socket
@@ -87,6 +88,10 @@ logger = logging.getLogger("netcable")
 # Intervalo (s) do monitoramento em segundo plano no backend. 0 desativa.
 MONITOR_INTERVAL = int(os.getenv("MONITOR_INTERVAL", "15"))
 MONITOR_WORKERS = int(os.getenv("MONITOR_WORKERS", "16"))
+# Long-lived pools: each worker thread keeps its SNMP engines (and asyncio loop) between cycles,
+# which is faster and avoids leaving a loop and its sockets behind every cycle.
+_POOL_MONITOR = ThreadPoolExecutor(max_workers=max(1, MONITOR_WORKERS), thread_name_prefix="netcable-monitor")
+_POOL_METRICAS = ThreadPoolExecutor(max_workers=8, thread_name_prefix="netcable-snmp")
 # Falhas seguidas antes de marcar um equipamento online como offline (evita alarme falso).
 MONITOR_FAILURE_THRESHOLD = max(1, int(os.getenv("MONITOR_FAILURE_THRESHOLD", "2")))
 # Dias de histórico mantidos no banco. 0 mantém para sempre.
@@ -217,7 +222,7 @@ def verificar_senha(senha_plana, senha_hash):
 
 def criar_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -793,8 +798,7 @@ def executar_ciclo_monitoramento():
     inicio = time.monotonic()
     resultados = []
     if alvos:
-        with ThreadPoolExecutor(max_workers=max(1, MONITOR_WORKERS)) as pool:
-            resultados = list(pool.map(_checar_seguro, alvos))
+        resultados = list(_POOL_MONITOR.map(_checar_seguro, alvos))
     db = SessionLocal()
     eventos = []
     try:
@@ -1121,8 +1125,7 @@ def executar_coleta_metricas():
         db.close()
     if not alvos:
         return 0
-    with ThreadPoolExecutor(max_workers=min(8, len(alvos)), thread_name_prefix="netcable-snmp") as pool:
-        resultados = list(pool.map(_coletar_um, alvos))
+    resultados = list(_POOL_METRICAS.map(_coletar_um, alvos))
     db = SessionLocal()
     eventos = []
     try:
