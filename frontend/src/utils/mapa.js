@@ -9,6 +9,7 @@ export function dadosDeAlerta(eq, nomePorId) {
     inalcancavelPor: causa, inalcancavelNome: causa ? (nomePorId.get(causa) || causa) : null,
     manutencaoAte: eq.manutencao_ate || null,
     snmp: eq.snmp || null,
+    http: eq.http || null,
     resumoMapa: eq.resumo_mapa || null,
   }
 }

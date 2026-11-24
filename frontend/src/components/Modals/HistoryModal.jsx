@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, CheckCircle2, Clock3, X, XCircle, BarChart3, List, LineChart, Table2 } from 'lucide-react'
+import { Activity, CheckCircle2, Clock3, X, XCircle, BarChart3, List, LineChart, Table2, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import LatencyChart from '../LatencyChart'
@@ -20,6 +20,27 @@ function Aba({ ativa, onClick, icon: Icon, children }) {
   )
 }
 
+const DIAS_SLA = [7, 30, 90]
+
+function ExportarSla({ projectId }) {
+  const [dias, setDias] = useState(30)
+  const [baixando, setBaixando] = useState(false)
+  const baixar = async () => {
+    setBaixando(true)
+    try { await api.baixarSlaCsv(projectId, dias) } catch (e) { toast.error(e.message) } finally { setBaixando(false) }
+  }
+  return (
+    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }} title={t('Relatório de SLA: disponibilidade, tempo fora do ar e quedas de cada equipamento, para abrir no Excel.')}>
+      <select aria-label={t('Período do relatório de SLA')} value={dias} onChange={e => setDias(Number(e.target.value))} style={{ padding: '4px 6px', fontSize: '12px', borderRadius: '6px', border: '1px solid #334155', background: '#0f172a', color: 'white' }}>
+        {DIAS_SLA.map(d => <option key={d} value={d}>{t('{n} dias', { n: d })}</option>)}
+      </select>
+      <button onClick={baixar} disabled={baixando} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #334155', background: '#0f172a', color: '#cbd5e1', cursor: 'pointer' }}>
+        <Download size={13} /> {t('Exportar SLA (CSV)')}
+      </button>
+    </div>
+  )
+}
+
 function Disponibilidade({ projectId, onVerLatencia }) {
   const [horas, setHoras] = useState(24)
   const [dados, setDados] = useState(null)
@@ -33,10 +54,11 @@ function Disponibilidade({ projectId, onVerLatencia }) {
 
   return (
     <>
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
         {PERIODOS.map(p => (
           <button key={p.horas} onClick={() => setHoras(p.horas)} style={{ padding: '4px 10px', fontSize: '12px', borderRadius: '12px', border: '1px solid #334155', cursor: 'pointer', background: horas === p.horas ? '#3b82f6' : 'transparent', color: 'white' }}>{t(p.rotulo)}</button>
         ))}
+        <ExportarSla projectId={projectId} />
       </div>
       {dados === null ? <div style={{ color: '#94a3b8' }}>{t('Calculando...')}</div> : dados.length === 0 ? <div style={{ color: '#94a3b8' }}>{t('Nenhum equipamento monitorado neste mapa (salve o projeto para começar).')}</div> : (
         <div style={{ maxHeight: '50vh', overflow: 'auto' }}>

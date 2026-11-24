@@ -32,6 +32,8 @@ services:
       # - NTFY_TOKEN=tk_...
       # - ALERT_WEBHOOK_URL=https://your-endpoint.example/alerts
       # - ALERT_LANGUAGE=en
+      # Prometheus: enables /metrics, protected by this Bearer token
+      # - METRICS_TOKEN=a_long_random_token
       # Port inside the container. Only needed with network_mode: host (shows MAC addresses in discovery).
       # - PORT=8080
       # Create/recover an admin from variables (instead of the first-access wizard):

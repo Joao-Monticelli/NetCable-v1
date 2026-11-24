@@ -24,11 +24,14 @@ Roda em **um único container Docker** em qualquer lugar: mini PC, VM, NAS, Rasp
 - 🗄️ **Racks realistas** — de 4U a 48U; switches, servidores, NAS, patch panels, nobreaks… encaixando por U.
 - 🧩 **Biblioteca de modelos** — cadastre seus equipamentos reais (ex.: “4 RJ45 + 2 SFP, 1U”) e a frente é desenhada com essas portas.
 - 🔌 **Cabos porta a porta** — porta 12 do switch → eth3 do firewall; portas em uso ficam marcadas.
-- 📡 **Monitoramento no servidor** — TCP (80/443/22) + ICMP em paralelo, ou SNMPv3; funciona sem navegador aberto.
+- 📡 **Monitoramento no servidor** — TCP (80/443/22) + ICMP em paralelo, SNMPv3 ou HTTP(S); funciona sem navegador aberto.
+- 🔒 **Monitor HTTP(S) e de certificado** — verifica um site, API ou painel web (código de resposta, tempo, texto na página) e avisa antes de o certificado TLS vencer.
 - 🚨 **Alertas** — e-mail, Discord, ntfy, Telegram e webhook na queda e na volta, agrupados, com liga/desliga por equipamento.
 - 🧠 **Alertas inteligentes** — defina o uplink de cada equipamento (ou calcule pelos cabos): quando um switch cai chega **um** alerta com a lista do que está atrás dele, e esses equipamentos ficam âmbar (*inalcançáveis*) no mapa. **Janelas de manutenção** silenciam um equipamento ou o mapa inteiro por um tempo.
 - 🌡️ **Métricas SNMP** — CPU, memória, temperatura, uptime e link/tráfego por porta dos equipamentos em SNMPv3, com gráficos, LEDs reais das portas no rack e alertas de temperatura/CPU.
-- 📊 **Disponibilidade e latência** — uptime %, quedas, gráfico de latência (24 h / 7 d / 30 d) e relatório diário por e-mail.
+- 📊 **Disponibilidade e latência** — uptime %, quedas, gráfico de latência (24 h / 7 d / 30 d), relatório diário por e-mail e **relatório de SLA em CSV** (7 / 30 / 90 dias).
+- 📈 **`/metrics` para Prometheus** — status, latência, métricas SNMP e validade dos certificados para o Grafana.
+- 🕵️ **Log de auditoria** — quem entrou, mexeu em usuários, salvou ou excluiu mapas, compartilhou links ou alterou configurações, e quando.
 - 👥 **Equipe com papéis** — Administrador, Editor e Visualizador (ótimo para a TV do NOC).
 - 📺 **Link público e modo TV** — somente leitura, atualização automática, tela cheia e link revogável.
 - 💾 **Backups** — `.zip` diário (todos os mapas + catálogo de modelos + banco completo) numa pasta à sua escolha; exportar/importar mapas em JSON.
@@ -121,6 +124,48 @@ e as portas pela IF-MIB (nome, descrição, link, velocidade, tráfego em contad
   O monitoramento e o histórico continuam; quem caiu durante a manutenção não manda "voltou" depois.
 - **Canais:** ⚙️ → **Canais de alerta** (admin) para Discord, ntfy (notificação no celular), Telegram e webhook JSON, cada um com botão *Testar*. Tokens e URLs ficam cifrados.
   Também dá para usar variáveis de ambiente (`DISCORD_WEBHOOK_URL`, `NTFY_URL`, `NTFY_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ALERT_WEBHOOK_URL`); o que for definido na interface tem prioridade.
+
+## Monitor HTTP(S) e de certificado
+
+Escolha **HTTP(S): site, API ou painel web** como método de monitoramento do equipamento:
+
+- **URL** — ex.: `https://intranet.local/health`. Vazio usa `http://<IP do equipamento>/`.
+- **Código esperado** — vazio aceita qualquer 2xx/3xx; informe `200`, `401`… para exigir um código.
+- **Texto na página** — opcional; sem o texto o equipamento fica offline (pega páginas de erro que respondem "200 OK").
+- **Validar o certificado** — desligue para equipamentos com certificado autoassinado (impressoras, NAS, firewalls).
+- **Aviso de certificado** — alerta quando faltarem N dias ou menos para vencer (padrão 14; `0` desliga).
+  O certificado é lido mesmo quando é autoassinado, então o aviso vale também para equipamentos internos.
+  Chega um alerta quando está perto de vencer (ou venceu) e outro quando é renovado; a manutenção silencia.
+
+O mapa mostra os dias restantes (🔒 `12d`, âmbar com 14 dias ou menos, vermelho se vencido) e o erro HTTP quando a verificação falha.
+
+## Relatório de SLA, auditoria e Prometheus
+
+- **Relatório de SLA:** ⚙️ → **Histórico** → *Disponibilidade* → **Exportar SLA (CSV)** de 7, 30 ou 90 dias: disponibilidade %,
+  tempo fora do ar (`h:mm:ss` e segundos), quedas e latência média de cada equipamento. Abre direto no Excel/LibreOffice.
+  O período é limitado por `HISTORY_RETENTION_DAYS` (padrão 30): aumente se precisar de relatórios de 90 dias.
+- **Log de auditoria:** ⚙️ → **Log de auditoria** (admin): logins (inclusive os que falharam ou foram bloqueados), usuários
+  criados/alterados/excluídos, mapas criados/renomeados/salvos/excluídos/importados, links públicos, manutenção,
+  configurações e backups, com usuário, horário e IP. Senhas e segredos nunca são registrados.
+- **Prometheus:** defina `METRICS_TOKEN` e colete `/metrics` com `authorization: { credentials: "seu-token" }`
+  (ou `METRICS_PUBLIC=true` para liberar sem token numa rede confiável). Séries e exemplo no [README em inglês](README.md#sla-report-audit-log-and-prometheus).
+  O log de auditoria fica guardado por `AUDIT_RETENTION_DAYS` (padrão 365) dias.
+
+## Trocar a chave secreta
+
+O `data/secret.key` cifra os segredos guardados (senhas SMTP/SNMP, canais de alerta, URLs do monitor HTTP) e assina os logins.
+Se ela pode ter vazado, troque:
+
+```bash
+docker compose stop netcable
+docker compose run --rm netcable python -m app.rotacao_chave
+docker compose start netcable
+```
+
+Todos os segredos são cifrados de novo com uma chave nova numa única transação; uma cópia do banco e da chave antiga fica em
+`data/backups/` (a chave antiga só serve para restaurar backups anteriores). Todo mundo precisa entrar de novo.
+Se você define `SECRET_KEY` por variável, rode com `--nova-chave "<valor novo>"` e depois atualize a variável.
+Se o banco também vazou, troque as senhas e tokens cadastrados no NetCable: trocar a chave não protege segredos que já vazaram.
 
 ## Backup e restauração
 

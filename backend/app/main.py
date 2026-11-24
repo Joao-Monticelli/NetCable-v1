@@ -30,9 +30,12 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal, DATA_DIR, DB_PATH
-from . import migracoes, backup, regras_alerta, descoberta, snmp_service, metricas_snmp
+from . import migracoes, backup, regras_alerta, descoberta, snmp_service, metricas_snmp, segredos, monitor_http, auditoria
+from .segredos import CHAVE_DEV
 from fastapi import UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+import csv
+import io
 import zipfile
 
 models.Base.metadata.create_all(bind=engine)
@@ -78,30 +81,7 @@ async def security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "same-origin"
     return response
 
-CHAVE_DEV = "dev-only-change-this-secret"  # usada por versões antigas quando SECRET_KEY não era definida
-
-
-def carregar_chave_secreta():
-    """SECRET_KEY do ambiente; senão, a chave guardada em <dados>/secret.key (criada na 1ª execução).
-    Retorna (chave, criada_agora)."""
-    do_ambiente = os.getenv("SECRET_KEY", "").strip()
-    if do_ambiente:
-        return do_ambiente, False
-    arquivo = os.path.join(DATA_DIR, "secret.key")
-    if os.path.exists(arquivo):
-        with open(arquivo, encoding="utf-8") as f:
-            return f.read().strip(), False
-    nova = secrets.token_urlsafe(48)
-    with open(arquivo, "w", encoding="utf-8") as f:
-        f.write(nova)
-    try:
-        os.chmod(arquivo, 0o600)
-    except OSError:
-        pass
-    return nova, True
-
-
-SECRET_KEY, CHAVE_CRIADA_AGORA = carregar_chave_secreta()
+SECRET_KEY, CHAVE_CRIADA_AGORA = segredos.carregar_chave_secreta(DATA_DIR)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("netcable")
 # Intervalo (s) do monitoramento em segundo plano no backend. 0 desativa.
@@ -122,17 +102,13 @@ def iso_utc(momento):
     return momento.isoformat() + "Z" if momento else None
 
 
-def _fernet_de(chave):
-    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(chave.encode()).digest()))
-
-
-fernet = _fernet_de(SECRET_KEY)
+fernet = segredos.fernet_de(SECRET_KEY)
 
 
 def _recifrar_segredos_antigos():
     """Instalações antigas cifravam senhas (SNMP/SMTP) com a chave de desenvolvimento.
     Ao gerar a chave nova, re-cifra o que ainda estiver na chave antiga para não perder nada."""
-    antiga = _fernet_de(CHAVE_DEV)
+    antiga = segredos.fernet_de(CHAVE_DEV)
     total = 0
     with engine.begin() as conexao:
         for tabela, chave_col, valor_col in (("equipamentos", "id", "monitor_config"), ("configuracoes", "chave", "valor")):
@@ -310,7 +286,7 @@ def status_setup(db: Session = Depends(get_db)):
 
 
 @app.post("/api/setup")
-def concluir_setup(dados: SetupIn, db: Session = Depends(get_db)):
+def concluir_setup(dados: SetupIn, request: Request, db: Session = Depends(get_db)):
     """Cria a primeira conta (admin). Só funciona enquanto não existir nenhum usuário."""
     with _trava_setup:
         if not precisa_de_setup(db):
@@ -324,6 +300,7 @@ def concluir_setup(dados: SetupIn, db: Session = Depends(get_db)):
         if dados.idioma in IDIOMAS:
             crud.atualizar_usuario(db, admin.id, idioma=dados.idioma)
     logger.info("Primeiro acesso concluído: administrador '%s' criado", username)
+    auditoria.registrar(db, username, "setup.admin_criado", request=request)
     return {"access_token": criar_token(data={"sub": username}), "token_type": "bearer"}
 
 
@@ -333,19 +310,23 @@ LOGIN_MAX_FAILURES = 5
 
 
 @app.post("/api/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     now = time.monotonic()
     failures = [timestamp for timestamp in login_failures[form_data.username] if now - timestamp < LOGIN_WINDOW_SECONDS]
     login_failures[form_data.username] = failures
     if len(failures) >= LOGIN_MAX_FAILURES:
+        auditoria.registrar(db, form_data.username[:80], "login.bloqueado", request=request)
         raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
     user = crud.get_usuario(db, form_data.username)
     if not user or not verificar_senha(form_data.password, user.password_hash):
         login_failures[form_data.username].append(now)
+        auditoria.registrar(db, form_data.username[:80], "login.falhou", request=request)
         raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
     if not user.ativo:
+        auditoria.registrar(db, user, "login.desativado", request=request)
         raise HTTPException(status_code=403, detail="Usuário desativado. Fale com um administrador.")
     login_failures.pop(form_data.username, None)
+    auditoria.registrar(db, user, "login.ok", request=request)
     access_token = criar_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -377,7 +358,7 @@ class PerfilUpdate(BaseModel):
 
 
 @app.put("/api/me/perfil")
-def atualizar_perfil_usuario(dados: PerfilUpdate, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+def atualizar_perfil_usuario(dados: PerfilUpdate, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     nova_hash = None
     if dados.nova_senha:
         if len(dados.nova_senha) < 8:
@@ -397,6 +378,8 @@ def atualizar_perfil_usuario(dados: PerfilUpdate, db: Session = Depends(get_db),
         receber_alertas=dados.receber_alertas, relatorio_diario=dados.relatorio_diario,
         relatorio_horario=dados.relatorio_horario, idioma=dados.idioma,
     )
+    if nova_hash:
+        auditoria.registrar(db, user, "perfil.senha_alterada", request=request)
     return usuario_publico(atualizado)
 
 
@@ -433,7 +416,7 @@ def listar_usuarios(db: Session = Depends(get_db), admin: models.Usuario = Depen
 
 
 @app.post("/api/usuarios")
-def criar_usuario_rota(dados: UsuarioCreate, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def criar_usuario_rota(dados: UsuarioCreate, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     username = dados.username.strip()
     if not USERNAME_RE.match(username):
         raise HTTPException(status_code=400, detail="Usuário inválido: use de 3 a 50 letras, números ou . _ @ -")
@@ -444,11 +427,12 @@ def criar_usuario_rota(dados: UsuarioCreate, db: Session = Depends(get_db), admi
     if crud.get_usuario(db, username):
         raise HTTPException(status_code=400, detail="Já existe um usuário com esse nome.")
     novo = crud.criar_usuario(db, username, pwd_context.hash(dados.senha), (dados.email or "").strip() or None, dados.papel)
+    auditoria.registrar(db, admin, "usuario.criado", f"{username} ({dados.papel})", request)
     return usuario_publico(novo)
 
 
 @app.put("/api/usuarios/{user_id}")
-def atualizar_usuario_rota(user_id: int, dados: UsuarioUpdate, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def atualizar_usuario_rota(user_id: int, dados: UsuarioUpdate, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     alvo = crud.get_usuario_por_id(db, user_id)
     if not alvo:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -463,12 +447,23 @@ def atualizar_usuario_rota(user_id: int, dados: UsuarioUpdate, db: Session = Dep
             raise HTTPException(status_code=400, detail="A senha precisa ter pelo menos 8 caracteres.")
         nova_hash = pwd_context.hash(dados.nova_senha)
     email = dados.email.strip() if dados.email is not None else None
+    mudancas = []
+    if dados.papel is not None and dados.papel != alvo.papel:
+        mudancas.append(f"{alvo.papel} -> {dados.papel}")
+    if dados.ativo is not None and dados.ativo != alvo.ativo:
+        mudancas.append("active" if dados.ativo else "disabled")
+    if nova_hash:
+        mudancas.append("password reset")
+    if email is not None and email != (alvo.email or ""):
+        mudancas.append("email")
     atualizado = crud.atualizar_usuario(db, user_id, email=email, papel=dados.papel, ativo=dados.ativo, password_hash=nova_hash)
+    if mudancas:
+        auditoria.registrar(db, admin, "usuario.alterado", f"{atualizado.username}: {', '.join(mudancas)}", request)
     return usuario_publico(atualizado)
 
 
 @app.delete("/api/usuarios/{user_id}")
-def deletar_usuario_rota(user_id: int, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def deletar_usuario_rota(user_id: int, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Você não pode excluir o seu próprio usuário.")
     alvo = crud.get_usuario_por_id(db, user_id)
@@ -476,7 +471,9 @@ def deletar_usuario_rota(user_id: int, db: Session = Depends(get_db), admin: mod
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if alvo.papel == "admin" and crud.contar_admins_ativos(db, exceto_id=alvo.id) == 0:
         raise HTTPException(status_code=400, detail="O sistema precisa de pelo menos um administrador ativo.")
+    nome = alvo.username
     crud.deletar_usuario(db, user_id)
+    auditoria.registrar(db, admin, "usuario.excluido", nome, request)
     return {"status": "sucesso"}
 
 
@@ -504,7 +501,7 @@ def obter_config_email(db: Session = Depends(get_db), admin: models.Usuario = De
 
 
 @app.put("/api/config/email")
-def salvar_config_email(dados: SmtpConfig, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def salvar_config_email(dados: SmtpConfig, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     if dados.seguranca not in email_service.SEGURANCAS:
         raise HTTPException(status_code=400, detail="Segurança inválida (use starttls, ssl ou nenhuma).")
     if not 1 <= dados.porta <= 65535:
@@ -523,6 +520,7 @@ def salvar_config_email(dados: SmtpConfig, db: Session = Depends(get_db), admin:
     if dados.fuso:
         valores["sistema.fuso"] = dados.fuso
     crud.salvar_configuracoes(db, valores)
+    auditoria.registrar(db, admin, "config.email", f"{dados.host.strip() or '-'}:{dados.porta}" + (" (password changed)" if dados.senha else ""), request)
     return obter_config_email(db, admin)
 
 
@@ -593,7 +591,7 @@ def obter_canais(db: Session = Depends(get_db), admin: models.Usuario = Depends(
 
 
 @app.put("/api/config/alertas")
-def salvar_canais(dados: CanaisIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def salvar_canais(dados: CanaisIn, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     valores = {}
     for campo in CAMPOS_CANAIS:
         valor = getattr(dados, campo)
@@ -608,6 +606,8 @@ def salvar_canais(dados: CanaisIn, db: Session = Depends(get_db), admin: models.
             raise HTTPException(status_code=400, detail="Idioma inválido (use en ou pt).")
         valores["alertas.idioma"] = dados.idioma
     crud.salvar_configuracoes(db, valores)
+    alterados = sorted({c.split(".", 1)[1].split("_")[0] for c in valores if c != "alertas.idioma"})
+    auditoria.registrar(db, admin, "config.alertas", ", ".join(alterados) or None, request)
     return obter_canais(db, admin)
 
 
@@ -634,22 +634,29 @@ def listar_projetos(db: Session = Depends(get_db), user: models.Usuario = Depend
 
 
 @app.post("/api/projetos")
-def novo_projeto(nome: str, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+def novo_projeto(nome: str, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
     projeto = crud.criar_projeto(db, nome, user.id)
+    auditoria.registrar(db, user, "mapa.criado", projeto.nome, request, projeto.id)
     return {"id": projeto.id, "nome": projeto.nome}
 
 
 @app.put("/api/projetos/{projeto_id}")
-def editar_nome_projeto(projeto_id: int, novo_nome: str, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+def editar_nome_projeto(projeto_id: int, novo_nome: str, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    anterior = crud.get_projeto(db, projeto_id)
+    nome_anterior = anterior.nome if anterior else None
     projeto = crud.atualizar_projeto_nome(db, projeto_id, novo_nome)
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    auditoria.registrar(db, user, "mapa.renomeado", f"{nome_anterior} -> {projeto.nome}", request, projeto_id)
     return {"id": projeto.id, "nome": projeto.nome}
 
 
 @app.delete("/api/projetos/{projeto_id}")
-def deletar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+def deletar_projeto_rota(projeto_id: int, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    projeto = crud.get_projeto(db, projeto_id)
+    nome = projeto.nome if projeto else None
     if crud.deletar_projeto(db, projeto_id):
+        auditoria.registrar(db, user, "mapa.excluido", nome, request, projeto_id)
         return {"status": "sucesso"}
     raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
@@ -667,7 +674,7 @@ def exportar_projeto_rota(projeto_id: int, db: Session = Depends(get_db), user: 
 
 
 @app.post("/api/projetos/importar")
-async def importar_projeto_rota(arquivo: UploadFile = File(...), db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+async def importar_projeto_rota(request: Request, arquivo: UploadFile = File(...), db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
     conteudo = await arquivo.read(LIMITE_IMPORTACAO + 1)
     if len(conteudo) > LIMITE_IMPORTACAO:
         raise HTTPException(status_code=413, detail="Arquivo grande demais.")
@@ -678,6 +685,7 @@ async def importar_projeto_rota(arquivo: UploadFile = File(...), db: Session = D
         detalhe = str(exc) if legivel else "Arquivo de mapa inválido."
         raise HTTPException(status_code=400, detail=detalhe)
     logger.info("%s importou %d mapa(s)", user.username, len(importados))
+    auditoria.registrar(db, user, "mapa.importado", ", ".join(str(i.get("nome", i)) if isinstance(i, dict) else str(i) for i in importados), request)
     return {"importados": importados}
 
 
@@ -719,6 +727,8 @@ def enviar_alertas(db: Session, eventos):
 def checar_equipamento(ip: str, mode: str = "ip", config: Optional[dict] = None):
     """Verifica um equipamento por ping/TCP ou SNMPv3.
     Propaga SNMPUnavailableError quando o pysnmp não está instalado."""
+    if mode == "http":
+        return monitor_http.checar(ip, config)
     if mode != "snmpv3":
         return ping_equipamento(ip)  # função interna de ping (não a rota HTTP)
     config = {**(config or {}), "host": ip}
@@ -775,7 +785,7 @@ def executar_ciclo_monitoramento():
     db = SessionLocal()
     try:
         alvos = [
-            (eq.id, eq.ip, eq.monitor_mode or "ip", abrir_config(eq.monitor_config) if eq.monitor_mode == "snmpv3" else None)
+            (eq.id, eq.ip, eq.monitor_mode or "ip", abrir_config(eq.monitor_config) if eq.monitor_mode in ("snmpv3", "http") else None)
             for eq in db.query(models.Equipamento).all() if _equipamento_monitoravel(eq)
         ]
     finally:
@@ -796,6 +806,10 @@ def executar_ciclo_monitoramento():
             if not equipamento:
                 _falhas_consecutivas.pop(eq_id, None)
                 continue
+            if equipamento.monitor_mode == "http":
+                _http[eq_id] = _http_compacto(resultado)
+                if equipamento.notificar:
+                    eventos += avaliar_certificado(equipamento, resultado.get("certificado"), abrir_config(equipamento.monitor_config))
             if resultado.get("status") == "offline":
                 falhas = _falhas_consecutivas.get(eq_id, 0) + 1
                 _falhas_consecutivas[eq_id] = falhas
@@ -814,12 +828,42 @@ def executar_ciclo_monitoramento():
             regras_alerta.limpar_manutencoes_vencidas(db)
         if HISTORY_RETENTION_DAYS > 0 and time.monotonic() - _ultima_limpeza["momento"] > 3600:
             _ultima_limpeza["momento"] = time.monotonic()
+            auditoria.limpar(db)
             apagados = crud.limpar_historico(db, HISTORY_RETENTION_DAYS)
             if apagados:
                 logger.info("Histórico: %s registros com mais de %s dias removidos", apagados, HISTORY_RETENTION_DAYS)
     finally:
         db.close()
     _ultimo_ciclo.update(fim=datetime.utcnow(), duracao=round(time.monotonic() - inicio, 2), equipamentos=len(alvos))
+
+
+_http = {}  # eq_id -> last HTTP(S) check (status code, error, certificate)
+
+
+def _http_compacto(resultado):
+    return {k: resultado.get(k) for k in ("url", "http_status", "error", "certificado") if resultado.get(k) is not None}
+
+
+def avaliar_certificado(eq, cert, config):
+    """Alert once when the certificate gets within `diasCert` days of expiring (or is already expired),
+    and once more when it is renewed."""
+    if not cert or cert.get("dias") is None:
+        return []
+    try:
+        limite = int((config or {}).get("diasCert", monitor_http.DIAS_CERT_PADRAO))
+    except (TypeError, ValueError):
+        limite = monitor_http.DIAS_CERT_PADRAO
+    if limite <= 0:
+        return []
+    estado = _limites_estado.setdefault((eq.id, "certificado"), {"acima": 0, "alertado": False})
+    projeto_nome = eq.projeto.nome if eq.projeto else None
+    if cert["dias"] <= limite and not estado["alertado"]:
+        estado["alertado"] = True
+        return [alerts.montar_evento_metrica(eq, projeto_nome, "certificado", cert["dias"], limite, "alerta")]
+    if cert["dias"] > limite and estado["alertado"]:
+        estado["alertado"] = False
+        return [alerts.montar_evento_metrica(eq, projeto_nome, "certificado", cert["dias"], limite, "normal")]
+    return []
 
 
 def _loop_monitoramento():
@@ -948,7 +992,7 @@ def obter_backup(db: Session = Depends(get_db), admin: models.Usuario = Depends(
 
 
 @app.put("/api/backup")
-def salvar_backup_config(dados: BackupConfigIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def salvar_backup_config(dados: BackupConfigIn, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", dados.horario or ""):
         raise HTTPException(status_code=400, detail="Horário inválido (use HH:MM).")
     if not 1 <= dados.manter <= 365:
@@ -965,26 +1009,29 @@ def salvar_backup_config(dados: BackupConfigIn, db: Session = Depends(get_db), a
         "backup.diretorio": "" if diretorio == BACKUP_DIR_PADRAO else diretorio,
         "backup.horario": dados.horario, "backup.manter": str(dados.manter),
     })
+    auditoria.registrar(db, admin, "config.backup", f"{'on' if dados.ativo else 'off'} {dados.horario}, keep {dados.manter}, {diretorio}", request)
     return obter_backup(db, admin)
 
 
 @app.post("/api/backup/agora")
-def backup_agora(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def backup_agora(request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     try:
         caminho = fazer_backup(db)
     except Exception as exc:
         crud.salvar_configuracoes(db, {"backup.ultimo_erro": f"{iso_utc(datetime.utcnow())} {exc}"})
         raise HTTPException(status_code=500, detail=f"Falha no backup: {exc}")
+    auditoria.registrar(db, admin, "backup.criado", os.path.basename(caminho), request)
     return {"arquivo": os.path.basename(caminho), **obter_backup(db, admin)}
 
 
 @app.get("/api/backup/arquivo/{nome}")
-def baixar_backup(nome: str, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def baixar_backup(nome: str, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     if not backup.PADRAO_ARQUIVO.match(nome):
         raise HTTPException(status_code=404, detail="Backup não encontrado")
     caminho = os.path.join(get_backup_config(db)["diretorio"], nome)
     if not os.path.isfile(caminho):
         raise HTTPException(status_code=404, detail="Backup não encontrado")
+    auditoria.registrar(db, admin, "backup.baixado", nome, request)
     return FileResponse(caminho, media_type="application/zip", filename=nome)
 
 
@@ -1269,7 +1316,7 @@ def mesclar_config_snmp(eq, config_anterior_cifrada):
 
 
 @app.post("/api/projetos/{projeto_id}/salvar")
-def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+def salvar_projeto(projeto_id: int, mapa: MapaSchema, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
     projeto = crud.get_projeto(db, projeto_id)
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
@@ -1281,6 +1328,11 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
         # Atalho só pode apontar para outro mapa que existe.
         if eq.get('mapaDestinoId') not in projetos_existentes or eq.get('mapaDestinoId') == projeto_id:
             eq['mapaDestinoId'] = None
+        if eq.get('monitorMode') == 'http':
+            try:
+                monitor_http.validar_url(monitor_http.montar_url(eq.get('ip'), eq.get('monitorConfig')))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"{eq.get('nome')}: URL inválida (use http:// ou https://).")
         eq['monitorConfig'] = mesclar_config_snmp(eq, configs_anteriores.get(eq['id']))
         # Uplink precisa ser outro equipamento deste mesmo mapa.
         if eq.get('dependeDe') not in ids_mapa or eq.get('dependeDe') == eq['id']:
@@ -1292,6 +1344,7 @@ def salvar_projeto(projeto_id: int, mapa: MapaSchema, db: Session = Depends(get_
     result = crud.salvar_mapa(db, projeto_id, eq_dict, conn_dict)
     if not result:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    auditoria.registrar(db, user, "mapa.salvo", f"{projeto.nome}: {len(eq_dict)} device(s), {len(conn_dict)} cable(s)", request, projeto_id)
     return result
 
 
@@ -1308,6 +1361,7 @@ class EquipamentoBase(BaseModel):
     inalcancavel_por: Optional[str] = None  # uplink offline que explica a queda
     manutencao_ate: Optional[str] = None
     snmp: Optional[dict] = None  # métricas SNMP compactas (CPU, memória, temperatura, portas)
+    http: Optional[dict] = None  # last HTTP(S) check: status code, error, certificate
     class Config: from_attributes = True
 
 
@@ -1431,20 +1485,23 @@ def status_compartilhamento(projeto_id: int, db: Session = Depends(get_db), user
 
 
 @app.post("/api/projetos/{projeto_id}/compartilhar")
-def gerar_link_publico(projeto_id: int, regenerar: bool = False, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+def gerar_link_publico(projeto_id: int, request: Request, regenerar: bool = False, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
     projeto = crud.get_projeto(db, projeto_id)
     if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     if projeto.share_token and not regenerar:
         return {"token": projeto.share_token}
     projeto = crud.definir_share_token(db, projeto_id, secrets.token_urlsafe(24))
+    auditoria.registrar(db, user, "link.regenerado" if regenerar else "link.criado", projeto.nome, request, projeto_id)
     return {"token": projeto.share_token}
 
 
 @app.delete("/api/projetos/{projeto_id}/compartilhar")
-def revogar_link_publico(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
-    if not crud.definir_share_token(db, projeto_id, None):
+def revogar_link_publico(projeto_id: int, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    projeto = crud.definir_share_token(db, projeto_id, None)
+    if not projeto:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    auditoria.registrar(db, user, "link.revogado", projeto.nome, request, projeto_id)
     return {"status": "sucesso"}
 
 
@@ -1502,6 +1559,8 @@ def _estado_alertas(db: Session, projeto_id: int, equipamentos=None):
             extras.setdefault(e.id, {})["manutencao_ate"] = iso_utc(por_eq[e.id])
         if e.id in _metricas:
             extras.setdefault(e.id, {})["snmp"] = _metricas_compactas(_metricas[e.id])
+        if e.id in _http and e.monitor_mode == "http":
+            extras.setdefault(e.id, {})["http"] = _http[e.id]
     atalhos = [e for e in equipamentos if e.mapa_destino_id]
     if atalhos:
         resumos = crud.resumo_por_projeto(db, [e.mapa_destino_id for e in atalhos])
@@ -1526,7 +1585,7 @@ def listar_manutencao(projeto_id: int, db: Session = Depends(get_db), user: mode
 
 
 @app.post("/api/projetos/{projeto_id}/manutencao")
-def iniciar_manutencao(projeto_id: int, dados: ManutencaoIn, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+def iniciar_manutencao(projeto_id: int, dados: ManutencaoIn, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
     if not crud.get_projeto(db, projeto_id):
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     agora = datetime.utcnow()
@@ -1544,12 +1603,15 @@ def iniciar_manutencao(projeto_id: int, dados: ManutencaoIn, db: Session = Depen
             raise HTTPException(status_code=404, detail="Equipamento não encontrado")
     m = regras_alerta.criar_manutencao(db, projeto_id, ate, dados.equipamento_id, (dados.motivo or "").strip()[:200] or None, user.id)
     logger.info("%s iniciou manutenção (projeto %s, equipamento %s) até %s", user.username, projeto_id, dados.equipamento_id, ate)
+    auditoria.registrar(db, user, "manutencao.iniciada", f"{eq.nome if dados.equipamento_id else '*'} -> {iso_utc(ate)}", request, projeto_id)
     return {"id": m.id, "equipamento_id": m.equipamento_id, "ate": iso_utc(m.ate), "motivo": m.motivo}
 
 
 @app.delete("/api/projetos/{projeto_id}/manutencao")
-def encerrar_manutencao(projeto_id: int, equipamento_id: Optional[str] = None, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
-    regras_alerta.cancelar_manutencao(db, projeto_id, equipamento_id)
+def encerrar_manutencao(projeto_id: int, request: Request, equipamento_id: Optional[str] = None, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    if regras_alerta.cancelar_manutencao(db, projeto_id, equipamento_id):
+        eq = crud.get_equipamento(db, equipamento_id) if equipamento_id else None
+        auditoria.registrar(db, user, "manutencao.encerrada", eq.nome if eq else (equipamento_id or "*"), request, projeto_id)
     return {"status": "ok"}
 
 
@@ -1603,11 +1665,121 @@ def obter_limites(db: Session = Depends(get_db), admin: models.Usuario = Depends
 
 
 @app.put("/api/config/metricas")
-def salvar_limites(dados: LimitesIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+def salvar_limites(dados: LimitesIn, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     if not (0 <= dados.temperatura <= 150 and 0 <= dados.cpu <= 100):
         raise HTTPException(status_code=400, detail="Limites inválidos (temperatura 0–150 °C, CPU 0–100%; 0 desativa).")
     crud.salvar_configuracoes(db, {"metricas.limite_temp": str(dados.temperatura), "metricas.limite_cpu": str(dados.cpu)})
+    auditoria.registrar(db, admin, "config.metricas", f"temp {dados.temperatura:g} °C, CPU {dados.cpu:g}%", request)
     return get_limites(db)
+
+
+# --- AUDIT LOG (ADMIN) ---
+@app.get("/api/auditoria")
+def listar_auditoria(limite: int = 200, usuario: Optional[str] = None, acao: Optional[str] = None, antes_de: Optional[int] = None,
+                     db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    itens = auditoria.listar(db, limite, usuario or None, acao or None, antes_de)
+    return [{"id": a.id, "criado_em": iso_utc(a.criado_em), "usuario": a.usuario, "acao": a.acao, "detalhe": a.detalhe,
+             "ip": a.ip, "projeto_id": a.projeto_id} for a in itens]
+
+
+# --- SLA REPORT (CSV) ---
+def _duracao_legivel(segundos):
+    segundos = int(round(segundos or 0))
+    h, resto = divmod(segundos, 3600)
+    m, s = divmod(resto, 60)
+    return f"{h}:{m:02d}:{s:02d}"
+
+
+@app.get("/api/projetos/{projeto_id}/sla.csv")
+def sla_csv(projeto_id: int, dias: int = 30, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    """Availability of every monitored device in the period, as CSV (comma-separated, UTF-8 with BOM
+    so Excel shows accents correctly). Limited by HISTORY_RETENTION_DAYS: older history is gone."""
+    if not 1 <= dias <= 365:
+        raise HTTPException(status_code=400, detail="Período inválido (use de 1 a 365 dias).")
+    projeto = crud.get_projeto(db, projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    agora = datetime.utcnow()
+    itens = crud.calcular_disponibilidade(db, projeto_id, dias * 24, agora)
+    saida = io.StringIO()
+    w = csv.writer(saida)
+    w.writerow(["map", "device", "ip", "type", "status_now", "availability_pct", "downtime_hms", "downtime_seconds",
+                "outages", "avg_latency_ms", "monitored_hours", "period_start_utc", "period_end_utc"])
+    tipos = {eq.id: eq.tipo for eq in projeto.equipamentos}
+    inicio = agora - timedelta(days=dias)
+    for item in sorted(itens, key=lambda i: (i["uptime_pct"] if i["uptime_pct"] is not None else 101, i["nome"] or "")):
+        w.writerow([
+            projeto.nome, item["nome"], item["ip"], tipos.get(item["equipamento_id"], ""), item["status"],
+            "" if item["uptime_pct"] is None else f"{item['uptime_pct']:.3f}",
+            _duracao_legivel(item["offline_s"]), int(round(item["offline_s"])), item["quedas"],
+            "" if item["latencia_media_ms"] is None else item["latencia_media_ms"],
+            round(item["monitorado_s"] / 3600, 2), iso_utc(inicio), iso_utc(agora),
+        ])
+    nome = re.sub(r"[^\w.-]+", "_", projeto.nome or "map")[:50]
+    return Response("﻿" + saida.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="netcable-sla-{nome}-{dias}d.csv"'})
+
+
+# --- PROMETHEUS METRICS ---
+# Disabled unless METRICS_TOKEN (Bearer token required) or METRICS_PUBLIC=true is set.
+METRICS_TOKEN = os.getenv("METRICS_TOKEN", "").strip()
+METRICS_PUBLIC = os.getenv("METRICS_PUBLIC", "").strip().lower() in ("1", "true", "yes")
+
+
+def _rotulo_prom(valor):
+    return str(valor if valor is not None else "").replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def montar_metricas_prometheus(db: Session):
+    linhas = []
+    familias = {}
+
+    def metrica(nome, tipo, ajuda, rotulos, valor):
+        if valor is None:
+            return
+        if nome not in familias:
+            familias[nome] = True
+            linhas.append(f"# HELP {nome} {ajuda}")
+            linhas.append(f"# TYPE {nome} {tipo}")
+        texto = ",".join(f'{k}="{_rotulo_prom(v)}"' for k, v in rotulos.items())
+        linhas.append(f"{nome}{{{texto}}} {float(valor):g}")
+
+    metrica("netcable_info", "gauge", "NetCable version.", {"version": app.version}, 1)
+    metrica("netcable_monitor_devices", "gauge", "Devices checked in the last monitor cycle.", {}, _ultimo_ciclo["equipamentos"])
+    metrica("netcable_monitor_cycle_seconds", "gauge", "Duration of the last monitor cycle.", {}, _ultimo_ciclo["duracao"])
+    for projeto in crud.get_projetos(db):
+        equipamentos = [e for e in projeto.equipamentos if crud._monitoravel(e) and e.tipo not in crud.TIPOS_NAO_CONTADOS]
+        if not equipamentos:
+            continue
+        extras = _estado_alertas(db, projeto.id, projeto.equipamentos)
+        for e in equipamentos:
+            r = {"map": projeto.nome, "device": e.nome, "ip": e.ip, "type": e.tipo, "mode": e.monitor_mode or "ip"}
+            x = extras["por_equipamento"].get(e.id, {})
+            metrica("netcable_device_up", "gauge", "1 if the device answers, 0 if it is offline.", r, 1 if e.status == "online" else 0)
+            metrica("netcable_device_unreachable", "gauge", "1 if the device is offline because its uplink is offline.", r, 1 if x.get("inalcancavel_por") else 0)
+            metrica("netcable_device_maintenance", "gauge", "1 if the device (or its map) is in a maintenance window.",
+                    r, 1 if (x.get("manutencao_ate") or extras["manutencao_ate"]) else 0)
+            metrica("netcable_device_latency_ms", "gauge", "Last response time in milliseconds.", r, e.ping_time if e.status == "online" else None)
+            snmp = _metricas.get(e.id) or {}
+            metrica("netcable_device_cpu_percent", "gauge", "CPU usage (SNMP).", r, snmp.get("cpu_pct"))
+            metrica("netcable_device_memory_percent", "gauge", "Memory usage (SNMP).", r, snmp.get("memoria_pct"))
+            metrica("netcable_device_temperature_celsius", "gauge", "Temperature (SNMP).", r, snmp.get("temperatura_c"))
+            http = _http.get(e.id) if e.monitor_mode == "http" else None
+            if http:
+                metrica("netcable_http_status_code", "gauge", "Last HTTP status code.", r, http.get("http_status"))
+                metrica("netcable_tls_cert_expiry_days", "gauge", "Days until the TLS certificate expires.", r, (http.get("certificado") or {}).get("dias"))
+    return "\n".join(linhas) + "\n"
+
+
+@app.get("/metrics", include_in_schema=False)
+def metricas_prometheus(request: Request, db: Session = Depends(get_db)):
+    if not (METRICS_TOKEN or METRICS_PUBLIC):
+        raise HTTPException(status_code=404, detail="Not Found")
+    if METRICS_TOKEN:
+        enviado = request.headers.get("authorization", "")
+        if not secrets.compare_digest(enviado.encode(), f"Bearer {METRICS_TOKEN}".encode()):
+            raise HTTPException(status_code=401, detail="Credenciais inválidas", headers={"WWW-Authenticate": "Bearer"})
+    return Response(montar_metricas_prometheus(db), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 # --- INTERFACE WEB (imagem única) ---

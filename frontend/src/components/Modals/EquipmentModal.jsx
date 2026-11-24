@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge, ExternalLink } from 'lucide-react'
+import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge, ExternalLink, Globe, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { TIPOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre, ocupados } from '../rack/rackUtils'
@@ -140,6 +140,47 @@ function Manutencao({ node, projectId }) {
   )
 }
 
+// HTTP(S) monitor settings; empty fields are not sent.
+function configHttpLimpa(c) {
+  const limpa = { url: (c.url || '').trim(), verificarTls: c.verificarTls !== false, diasCert: Number(c.diasCert) || 0 }
+  if (c.status !== '' && c.status != null) limpa.status = Number(c.status)
+  if ((c.texto || '').trim()) limpa.texto = c.texto.trim()
+  return limpa
+}
+
+function ConfigHttp({ config, setConfig, ip, resultado }) {
+  const set = (k) => (e) => setConfig({ ...config, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
+  const cert = resultado?.certificado
+  const fundo = { ...campo, marginTop: 0, backgroundColor: '#1e293b' }
+  return (
+    <div style={caixa}>
+      <span style={{ fontSize: '13px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}><Globe size={14} /> {t('Monitor HTTP(S)')}</span>
+      <input aria-label={t('URL')} value={config.url} onChange={set('url')} placeholder={`http://${ip || '192.168.0.1'}/`} style={fundo} />
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input aria-label={t('Código HTTP esperado')} type="number" min="100" max="599" value={config.status ?? ''} onChange={set('status')} placeholder={t('Código esperado (vazio = 2xx/3xx)')} style={{ ...fundo, flex: 1 }} />
+        <input aria-label={t('Texto que deve aparecer na página')} value={config.texto || ''} onChange={set('texto')} placeholder={t('Texto na página (opcional)')} style={{ ...fundo, flex: 1 }} />
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#cbd5e1', cursor: 'pointer' }}>
+        <input type="checkbox" checked={config.verificarTls !== false} onChange={set('verificarTls')} /> {t('Validar o certificado (desligue para certificados autoassinados)')}
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#cbd5e1' }}>
+        <Lock size={13} /> {t('Avisar quando o certificado vencer em')}
+        <input aria-label={t('Dias de aviso do certificado')} type="number" min="0" max="365" value={config.diasCert ?? 14} onChange={set('diasCert')} style={{ ...fundo, width: '70px', padding: '5px' }} />
+        {t('dias (0 desliga)')}
+      </label>
+      <span style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>{t('Sem URL, o NetCable abre http://IP/. Online quando a página responde com o código esperado (e contém o texto, se informado).')}</span>
+      {resultado && (
+        <div style={{ fontSize: '12px', color: '#94a3b8', display: 'grid', gap: '3px' }}>
+          <span>{t('Última verificação')}: {resultado.http_status ? `HTTP ${resultado.http_status}` : '—'}{resultado.error ? ` · ${t(resultado.error)}` : ''}</span>
+          {cert?.dias != null && <span style={{ color: cert.dias < 0 ? '#ef4444' : cert.dias <= (Number(config.diasCert) || 0) ? '#f59e0b' : '#94a3b8' }}>
+            {cert.dias < 0 ? t('Certificado vencido em {data}', { data: new Date(cert.expira_em).toLocaleDateString() }) : t('Certificado válido até {data} ({n} dias) · {emissor}', { data: new Date(cert.expira_em).toLocaleDateString(), n: cert.dias, emissor: cert.emissor || '?' })}
+          </span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const botaoPequeno = { padding: '5px 10px', border: 0, borderRadius: '6px', color: 'white', cursor: 'pointer', fontSize: '12px' }
 
 function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, projectId, onCalcularUplinks, onAbrirMetricas }) {
@@ -151,7 +192,8 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
   const [tipo, setTipo] = useState(node.data.tipo || 'Roteador')
   const [monitorMode, setMonitorMode] = useState(node.data.monitorMode === 'visual' ? 'ip' : (node.data.monitorMode || 'ip'))
   const [notificar, setNotificar] = useState(node.data.notificar !== false)
-  const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161, ...(node.data.snmpConfig || {}) })
+  const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161, ...(node.data.monitorMode === 'snmpv3' ? node.data.snmpConfig || {} : {}) })
+  const [httpConfig, setHttpConfig] = useState({ url: '', status: '', texto: '', verificarTls: true, diasCert: 14, ...(node.data.monitorMode === 'http' ? node.data.snmpConfig || {} : {}) })
   const [dependeDe, setDependeDe] = useState(node.data.dependeDe || '')
   const candidatosUplink = nodes.filter(n => n.type !== 'rack' && n.id !== node.id).sort((a, b) => String(a.data.label).localeCompare(String(b.data.label)))
 
@@ -195,7 +237,7 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
     const dados = {
       label: nome, ip: ipFinal, tipo, notificar, modeloId: modelo ? modelo.id : null, dependeDe: dependeDe || null,
       monitorMode: semIp ? 'visual' : monitorMode,
-      snmpConfig: !semIp && monitorMode === 'snmpv3' ? snmpConfig : null,
+      snmpConfig: semIp ? null : monitorMode === 'snmpv3' ? snmpConfig : monitorMode === 'http' ? configHttpLimpa(httpConfig) : null,
       rackId: rack ? rack.id : null, rackU: rack ? Number(rackU) : null, alturaU: rack ? Number(alturaU) : null,
     }
     // Sem IP vira "somente visual"; ao ganhar um IP, aguarda a próxima verificação.
@@ -246,6 +288,7 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
           <select value={monitorMode} onChange={(e) => setMonitorMode(e.target.value)} style={campo}>
             <option value="ip">{t('IP / ICMP + TCP')}</option>
             <option value="snmpv3">{t('SNMPv3')}</option>
+            <option value="http">{t('HTTP(S): site, API ou painel web')}</option>
           </select>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title={t('Quando desligado, quedas deste equipamento não geram e-mail/Telegram/webhook (continuam no histórico).')}>
@@ -269,6 +312,8 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
         )}
         {!semIp && <Manutencao node={node} projectId={projectId} />}
       </div>
+
+      {!semIp && monitorMode === 'http' && <ConfigHttp config={httpConfig} setConfig={setHttpConfig} ip={ip} resultado={node.data.monitorMode === 'http' ? node.data.http : null} />}
 
       {!semIp && monitorMode === 'snmpv3' && <div style={caixa}>
         <span style={{ fontSize: '13px', color: '#94a3b8' }}>{t('Credenciais SNMPv3 (deixe as senhas vazias para manter as atuais)')}</span>

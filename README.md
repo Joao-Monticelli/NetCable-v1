@@ -26,11 +26,14 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 - 🗄️ **Realistic racks** — 4U to 48U racks; switches, servers, NAS, patch panels, UPS… snap to U positions.
 - 🧩 **Device model library** — register your real gear (e.g. “4× RJ45 + 2× SFP, 1U”) and its front panel is drawn with exactly those ports.
 - 🔌 **Port-to-port cables** — connect switch port 12 to firewall eth3; ports show as in use with tooltips.
-- 📡 **Server-side monitoring** — TCP (80/443/22) + ICMP in parallel, or SNMPv3; works with no browser open.
+- 📡 **Server-side monitoring** — TCP (80/443/22) + ICMP in parallel, SNMPv3, or HTTP(S); works with no browser open.
+- 🔒 **HTTP(S) & certificate monitor** — check a website, API or web panel (status code, response time, text on the page) and get an alert before its TLS certificate expires.
 - 🚨 **Alerts** — email, Discord, ntfy, Telegram and webhook on down/up, grouped per cycle, per-device on/off.
 - 🧠 **Smart alerts** — set each device's uplink (or compute them from the cables): when a switch dies you get **one** alert listing what is behind it, and those devices turn amber (*unreachable*) on the map. **Maintenance windows** mute a device or a whole map for a while.
 - 🌡️ **SNMP metrics** — CPU, memory, temperature, uptime and per-port link/traffic for SNMPv3 devices, with charts, real port LEDs on the rack and temperature/CPU alerts.
-- 📊 **Uptime & latency** — availability %, outages, latency chart (24 h / 7 d / 30 d) and a daily email report.
+- 📊 **Uptime & latency** — availability %, outages, latency chart (24 h / 7 d / 30 d), a daily email report and an **SLA report in CSV** (7 / 30 / 90 days).
+- 📈 **Prometheus `/metrics`** — device status, latency, SNMP metrics and certificate expiry for Grafana.
+- 🕵️ **Audit log** — who logged in, changed users, saved or deleted maps, shared links or changed settings, and when.
 - 👥 **Team roles** — Admin, Editor and Viewer (great for a NOC TV).
 - 📺 **Public link & TV mode** — read-only, auto-refreshing, full screen, revocable secret link.
 - 💾 **Backups** — daily `.zip` (all maps + model catalog + full database) to a folder you choose; export/import single maps as JSON.
@@ -97,6 +100,9 @@ Values set in the UI take precedence over the environment variables.
 | `PORT` | `8080` | Port NetCable listens on inside the container; only useful with `network_mode: host` |
 | `DISCOVERY_ALLOW_PUBLIC` | — | `1` allows network discovery on public IP ranges |
 | `DISCOVERY_TIMEOUT` / `DISCOVERY_WORKERS` | `0.8` / `128` | Per-probe timeout (s) and parallel probes during discovery |
+| `METRICS_TOKEN` | — | Enables `/metrics` for Prometheus, protected by this Bearer token |
+| `METRICS_PUBLIC` | — | `true` enables `/metrics` without a token (only on a trusted network) |
+| `AUDIT_RETENTION_DAYS` | `365` | Days the audit log is kept (`0` = forever) |
 
 ## Large networks: shortcuts between maps
 
@@ -154,6 +160,60 @@ For devices monitored with **SNMPv3**, NetCable collects every minute (`SNMP_MET
 - **Maintenance:** 🔧 in the toolbar mutes the whole map for 1–24 h; inside a device you can mute just that device.
   Monitoring and history keep running; devices that went down during maintenance don't send a "back online" alert afterwards.
 - **Channels:** ⚙️ → **Alert channels** (admins) for Discord, ntfy (push notifications on your phone), Telegram and a generic JSON webhook, each with a *Test* button. Tokens and URLs are stored encrypted.
+
+## HTTP(S) and certificate monitoring
+
+Pick **HTTP(S): website, API or web panel** as the monitoring method of a device:
+
+- **URL** — e.g. `https://intranet.local/health`. Empty means `http://<device IP>/`.
+- **Expected status** — empty accepts any 2xx/3xx; set `200`, `401`… to require one code.
+- **Text on page** — optional; the device is offline when the text is missing (catches "200 OK" error pages).
+- **Verify the certificate** — turn off for devices with self-signed certificates (printers, NAS, firewalls).
+- **Certificate warning** — alert when the certificate expires in N days or less (default 14, `0` turns it off).
+  The certificate is read even when it is self-signed, so you also get warned about internal devices.
+  One alert is sent when it gets close (or expires) and another when it is renewed; maintenance windows mute it.
+
+The map shows the days left (🔒 `12d`, amber at 14 days or less, red when expired) and the HTTP error when the check fails.
+
+## SLA report, audit log and Prometheus
+
+- **SLA report:** ⚙️ → **History** → *Availability* → **Export SLA (CSV)** for 7, 30 or 90 days: availability %, downtime
+  (`h:mm:ss` and seconds), outages and average latency of every device. Opens directly in Excel/LibreOffice.
+  The period is limited by `HISTORY_RETENTION_DAYS` (default 30): raise it if you need 90-day reports.
+- **Audit log:** ⚙️ → **Audit log** (admins): logins (including failed and blocked ones), users created/changed/deleted,
+  maps created/renamed/saved/deleted/imported, public links, maintenance, settings and backups, with user, time and IP.
+  Passwords and secrets are never logged.
+- **Prometheus:** set `METRICS_TOKEN` and scrape `/metrics`:
+
+  ```yaml
+  scrape_configs:
+    - job_name: netcable
+      metrics_path: /metrics
+      authorization: { credentials: "your-metrics-token" }
+      static_configs: [{ targets: ["netcable:8080"] }]
+  ```
+
+  Series: `netcable_device_up`, `netcable_device_unreachable`, `netcable_device_maintenance`, `netcable_device_latency_ms`,
+  `netcable_device_cpu_percent`, `netcable_device_memory_percent`, `netcable_device_temperature_celsius`,
+  `netcable_http_status_code`, `netcable_tls_cert_expiry_days` (labels `map`, `device`, `ip`, `type`, `mode`) and
+  `netcable_monitor_*`.
+
+## Rotating the secret key
+
+`data/secret.key` encrypts the stored secrets (SMTP/SNMP passwords, alert channels, HTTP monitor URLs) and signs logins.
+If it may have leaked, rotate it:
+
+```bash
+docker compose stop netcable
+docker compose run --rm netcable python -m app.rotacao_chave
+docker compose start netcable
+```
+
+Every secret is re-encrypted with a new key in one transaction; a copy of the database and of the old key is kept in
+`data/backups/` (the old key is only needed to restore older backups). Everybody has to log in again.
+If you set `SECRET_KEY` yourself, run it with `--nova-chave "<new value>"` and then update the variable.
+If the database leaked too, also change the passwords and tokens stored in NetCable: rotating the key does not make
+already leaked secrets safe again.
 
 ## Backups & restore
 

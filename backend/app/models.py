@@ -126,6 +126,18 @@ class ModeloEquipamento(Base):
     prefixo_porta = Column(String, default="", nullable=False)  # ex.: "eth" -> eth1, eth2...
 
 
+class Auditoria(Base):
+    """Audit log entry (see app/auditoria.py)."""
+    __tablename__ = "auditoria"
+    id = Column(Integer, primary_key=True, index=True)
+    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+    usuario = Column(String, nullable=True, index=True)  # username at the time (kept if the user is deleted)
+    acao = Column(String, nullable=False, index=True)    # e.g. login.ok, usuario.criado, mapa.salvo
+    detalhe = Column(String, nullable=True)
+    ip = Column(String, nullable=True)
+    projeto_id = Column(Integer, nullable=True)
+
+
 class Configuracao(Base):
     """Configurações do sistema em chave/valor (ex.: servidor SMTP)."""
     __tablename__ = "configuracoes"

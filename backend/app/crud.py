@@ -234,6 +234,8 @@ def _analisar_equipamento(db: Session, eq, inicio: datetime, agora: datetime):
         "ip": eq.ip,
         "status": eq.status,
         "uptime_pct": round(online / total * 100, 2) if total > 0 else None,
+        "offline_s": round(total - online, 1),  # time not online inside the window
+        "monitorado_s": round(total, 1),        # time covered by the history inside the window
         "quedas": quedas,
         "latencia_media_ms": round(sum(latencias) / len(latencias), 2) if latencias else None,
         "mudancas": mudancas,

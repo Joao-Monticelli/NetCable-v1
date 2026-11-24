@@ -102,9 +102,12 @@ def _rotulo_status(e, idioma):
 
 def montar_email_alerta(eventos, idioma="pt"):
     quedas = sum(1 for e in eventos if e["status"] == "offline")
-    metricas = sum(1 for e in eventos if e.get("metrica"))
-    voltas = len(eventos) - quedas - metricas
+    certificados = sum(1 for e in eventos if e.get("metrica") == "certificado")
+    metricas = sum(1 for e in eventos if e.get("metrica")) - certificados
+    voltas = len(eventos) - quedas - metricas - certificados
     partes = []
+    if certificados:
+        partes.append(tr("{n} alerta(s) de certificado", idioma, n=certificados))
     if metricas:
         partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
     if quedas:

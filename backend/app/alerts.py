@@ -76,6 +76,12 @@ def montar_evento_metrica(equipamento, projeto_nome, metrica, valor, limite, sit
 
 
 def texto_metrica(evento, idioma="pt"):
+    if evento["metrica"] == "certificado":
+        if evento["status"] != "alerta":
+            return tr("🔒 Certificado renovado: vence em {valor} dia(s)", idioma, valor=f"{evento['valor']:g}")
+        if evento["valor"] < 0:
+            return tr("🔓 Certificado TLS VENCIDO há {valor} dia(s)", idioma, valor=f"{-evento['valor']:g}")
+        return tr("🔒 Certificado TLS vence em {valor} dia(s) (aviso com {limite} dias)", idioma, valor=f"{evento['valor']:g}", limite=f"{evento['limite']:g}")
     unidade = " °C" if evento["metrica"] == "temperatura" else "%"
     if evento["metrica"] == "temperatura":
         chave = "🌡️ Temperatura alta: {valor}{u} (limite {limite}{u})" if evento["status"] == "alerta" else "🌡️ Temperatura normalizada: {valor}{u}"
@@ -103,9 +109,12 @@ def formatar_mensagem(evento, idioma="pt"):
 
 def _titulo_resumo(eventos, idioma):
     quedas = sum(1 for e in eventos if e["status"] == "offline")
-    metricas = sum(1 for e in eventos if e.get("metrica"))
-    voltas = len(eventos) - quedas - metricas
+    certificados = sum(1 for e in eventos if e.get("metrica") == "certificado")
+    metricas = sum(1 for e in eventos if e.get("metrica")) - certificados
+    voltas = len(eventos) - quedas - metricas - certificados
     partes = []
+    if certificados:
+        partes.append(tr("{n} alerta(s) de certificado", idioma, n=certificados))
     if metricas:
         partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
     if quedas:

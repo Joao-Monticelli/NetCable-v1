@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower, CircleHelp, Thermometer, Cpu, Map as IconeMapa, CheckCircle2, XCircle, ExternalLink } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower, CircleHelp, Thermometer, Cpu, Map as IconeMapa, CheckCircle2, XCircle, ExternalLink, Lock, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { classeStatus, dadosDeAlerta, calcularUplinks, TIPO_ATALHO } from '../utils/mapa'
 import EquipmentModal from './Modals/EquipmentModal'
@@ -85,9 +85,18 @@ const CustomNode = memo(({ data, selected }) => {
         <div style={{ fontWeight: 'bold', fontSize: '14px', textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden' }}>{data.label}</div>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>{data.ip}</div>
         
-        {data.status === 'online' && (data.pingTime || data.snmp) && (
+        {((data.status === 'online' && (data.pingTime || data.snmp)) || data.http?.certificado?.dias != null || (data.monitorMode === 'http' && data.status === 'offline' && data.http?.error)) && (
           <div style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', whiteSpace: 'nowrap' }}>
-            {data.pingTime ? <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Activity size={10} /> {data.pingTime}ms</span> : null}
+            {data.status === 'online' && data.pingTime ? <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Activity size={10} /> {data.pingTime}ms</span> : null}
+            {data.monitorMode === 'http' && data.status === 'offline' && data.http?.error && (
+              <span className="metrica-no" style={{ color: '#f87171' }} title={data.http.url || ''}><Globe size={10} /> {data.http.http_status ? `HTTP ${data.http.http_status}` : t(data.http.error)}</span>
+            )}
+            {data.http?.certificado?.dias != null && (
+              <span className="metrica-no" style={{ color: corCertificado(data.http.certificado.dias) }}
+                title={t('Certificado TLS vence em {data} ({emissor})', { data: new Date(data.http.certificado.expira_em).toLocaleDateString(), emissor: data.http.certificado.emissor || '?' })}>
+                <Lock size={10} /> {data.http.certificado.dias < 0 ? t('vencido') : `${data.http.certificado.dias}d`}
+              </span>
+            )}
             {data.snmp?.temp != null && <span className="metrica-no" title={t('Temperatura')}><Thermometer size={10} /> {Math.round(data.snmp.temp)}°</span>}
             {data.snmp?.cpu != null && <span className="metrica-no" title={t('CPU')}><Cpu size={10} /> {Math.round(data.snmp.cpu)}%</span>}
           </div>
@@ -99,6 +108,12 @@ const CustomNode = memo(({ data, selected }) => {
     </div>
   )
 })
+
+function corCertificado(dias) {
+  if (dias < 0) return '#ef4444'
+  if (dias <= 14) return '#f59e0b'
+  return '#cbd5e1'
+}
 
 const nodeTypes = { custom: CustomNode, rack: RackNode, rackDevice: RackDeviceNode }
 const edgeTypes = { smoothstep: SmoothStepEdge }
@@ -250,6 +265,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
             if (atual.status === node.data.status && atual.ping_time === node.data.pingTime &&
                 alerta.inalcancavelPor === (node.data.inalcancavelPor || null) && alerta.manutencaoAte === (node.data.manutencaoAte || null) &&
                 alerta.snmp?.coletado_em === node.data.snmp?.coletado_em &&
+                JSON.stringify(alerta.http) === JSON.stringify(node.data.http || null) &&
                 JSON.stringify(alerta.resumoMapa) === JSON.stringify(node.data.resumoMapa || null)) return node
             mudou = true
             return { ...node, data: { ...node.data, status: atual.status, pingTime: atual.ping_time, ...alerta } }

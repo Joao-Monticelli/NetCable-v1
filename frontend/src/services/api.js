@@ -61,6 +61,21 @@ export const api = {
     salvarArquivo(await res.blob(), nome)
   },
 
+  // --- Audit log (admin) and SLA report ---
+  listarAuditoria({ acao = '', usuario = '', antesDe = null, limite = 100 } = {}) {
+    const q = new URLSearchParams({ limite: String(limite) })
+    if (acao) q.set('acao', acao)
+    if (usuario) q.set('usuario', usuario)
+    if (antesDe) q.set('antes_de', String(antesDe))
+    return requisicao(`/auditoria?${q}`, {}, t('Não foi possível carregar o log de auditoria.'))
+  },
+  async baixarSlaCsv(projetoId, dias = 30) {
+    const res = await fetch(`${API_URL}/projetos/${projetoId}/sla.csv?dias=${dias}`, { headers: getHeaders() })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || t('Não foi possível gerar o relatório de SLA.'))
+    const nome = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || `netcable-sla-${dias}d.csv`
+    salvarArquivo(await res.blob(), nome)
+  },
+
   // --- Métricas SNMP ---
   metricasEquipamento(projetoId, equipamentoId, horas = 24) {
     return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/metricas?horas=${horas}`, {}, t('Não foi possível carregar as métricas.'))

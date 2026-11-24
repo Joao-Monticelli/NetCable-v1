@@ -2,6 +2,19 @@
 
 All notable changes to NetCable. Versions follow [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **HTTP(S) monitor**: new monitoring method for websites, APIs and web panels — URL, expected status code, text that must be on the page and optional certificate verification (for self-signed devices).
+- **TLS certificate expiry alerts**: warning N days before the certificate expires (default 14), when it is already expired and when it is renewed; days left shown on the map. Works with self-signed certificates.
+- **SLA report (CSV)** for 7, 30 or 90 days: availability, downtime, outages and average latency per device (History → Availability → Export SLA).
+- **Audit log** (⚙️ → Audit log, admins): logins (successful, failed, blocked), user changes, maps, public links, maintenance, settings and backups, with user, time and IP. Kept for `AUDIT_RETENTION_DAYS` (default 365).
+- **Prometheus endpoint** `/metrics` (enabled with `METRICS_TOKEN` or `METRICS_PUBLIC=true`): device up/unreachable/maintenance, latency, SNMP CPU/memory/temperature, HTTP status and certificate days.
+- **Secret key rotation** command `python -m app.rotacao_chave`: re-encrypts every stored secret with a new key, keeping copies of the database and the old key.
+
+### Security
+- A development `backend/data/` folder (database, `secret.key`, backups) was committed to the repository by mistake and is no longer tracked. Docker installs are not affected (they create their own key in their data volume); anyone who ran NetCable straight from a repository checkout using that folder should rotate the key and change the stored passwords and tokens.
+
 ## [1.0.0] — 2026-11
 
 First stable release: one Docker image, first-run setup, automatic backups, smart alerts, network discovery and SNMP metrics.

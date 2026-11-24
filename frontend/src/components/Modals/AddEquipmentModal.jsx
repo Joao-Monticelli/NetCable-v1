@@ -18,6 +18,8 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
   const [monitorMode, setMonitorMode] = useState('ip')
   const [notificar, setNotificar] = useState(true)
   const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161 })
+  const [urlHttp, setUrlHttp] = useState('')
+  const configMonitor = () => monitorMode === 'snmpv3' ? snmpConfig : monitorMode === 'http' ? { url: urlHttp.trim(), verificarTls: true, diasCert: 14 } : null
   const [neighbors, setNeighbors] = useState(null)
   const [selectedNeighbors, setSelectedNeighbors] = useState(new Set())
   const [discoveryError, setDiscoveryError] = useState('')
@@ -93,7 +95,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
     setTestMessage('')
 
     try {
-      const data = monitorMode === 'snmpv3' ? await api.monitor(null, ip, monitorMode, snmpConfig) : await api.ping(ip)
+      const data = monitorMode !== 'ip' ? await api.monitor(null, ip, monitorMode, configMonitor()) : await api.ping(ip)
       if (data.status === 'online') {
         setTestResult('success')
         setPingTime(data.tempo_ms)
@@ -168,7 +170,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
     } else {
       if (testResult !== 'success') {
         try {
-            const data = monitorMode === 'snmpv3' ? await api.monitor(null, ip, monitorMode, snmpConfig) : await api.ping(ip)
+            const data = monitorMode !== 'ip' ? await api.monitor(null, ip, monitorMode, configMonitor()) : await api.ping(ip)
           if (data.status === 'online') {
             finalStatus = 'online'
             finalPingTime = data.tempo_ms
@@ -184,7 +186,7 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
       }
     }
     
-    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: monitorMode === 'snmpv3' ? snmpConfig : null, notificar, modeloId: modelo ? modelo.id : null,
+    onAdd({ nome, ip: semIp ? 'Sem IP' : ip, tipo, status: finalStatus, pingTime: finalPingTime, monitorMode: semIp ? 'visual' : monitorMode, snmpConfig: semIp ? null : configMonitor(), notificar, modeloId: modelo ? modelo.id : null,
       rackId: rack ? rack.id : null, rackU: rack ? rackU : null, alturaU: rack ? alturaU : null })
   }
 
@@ -267,8 +269,16 @@ export default function AddEquipmentModal({ onClose, onAdd, onAddNeighbors, node
             <select value={semIp ? 'visual' : monitorMode} onChange={(e) => setMonitorMode(e.target.value)} disabled={semIp} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }}>
               <option value="ip">{t('IP / ICMP + TCP')}</option>
               <option value="snmpv3">{t('SNMPv3')}</option>
+              <option value="http">{t('HTTP(S): site, API ou painel web')}</option>
             </select>
           </div>
+
+          {monitorMode === 'http' && !semIp && (
+            <div>
+              <input aria-label={t('URL')} value={urlHttp} onChange={(e) => setUrlHttp(e.target.value)} placeholder={`http://${ip || '192.168.0.1'}/`} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }} />
+              <span style={{ fontSize: '11px', color: '#64748b' }}>{t('Código esperado, texto na página e aviso de certificado ficam na edição do equipamento.')}</span>
+            </div>
+          )}
 
           {!semIp && (
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title={t('Quando desligado, quedas deste equipamento não geram e-mail/Telegram/webhook (continuam no histórico).')}>

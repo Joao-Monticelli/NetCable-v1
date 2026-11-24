@@ -64,7 +64,7 @@ def test_primeiro_acesso_e_chave_secreta():
 
 def test_recifra_segredos_da_chave_antiga():
     from app import main
-    antiga = main._fernet_de(main.CHAVE_DEV)
+    antiga = main.segredos.fernet_de(main.CHAVE_DEV)
     with main.engine.begin() as con:
         con.exec_driver_sql("INSERT INTO configuracoes (chave, valor) VALUES ('smtp.teste', ?)", (antiga.encrypt(b'{"senha":"x"}').decode(),))
     assert main._recifrar_segredos_antigos() >= 1
