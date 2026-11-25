@@ -1,3 +1,4 @@
+from app.relogio import utcnow
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -60,8 +61,8 @@ def test_resumo_projetos_conta_status():
 def test_limpeza_e_exclusao_de_projeto_removem_historico():
     session = _sessao()
     user, project = _mapa(session)
-    _historico(session, "sw", "online", datetime.utcnow() - timedelta(days=40))
-    _historico(session, "sw", "online", datetime.utcnow())
+    _historico(session, "sw", "online", utcnow() - timedelta(days=40))
+    _historico(session, "sw", "online", utcnow())
     assert crud.limpar_historico(session, 30) == 1
     assert session.query(models.HistoricoStatus).count() == 1
 
@@ -94,7 +95,7 @@ def test_mensagem_de_alerta():
 
 def test_ping_paralelo_e_rapido(monkeypatch):
     import time as _t
-    from app import main
+    from app import monitoramento as main  # the checks live in app/monitoramento.py
     # Todas as sondas falham devagar: o resultado deve sair em ~1 timeout, não na soma deles.
     monkeypatch.setattr(main, "_sonda_tcp", lambda ip, porta: (_t.sleep(0.3), None)[1])
     monkeypatch.setattr(main, "_sonda_icmp", lambda ip: (_t.sleep(0.3), None)[1])

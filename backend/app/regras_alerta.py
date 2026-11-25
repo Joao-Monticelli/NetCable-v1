@@ -13,6 +13,7 @@ Equipamentos cuja queda foi silenciada também não geram o alerta de "voltou", 
 chegar um "voltou" de algo que ninguém soube que caiu.
 """
 
+from .relogio import utcnow
 import json
 import logging
 import os
@@ -126,7 +127,7 @@ def fim_se_ativa(m, agora, fuso):
 
 def manutencoes_ativas(db, agora=None, fuso=None):
     """(projetos_em_manutencao: {projeto_id: ate}, equipamentos_em_manutencao: {eq_id: ate})."""
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     fuso = fuso or fuso_do_sistema(db)
     projetos, equipamentos = {}, {}
     for m in db.query(models.Manutencao).filter(models.Manutencao.ate > agora).all():
@@ -164,7 +165,7 @@ def _do_alvo(db, projeto_id, equipamento_id):
 def cancelar_manutencao(db, projeto_id, equipamento_id=None, commit=True, agora=None, fuso=None):
     """Ends the maintenance that is silencing the target now: deletes one-off windows that already
     started and skips the current occurrence of weekly ones. Future windows are kept."""
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     afetadas = 0
     for m in _do_alvo(db, projeto_id, equipamento_id).all():
         rec = ler_recorrencia(m)
@@ -193,7 +194,7 @@ def remover_manutencao(db, projeto_id, manutencao_id):
 
 
 def listar_manutencoes(db, projeto_id, agora=None):
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     return db.query(models.Manutencao).filter(
         models.Manutencao.projeto_id == projeto_id, models.Manutencao.ate > agora
     ).order_by(models.Manutencao.inicio, models.Manutencao.ate).all()
@@ -202,7 +203,7 @@ def listar_manutencoes(db, projeto_id, agora=None):
 # --------------------------------------------------------------------------- reconhecimento
 def reconhecer(db, equipamento, usuario, nota=None):
     r = db.get(models.Reconhecimento, equipamento.id) or models.Reconhecimento(equipamento_id=equipamento.id)
-    r.projeto_id, r.usuario, r.nota, r.criado_em = equipamento.projeto_id, usuario, nota, datetime.utcnow()
+    r.projeto_id, r.usuario, r.nota, r.criado_em = equipamento.projeto_id, usuario, nota, utcnow()
     db.merge(r)
     db.commit()
     return db.get(models.Reconhecimento, equipamento.id)
@@ -238,7 +239,7 @@ def reconhecimentos(db, projeto_id=None):
 
 
 def limpar_manutencoes_vencidas(db, agora=None):
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     apagadas = db.query(models.Manutencao).filter(models.Manutencao.ate <= agora).delete(synchronize_session=False)
     db.commit()
     return apagadas

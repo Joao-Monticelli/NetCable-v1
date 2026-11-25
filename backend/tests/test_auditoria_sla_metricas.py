@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from app.relogio import utcnow
+from datetime import timedelta
 
 from app import models
 
@@ -51,7 +52,7 @@ def test_auditoria_so_para_admin(cliente):
 def test_auditoria_limpeza(cliente):
     c, db = cliente
     from app import auditoria
-    db.add(models.Auditoria(usuario="x", acao="velho", criado_em=datetime.utcnow() - timedelta(days=400)))
+    db.add(models.Auditoria(usuario="x", acao="velho", criado_em=utcnow() - timedelta(days=400)))
     db.add(models.Auditoria(usuario="x", acao="novo"))
     db.commit()
     assert auditoria.limpar(db, 365) == 1
@@ -79,7 +80,7 @@ def test_mapa_http_valida_url(cliente):
 def test_sla_csv(cliente):
     c, db = cliente
     pid = _mapa(c, "SLA")
-    agora = datetime.utcnow()
+    agora = utcnow()
     db.add_all([
         models.HistoricoStatus(equipamento_id="aud-sw", status="online", criado_em=agora - timedelta(hours=10)),
         models.HistoricoStatus(equipamento_id="aud-sw", status="offline", criado_em=agora - timedelta(hours=5)),
@@ -100,12 +101,13 @@ def test_sla_csv(cliente):
 def test_metrics_prometheus(cliente, monkeypatch):
     c, db = cliente
     from app import main
+    from app.rotas import prometheus
     pid = _mapa(c, 'Prom "lab"')
-    monkeypatch.setattr(main, "METRICS_TOKEN", "")
-    monkeypatch.setattr(main, "METRICS_PUBLIC", False)
+    monkeypatch.setattr(prometheus, "METRICS_TOKEN", "")
+    monkeypatch.setattr(prometheus, "METRICS_PUBLIC", False)
     assert c.get("/metrics").status_code == 404  # off by default
 
-    monkeypatch.setattr(main, "METRICS_TOKEN", "tok-123")
+    monkeypatch.setattr(prometheus, "METRICS_TOKEN", "tok-123")
     sem = c.get("/metrics", headers={"Authorization": ""})
     assert sem.status_code == 401
     main._http["aud-web"] = {"http_status": 200, "certificado": {"dias": 42}}

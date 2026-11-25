@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from app.relogio import utcnow
+from datetime import timedelta
 from unittest import mock
 
 from sqlalchemy import create_engine
@@ -65,17 +66,17 @@ def test_causa_raiz_e_a_mais_proxima_da_raiz_e_ciclos_nao_travam():
 def test_manutencao_silencia_queda_e_volta():
     session = _sessao()
     projeto = _rede(session)
-    regras_alerta.criar_manutencao(session, projeto.id, datetime.utcnow() + timedelta(hours=1), equipamento_id="imp")
+    regras_alerta.criar_manutencao(session, projeto.id, utcnow() + timedelta(hours=1), equipamento_id="imp")
     assert regras_alerta.aplicar(session, _cair(session, projeto, ["imp"])) == []
     regras_alerta.cancelar_manutencao(session, projeto.id, "imp")
     # A queda foi silenciada, então a volta também não avisa.
     assert regras_alerta.aplicar(session, _cair(session, projeto, ["imp"], "online")) == []
 
     # Manutenção do projeto inteiro.
-    regras_alerta.criar_manutencao(session, projeto.id, datetime.utcnow() + timedelta(hours=1))
+    regras_alerta.criar_manutencao(session, projeto.id, utcnow() + timedelta(hours=1))
     assert regras_alerta.aplicar(session, _cair(session, projeto, ["fw"])) == []
     # Janela vencida não vale mais e é limpa.
-    regras_alerta.criar_manutencao(session, projeto.id, datetime.utcnow() - timedelta(minutes=1))
+    regras_alerta.criar_manutencao(session, projeto.id, utcnow() - timedelta(minutes=1))
     assert regras_alerta.limpar_manutencoes_vencidas(session) == 1
     assert [e["equipamento"] for e in regras_alerta.aplicar(session, _cair(session, projeto, ["imp"]))] == ["IMP"]
 

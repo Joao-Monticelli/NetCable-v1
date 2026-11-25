@@ -286,13 +286,16 @@ Stack: React 18, Vite, React Flow · FastAPI, SQLAlchemy, SQLite · Docker, GitH
 
 | Path | What lives there |
 |---|---|
-| `backend/app/main.py` | FastAPI app: REST API, auth, background monitoring loop, serves the built UI |
-| `backend/app/models.py`, `schemas.py`, `crud.py`, `database.py`, `migracoes.py` | Database models, API schemas, queries and automatic migrations (SQLite) |
-| `backend/app/ping_service.py`, `snmp_service.py`, `metricas_snmp.py` | Reachability checks, SNMP queries and SNMP metrics collection |
-| `backend/app/alerts.py`, `regras_alerta.py`, `email_service.py` | Alert channels (Telegram, Discord, ntfy, webhook, email) and smart alert rules |
+| `backend/app/main.py` | Creates the FastAPI app: middleware, routers, background tasks, serves the built UI |
+| `backend/app/rotas/` | API routes by subject: `contas` (setup, login, 2FA, users), `configuracoes`, `mapas` (maps, links, status page, maintenance, history, SLA), `rede`, `prometheus` |
+| `backend/app/nucleo.py`, `monitoramento.py` | Shared core (settings, secret key, encryption, auth) and background work (monitor cycle, reminders, SNMP metrics, reports, scheduled backups) |
+| `backend/app/models.py`, `crud.py`, `database.py`, `migracoes.py` | Database models, queries and automatic migrations (SQLite) |
+| `backend/app/snmp_service.py`, `metricas_snmp.py`, `monitor_http.py` | SNMP queries, SNMP metrics and the HTTP(S)/certificate check |
+| `backend/app/alerts.py`, `regras_alerta.py`, `email_service.py` | Alert channels (Telegram, Discord, ntfy, webhook, email), smart alert rules, maintenance and acknowledgements |
+| `backend/app/totp.py`, `segredos.py`, `auditoria.py` | Two-factor authentication, secret key handling and the audit log |
 | `backend/app/descoberta.py`, `backup.py`, `i18n.py` | Network discovery, backups/restore, server-side translations |
 | `backend/tests/` | pytest suite (plus an SNMPv3 simulator used in CI) |
-| `frontend/src/pages/` | Screens: login, projects, map editor, public shared view |
+| `frontend/src/pages/` | Screens: login, projects, map editor, public shared view and public status page (loaded on demand) |
 | `frontend/src/components/` | Network map (React Flow), racks, charts, sidebar and all modals |
 | `frontend/src/i18n/` | UI translations (English and Portuguese) |
 | `qa/` | End-to-end QA robot ([qa/README.md](qa/README.md)) |

@@ -1,5 +1,5 @@
+from .relogio import utcnow
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean
-from datetime import datetime
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -93,7 +93,7 @@ class Manutencao(Base):
     recorrencia = Column(String, nullable=True)
     motivo = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    criado_em = Column(DateTime, default=datetime.utcnow)
+    criado_em = Column(DateTime, default=utcnow)
 
 
 class Conexao(Base):
@@ -113,7 +113,7 @@ class HistoricoStatus(Base):
     equipamento_id = Column(String, ForeignKey("equipamentos.id"), index=True)
     status = Column(String, nullable=False)
     tempo_ms = Column(Float, nullable=True)
-    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+    criado_em = Column(DateTime, default=utcnow, index=True)
 
 
 class MetricaSnmp(Base):
@@ -121,7 +121,7 @@ class MetricaSnmp(Base):
     __tablename__ = "metricas_snmp"
     id = Column(Integer, primary_key=True, index=True)
     equipamento_id = Column(String, index=True, nullable=False)
-    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+    criado_em = Column(DateTime, default=utcnow, index=True)
     cpu_pct = Column(Float, nullable=True)
     memoria_pct = Column(Float, nullable=True)
     temperatura_c = Column(Float, nullable=True)
@@ -150,14 +150,14 @@ class Reconhecimento(Base):
     projeto_id = Column(Integer, index=True, nullable=False)
     usuario = Column(String, nullable=False)
     nota = Column(String, nullable=True)
-    criado_em = Column(DateTime, default=datetime.utcnow)
+    criado_em = Column(DateTime, default=utcnow)
 
 
 class Auditoria(Base):
     """Audit log entry (see app/auditoria.py)."""
     __tablename__ = "auditoria"
     id = Column(Integer, primary_key=True, index=True)
-    criado_em = Column(DateTime, default=datetime.utcnow, index=True)
+    criado_em = Column(DateTime, default=utcnow, index=True)
     usuario = Column(String, nullable=True, index=True)  # username at the time (kept if the user is deleted)
     acao = Column(String, nullable=False, index=True)    # e.g. login.ok, usuario.criado, mapa.salvo
     detalhe = Column(String, nullable=True)

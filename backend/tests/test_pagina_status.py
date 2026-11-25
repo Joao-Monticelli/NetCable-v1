@@ -1,3 +1,4 @@
+from app.relogio import utcnow
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -41,7 +42,7 @@ def _mapa(c, db):
         {**base, "id": "st-doc", "nome": "Documentação", "ip": "Sem IP", "tipo": "Outro", "status": "visual", "monitorMode": "visual"},
     ]
     assert c.post(f"/api/projetos/{pid}/salvar", json={"equipamentos": eqs, "conexoes": []}).status_code == 200
-    agora = datetime.utcnow()
+    agora = utcnow()
     _hist(db, "st-site", [(agora - timedelta(days=2), "online")])
     _hist(db, "st-erp", [(agora - timedelta(days=2), "online"), (agora - timedelta(hours=1), "offline")])
     return pid

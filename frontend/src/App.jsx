@@ -1,13 +1,16 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import Login from './pages/Login'
-import Projects from './pages/Projects'
-import Editor from './pages/Editor'
-import SharedView from './pages/SharedView'
-import StatusPage from './pages/StatusPage'
 import { api } from './services/api'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useI18n, t } from './i18n'
+
+// Pages load on demand: the login and the public status page don't download the map editor.
+const Projects = lazy(() => import('./pages/Projects'))
+const Editor = lazy(() => import('./pages/Editor'))
+const SharedView = lazy(() => import('./pages/SharedView'))
+const StatusPage = lazy(() => import('./pages/StatusPage'))
+const Carregando = () => <div style={{ minHeight: '100vh', background: '#0f172a' }} />
 
 const PrivateRoute = () => {
   return api.isAuthenticated() ? <Outlet /> : <Navigate to="/" replace />;
@@ -28,6 +31,7 @@ function App() {
         }} 
       />
 
+      <Suspense fallback={<Carregando />}>
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/share/:token" element={<SharedView />} />
@@ -40,6 +44,7 @@ function App() {
         
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

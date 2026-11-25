@@ -4,11 +4,8 @@ import os
 import zipfile
 from datetime import datetime, timezone
 
-import pytest
-from fastapi.testclient import TestClient
 
 from app import main, crud, models, backup
-from app.database import SessionLocal
 
 
 def _mapa_com_rack(c, db):

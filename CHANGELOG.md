@@ -23,6 +23,9 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 - **pysnmp 7** replaces pysnmp 4.4, so `pyasn1` can be updated past several known vulnerabilities in the decoding of SNMP responses. `pip-audit` reports no known vulnerabilities in the backend dependencies.
 
 ### Changed
+- The API code (`backend/app/main.py`, 2,200 lines) is split by subject into `app/rotas/` (contas, configuracoes, mapas, rede, prometheus), `app/nucleo.py` and `app/monitoramento.py`; no endpoint changed.
+- Deprecated APIs replaced (`datetime.utcnow`, Pydantic `class Config`/`.dict()`, FastAPI `on_event`, SQLAlchemy `declarative_base` import): test warnings went from 256 to 2.
+- The web UI loads its pages on demand: the first download goes from 690 kB to 265 kB, and the public status page does not load the map editor.
 - The monitor and SNMP metrics thread pools now live for the whole process, so SNMP engines are reused between cycles instead of being recreated every cycle.
 - `python -m app.rotacao_chave` exits with a clear message instead of a traceback when there is no terminal to confirm (use `--sim`).
 - Unverified HTTPS checks (certificate verification turned off for a device) no longer write a warning to the log on every check.

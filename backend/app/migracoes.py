@@ -6,6 +6,7 @@ transação. Antes de aplicar migrações num banco que já tem dados, é feita 
 cópia de segurança em <pasta de dados>/backups/.
 """
 
+from .relogio import utcnow
 import logging
 import os
 import sqlite3
@@ -121,7 +122,7 @@ def aplicar(engine, db_path):
             funcao(conexao)
             conexao.exec_driver_sql(
                 "INSERT INTO schema_versao (versao, descricao, aplicada_em) VALUES (?, ?, ?)",
-                (versao, descricao, datetime.utcnow().isoformat()),
+                (versao, descricao, utcnow().isoformat()),
             )
         logger.info("Migração %s aplicada: %s", versao, descricao)
     return pendentes[-1][0]

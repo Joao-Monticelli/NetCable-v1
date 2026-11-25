@@ -4,9 +4,10 @@ Entries never hold passwords or secrets, only what changed (e.g. "SMTP settings 
 Old entries are removed after AUDIT_RETENTION_DAYS (default 365, 0 keeps them forever).
 """
 
+from .relogio import utcnow
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from . import models
 
@@ -52,7 +53,7 @@ def listar(db, limite=200, usuario=None, acao=None, antes_de=None):
 def limpar(db, dias=AUDIT_RETENTION_DAYS, agora=None):
     if dias <= 0:
         return 0
-    limite = (agora or datetime.utcnow()) - timedelta(days=dias)
+    limite = (agora or utcnow()) - timedelta(days=dias)
     apagados = db.query(models.Auditoria).filter(models.Auditoria.criado_em < limite).delete(synchronize_session=False)
     db.commit()
     return apagados

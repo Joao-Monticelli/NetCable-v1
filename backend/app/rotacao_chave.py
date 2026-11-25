@@ -23,7 +23,6 @@ change the SMTP/SNMP passwords, webhook URLs and tokens stored in NetCable.
 
 import argparse
 import os
-import shutil
 import sqlite3
 import sys
 from datetime import datetime

@@ -1,3 +1,4 @@
+from .relogio import utcnow
 from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone
 from sqlalchemy import func
@@ -177,7 +178,7 @@ def definir_status_token(db: Session, projeto_id: int, token):
 def disponibilidade_diaria(db: Session, equipamento_id: str, dias: int, fuso, agora: datetime = None):
     """[(local date, availability % or None)] for the last `dias` days in the time zone `fuso`, oldest first.
     None means there is no history for that day (before monitoring started or past the retention)."""
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     hoje = agora.replace(tzinfo=timezone.utc).astimezone(fuso).date()
     dias_lista = [hoje - timedelta(days=i) for i in range(dias - 1, -1, -1)]
     para_utc = lambda dia: datetime.combine(dia, time(0), tzinfo=fuso).astimezone(timezone.utc).replace(tzinfo=None)
@@ -217,7 +218,7 @@ def registrar_status(db: Session, equipamento_id: str, status: str, tempo_ms=Non
         models.HistoricoStatus.equipamento_id == equipamento_id
     ).order_by(models.HistoricoStatus.criado_em.desc()).first()
     if ultimo and ultimo.status == status and ultimo.criado_em:
-        if (datetime.utcnow() - ultimo.criado_em).total_seconds() < HISTORICO_HEARTBEAT_SEGUNDOS:
+        if (utcnow() - ultimo.criado_em).total_seconds() < HISTORICO_HEARTBEAT_SEGUNDOS:
             db.commit()  # persiste eventual atualização pendente do status atual
             return ultimo, False, ultimo.status
     mudou = ultimo is not None and ultimo.status != status
@@ -240,7 +241,7 @@ def get_historico(db: Session, projeto_id: int, limite: int = 100):
 
 def get_latencia(db: Session, equipamento_id: str, horas: int = 24, agora: datetime = None):
     """Pontos (horário, status, latência) de um equipamento na janela, em ordem cronológica."""
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     return db.query(models.HistoricoStatus).filter(
         models.HistoricoStatus.equipamento_id == equipamento_id,
         models.HistoricoStatus.criado_em >= agora - timedelta(hours=horas),
@@ -294,7 +295,7 @@ def _monitoravel(eq):
 def calcular_disponibilidade(db: Session, projeto_id: int, horas: int = 24, agora: datetime = None):
     if not get_projeto(db, projeto_id):
         return None
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     inicio = agora - timedelta(hours=horas)
     equipamentos = db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).all()
     resultado = []
@@ -308,7 +309,7 @@ def calcular_disponibilidade(db: Session, projeto_id: int, horas: int = 24, agor
 
 def montar_relatorio(db: Session, horas: int = 24, agora: datetime = None):
     """Dados do relatório periódico: todos os mapas, com disponibilidade e eventos."""
-    agora = agora or datetime.utcnow()
+    agora = agora or utcnow()
     inicio = agora - timedelta(hours=horas)
     mapas = []
     for projeto in get_projetos(db):
@@ -320,7 +321,7 @@ def montar_relatorio(db: Session, horas: int = 24, agora: datetime = None):
 
 def limpar_historico(db: Session, dias: int):
     """Remove registros mais antigos que `dias`. Retorna quantos foram apagados."""
-    limite = datetime.utcnow() - timedelta(days=dias)
+    limite = utcnow() - timedelta(days=dias)
     apagados = db.query(models.HistoricoStatus).filter(models.HistoricoStatus.criado_em < limite).delete(synchronize_session=False)
     apagados += db.query(models.MetricaSnmp).filter(models.MetricaSnmp.criado_em < limite).delete(synchronize_session=False)
     db.commit()
