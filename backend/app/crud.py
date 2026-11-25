@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import datetime, time, timedelta, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from . import models
@@ -156,6 +157,50 @@ def get_projeto_por_token(db: Session, token: str):
     if not token:
         return None
     return db.query(models.Projeto).filter(models.Projeto.share_token == token).first()
+
+
+def get_projeto_por_status_token(db: Session, token: str):
+    if not token:
+        return None
+    return db.query(models.Projeto).filter(models.Projeto.status_token == token).first()
+
+
+def definir_status_token(db: Session, projeto_id: int, token):
+    db_projeto = get_projeto(db, projeto_id)
+    if db_projeto:
+        db_projeto.status_token = token
+        db.commit()
+        db.refresh(db_projeto)
+    return db_projeto
+
+
+def disponibilidade_diaria(db: Session, equipamento_id: str, dias: int, fuso, agora: datetime = None):
+    """[(local date, availability % or None)] for the last `dias` days in the time zone `fuso`, oldest first.
+    None means there is no history for that day (before monitoring started or past the retention)."""
+    agora = agora or datetime.utcnow()
+    hoje = agora.replace(tzinfo=timezone.utc).astimezone(fuso).date()
+    dias_lista = [hoje - timedelta(days=i) for i in range(dias - 1, -1, -1)]
+    para_utc = lambda dia: datetime.combine(dia, time(0), tzinfo=fuso).astimezone(timezone.utc).replace(tzinfo=None)
+    inicio = para_utc(dias_lista[0])
+    HS = models.HistoricoStatus
+    anterior = db.query(HS.status).filter(HS.equipamento_id == equipamento_id, HS.criado_em < inicio).order_by(HS.criado_em.desc()).first()
+    registros = db.query(HS.criado_em, HS.status).filter(HS.equipamento_id == equipamento_id, HS.criado_em >= inicio).order_by(HS.criado_em.asc()).all()
+    pontos = ([(inicio, anterior[0])] if anterior else []) + [(r[0], r[1]) for r in registros]
+    online, total = defaultdict(float), defaultdict(float)
+    for i, (momento, status) in enumerate(pontos):
+        fim = pontos[i + 1][0] if i + 1 < len(pontos) else agora
+        a = momento
+        while a < fim:  # split the interval at local midnights
+            dia = a.replace(tzinfo=timezone.utc).astimezone(fuso).date()
+            b = min(fim, para_utc(dia + timedelta(days=1)))
+            if b <= a:
+                break
+            segundos = (b - a).total_seconds()
+            total[dia] += segundos
+            if status == "online":
+                online[dia] += segundos
+            a = b
+    return [(dia, round(online[dia] / total[dia] * 100, 2) if total[dia] > 0 else None) for dia in dias_lista]
 
 
 def definir_share_token(db: Session, projeto_id: int, token):
@@ -391,6 +436,7 @@ def salvar_mapa(db: Session, projeto_id: int, equipamentos: list, conexoes: list
             monitor_mode=modo,
             monitor_config=eq.get('monitorConfig'),  # já cifrado pelo main.py
             notificar=eq.get('notificar', True) is not False,
+            status_publico=eq.get('statusPublico', True) is not False,
             rack_id=eq.get('rackId'), rack_u=eq.get('rackU'), altura_u=eq.get('alturaU'),
             modelo_id=eq.get('modeloId'), depende_de=eq.get('dependeDe') or None,
             mapa_destino_id=eq.get('mapaDestinoId') or None,
@@ -416,6 +462,7 @@ def deletar_projeto(db: Session, projeto_id: int):
             db.query(models.HistoricoStatus).filter(models.HistoricoStatus.equipamento_id.in_(ids)).delete(synchronize_session=False)
         db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).delete()
         db.query(models.Manutencao).filter(models.Manutencao.projeto_id == projeto_id).delete()
+        db.query(models.Reconhecimento).filter(models.Reconhecimento.projeto_id == projeto_id).delete()
         if ids:
             db.query(models.MetricaSnmp).filter(models.MetricaSnmp.equipamento_id.in_(ids)).delete(synchronize_session=False)
         db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).delete()

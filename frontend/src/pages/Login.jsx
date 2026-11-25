@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Network, Loader2, ShieldCheck } from 'lucide-react'
+import { Network, Loader2, ShieldCheck, Smartphone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { t, useI18n, SeletorIdioma, getIdioma } from '../i18n'
@@ -55,6 +55,8 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [setup, setSetup] = useState(null) // null = verificando; true = primeiro acesso
   const [versao, setVersao] = useState('')
+  const [desafio, setDesafio] = useState(null) // set after a correct password when 2FA is on
+  const [codigo, setCodigo] = useState('')
 
   useEffect(() => { api.statusSetup().then(s => { setSetup(!!s.necessario); setVersao(s.versao || '') }).catch(() => setSetup(false)) }, [])
 
@@ -62,11 +64,30 @@ export default function Login() {
     e.preventDefault()
     setIsLoading(true)
     try {
-      await api.login(username, password)
+      const r = await api.login(username, password)
+      if (r.requer_2fa) { setDesafio(r.desafio); setCodigo(''); return }
       toast.success(t('Bem-vindo ao NetCable!'))
       navigate('/projects')
     } catch (err) {
       toast.error(err.message || t('Falha ao fazer login.'), { duration: 7000 })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCodigo = async (e) => {
+    e.preventDefault()
+    setIsLoading(true)
+    try {
+      const r = await api.login2fa(desafio, codigo.trim())
+      if (r.recuperacao_restantes !== undefined) {
+        toast(t('Código de recuperação usado. Restam {n}. Gere novos em Meu Perfil se estiverem acabando.', { n: r.recuperacao_restantes }), { duration: 9000, icon: '🔑' })
+      }
+      toast.success(t('Bem-vindo ao NetCable!'))
+      navigate('/projects')
+    } catch (err) {
+      toast.error(err.message, { duration: 7000 })
+      if (err.status === 401 || err.status === 429) setDesafio(null) // expired or blocked: back to the password
     } finally {
       setIsLoading(false)
     }
@@ -80,6 +101,25 @@ export default function Login() {
           <div style={{ textAlign: 'center', color: '#94a3b8' }}><Loader2 className="spin" /></div>
         ) : setup ? (
           <PrimeiroAcesso onConcluido={() => navigate('/projects')} />
+        ) : desafio ? (
+          <>
+            <div style={{ textAlign: 'center', marginBottom: '22px' }}>
+              <Smartphone size={44} color="#3b82f6" style={{ margin: '0 auto' }} />
+              <h1 style={{ fontSize: '20px', marginTop: '10px' }}>{t('Verificação em duas etapas')}</h1>
+              <p style={{ color: '#94a3b8', fontSize: '13px', marginTop: '6px', lineHeight: 1.4 }}>
+                {t('Digite o código de 6 dígitos do app autenticador. Sem o celular? Use um código de recuperação.')}
+              </p>
+            </div>
+            <form onSubmit={handleCodigo} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input autoFocus required autoComplete="one-time-code" inputMode="text" maxLength={14} aria-label={t('Código de verificação')}
+                placeholder="123456" value={codigo} onChange={e => setCodigo(e.target.value)}
+                style={{ ...campo, textAlign: 'center', fontSize: '22px', letterSpacing: '4px' }} />
+              <button type="submit" disabled={isLoading} style={botao(isLoading)}>
+                {isLoading ? <Loader2 size={18} className="spin" /> : t('Verificar')}
+              </button>
+              <button type="button" onClick={() => setDesafio(null)} style={{ background: 'transparent', border: 0, color: '#94a3b8', cursor: 'pointer', fontSize: '13px' }}>{t('Voltar')}</button>
+            </form>
+          </>
         ) : (
           <>
             <div style={{ textAlign: 'center', marginBottom: '30px' }}>

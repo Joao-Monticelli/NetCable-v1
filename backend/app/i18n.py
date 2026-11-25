@@ -119,6 +119,28 @@ EN = {
     # Telegram
     "🔴 Equipamento OFFLINE": "🔴 Device OFFLINE",
     "🟢 Equipamento voltou ONLINE": "🟢 Device back ONLINE",
+    # --- 2FA, acknowledgements, reminders, scheduled maintenance, status page
+    "A verificação em duas etapas já está ativa.": "Two-factor authentication is already on.",
+    "A verificação em duas etapas não está ativa.": "Two-factor authentication is not on.",
+    "Cada janela semanal deve durar de 5 minutos a 24 horas.": "Each weekly window must last from 5 minutes to 24 hours.",
+    "Comece a configuração de novo.": "Start the setup again.",
+    "Código de verificação incorreto.": "Wrong verification code.",
+    "Código incorreto. Confira o horário do celular e tente o código atual.": "Wrong code. Check your phone's clock and try the current code.",
+    "Escolha pelo menos um dia da semana.": "Pick at least one day of the week.",
+    "Manutenção não encontrada.": "Maintenance not found.",
+    "O início deve ser no futuro (até 1 ano).": "The start must be in the future (up to 1 year).",
+    "O lembrete deve ser de 5 a 1440 minutos (0 desliga).": "The reminder must be 5 to 1440 minutes (0 turns it off).",
+    "O login expirou. Digite a senha de novo.": "The login expired. Enter your password again.",
+    "Página de status inválida ou desativada": "Invalid or disabled status page",
+    "RECONHECIDO": "ACKNOWLEDGED",
+    "Só dá para reconhecer o alerta de um equipamento offline.": "Only the alert of an offline device can be acknowledged.",
+    "{n} alerta(s) reconhecido(s)": "{n} alert(s) acknowledged",
+    "{n} dias": "{n} days",
+    "⏰ Ainda offline há {duracao} e ninguém reconheceu o alerta": "⏰ Still offline for {duracao} and nobody acknowledged the alert",
+    "⏰ Equipamento ainda OFFLINE": "⏰ Device still OFFLINE",
+    "👀 Alerta reconhecido": "👀 Alert acknowledged",
+    "👀 Reconhecido por {usuario}": "👀 Acknowledged by {usuario}",
+    "👀 {usuario} reconheceu o alerta e está cuidando": "👀 {usuario} acknowledged the alert and is on it",
 }
 
 # Mensagens com partes variáveis: (padrão em português, modelo em inglês).

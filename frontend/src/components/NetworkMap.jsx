@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, memo, useRef, useMemo } from 'react'
 import ReactFlow, {
   Controls, Background, applyNodeChanges, applyEdgeChanges, addEdge, MarkerType, Handle, Position, NodeResizer, reconnectEdge, SmoothStepEdge, useReactFlow, ReactFlowProvider
 } from 'reactflow'
-import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Printer, Cctv, RadioTower, CircleHelp, Thermometer, Cpu, Map as IconeMapa, CheckCircle2, XCircle, ExternalLink, Lock, Globe } from 'lucide-react'
+import { Server, Wifi, Shield, Monitor, Activity, BellOff, Wrench, Eye, Printer, Cctv, RadioTower, CircleHelp, Thermometer, Cpu, Map as IconeMapa, CheckCircle2, XCircle, ExternalLink, Lock, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { classeStatus, dadosDeAlerta, calcularUplinks, TIPO_ATALHO } from '../utils/mapa'
 import EquipmentModal from './Modals/EquipmentModal'
@@ -74,6 +74,11 @@ const CustomNode = memo(({ data, selected }) => {
       
       <div className={`status-dot status-${classeStatus(data)}`}
         title={data.inalcancavelPor ? t('Inalcançável: {nome} (uplink) está offline', { nome: data.inalcancavelNome }) : undefined} />
+      {data.reconhecido && data.status === 'offline' && (
+        <span className="node-reconhecido" title={t('{usuario} está cuidando desde {hora}', { usuario: data.reconhecido.usuario, hora: new Date(data.reconhecido.em).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }) + (data.reconhecido.nota ? `: ${data.reconhecido.nota}` : '')}>
+          <Eye size={12} />
+        </span>
+      )}
       {data.manutencaoAte ? (
         <span className="node-sem-alerta node-manutencao" title={t('Em manutenção até {hora} (alertas silenciados)', { hora: new Date(data.manutencaoAte).toLocaleString() })}><Wrench size={12} /></span>
       ) : data.notificar === false && data.status !== 'visual' && (
@@ -265,6 +270,7 @@ function NetworkMapContent({ initialNodes = [], initialEdges = [], newEquipment 
             if (atual.status === node.data.status && atual.ping_time === node.data.pingTime &&
                 alerta.inalcancavelPor === (node.data.inalcancavelPor || null) && alerta.manutencaoAte === (node.data.manutencaoAte || null) &&
                 alerta.snmp?.coletado_em === node.data.snmp?.coletado_em &&
+                JSON.stringify(alerta.reconhecido) === JSON.stringify(node.data.reconhecido || null) &&
                 JSON.stringify(alerta.http) === JSON.stringify(node.data.http || null) &&
                 JSON.stringify(alerta.resumoMapa) === JSON.stringify(node.data.resumoMapa || null)) return node
             mudou = true

@@ -40,7 +40,7 @@ def exportar_projeto(db, projeto, abrir_config, versao_app="dev"):
         equipamentos.append({
             "id": eq.id, "nome": eq.nome, "ip": eq.ip, "tipo": eq.tipo,
             "pos_x": eq.pos_x, "pos_y": eq.pos_y, "width": eq.width, "height": eq.height,
-            "monitor_mode": eq.monitor_mode or "ip", "snmp": snmp, "notificar": eq.notificar,
+            "monitor_mode": eq.monitor_mode or "ip", "snmp": snmp, "notificar": eq.notificar, "status_publico": eq.status_publico,
             "rack_id": eq.rack_id, "rack_u": eq.rack_u, "altura_u": eq.altura_u,
             "modelo": modelo.nome if modelo else None, "depende_de": eq.depende_de,
             "mapa_destino": nomes_projetos.get(eq.mapa_destino_id),
@@ -138,6 +138,7 @@ def _preencher_projeto(db, projeto, dados, novo_id, sufixo, ids_modelo, modelos_
             "monitorMode": eq.get("monitor_mode") or "ip",
             "monitorConfig": proteger_config(eq["snmp"]) if eq.get("snmp") else None,
             "notificar": eq.get("notificar", True) is not False,
+            "statusPublico": eq.get("status_publico", True) is not False,
             "rackId": novo_id.get(eq.get("rack_id")) if eq.get("rack_id") else None,
             "rackU": eq.get("rack_u"), "alturaU": eq.get("altura_u"),
             "modeloId": ids_modelo.get(eq.get("modelo")),

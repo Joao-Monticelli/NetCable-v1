@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge, ExternalLink, Globe, Lock } from 'lucide-react'
+import { X, Trash2, Save, Minimize, Bell, BellOff, Server, GitBranch, Wrench, Wand2, Gauge, ExternalLink, Globe, Lock, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { TIPOS, TAMANHOS_RACK, ALTURAS_EQUIP, alturaPadrao, cabe, primeiraPosicaoLivre, ocupados } from '../rack/rackUtils'
@@ -104,6 +104,36 @@ export default function EquipmentModal({ node, nodes = [], modelos = [], onClose
 
 const DURACOES = [[1, '1 h'], [4, '4 h'], [8, '8 h'], [24, '24 h']]
 
+// Offline device: "I'm on it" (stops reminders and tells the team who is handling it).
+function Reconhecimento({ node, projectId }) {
+  const [rec, setRec] = useState(node.data.reconhecido || null)
+  const [nota, setNota] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  if (!projectId || projectId === 'novo' || node.data.status !== 'offline') return null
+  const reconhecer = async () => {
+    setEnviando(true)
+    try { setRec(await api.reconhecerAlerta(projectId, node.id, nota.trim() || null)); toast.success(t('Alerta reconhecido: a equipe foi avisada.')) }
+    catch (err) { toast.error(err.message) } finally { setEnviando(false) }
+  }
+  const desfazer = async () => {
+    setEnviando(true)
+    try { await api.desfazerReconhecimento(projectId, node.id); setRec(null) } catch (err) { toast.error(err.message) } finally { setEnviando(false) }
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#cbd5e1', flexWrap: 'wrap', padding: '8px 10px', background: '#172554', border: '1px solid #1e40af', borderRadius: '6px' }}>
+      <Eye size={14} color="#60a5fa" />
+      {rec ? <>
+        <span>{t('{usuario} está cuidando desde {hora}', { usuario: rec.usuario, hora: new Date(rec.em).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}{rec.nota ? `: ${rec.nota}` : ''}</span>
+        <button type="button" onClick={desfazer} disabled={enviando} style={{ ...botaoPequeno, background: '#334155', marginLeft: 'auto' }}>{t('Desfazer')}</button>
+      </> : <>
+        <input aria-label={t('Nota (opcional)')} value={nota} maxLength={200} onChange={e => setNota(e.target.value)} placeholder={t('Nota (opcional), ex.: indo ao rack')}
+          style={{ ...campo, marginTop: 0, flex: 1, minWidth: '140px', padding: '5px 8px' }} />
+        <button type="button" onClick={reconhecer} disabled={enviando} title={t('Avisa a equipe que você está cuidando e para os lembretes deste equipamento')} style={{ ...botaoPequeno, background: '#2563eb' }}>{t('Estou vendo')}</button>
+      </>}
+    </div>
+  )
+}
+
 // Silenciar alertas deste equipamento por um tempo (o monitoramento continua).
 function Manutencao({ node, projectId }) {
   const [ate, setAte] = useState(node.data.manutencaoAte || null)
@@ -192,6 +222,7 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
   const [tipo, setTipo] = useState(node.data.tipo || 'Roteador')
   const [monitorMode, setMonitorMode] = useState(node.data.monitorMode === 'visual' ? 'ip' : (node.data.monitorMode || 'ip'))
   const [notificar, setNotificar] = useState(node.data.notificar !== false)
+  const [statusPublico, setStatusPublico] = useState(node.data.statusPublico !== false)
   const [snmpConfig, setSnmpConfig] = useState({ username: '', authProtocol: 'SHA', authPassword: '', privProtocol: 'AES', privPassword: '', port: 161, ...(node.data.monitorMode === 'snmpv3' ? node.data.snmpConfig || {} : {}) })
   const [httpConfig, setHttpConfig] = useState({ url: '', status: '', texto: '', verificarTls: true, diasCert: 14, ...(node.data.monitorMode === 'http' ? node.data.snmpConfig || {} : {}) })
   const [dependeDe, setDependeDe] = useState(node.data.dependeDe || '')
@@ -235,7 +266,7 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
   const handleSave = () => {
     const ipFinal = semIp ? 'Sem IP' : ip.trim()
     const dados = {
-      label: nome, ip: ipFinal, tipo, notificar, modeloId: modelo ? modelo.id : null, dependeDe: dependeDe || null,
+      label: nome, ip: ipFinal, tipo, notificar, statusPublico, modeloId: modelo ? modelo.id : null, dependeDe: dependeDe || null,
       monitorMode: semIp ? 'visual' : monitorMode,
       snmpConfig: semIp ? null : monitorMode === 'snmpv3' ? snmpConfig : monitorMode === 'http' ? configHttpLimpa(httpConfig) : null,
       rackId: rack ? rack.id : null, rackU: rack ? Number(rackU) : null, alturaU: rack ? Number(alturaU) : null,
@@ -295,6 +326,10 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
           <input type="checkbox" checked={notificar} onChange={(e) => setNotificar(e.target.checked)} />
           {notificar ? <Bell size={15} color="#f59e0b" /> : <BellOff size={15} color="#64748b" />} {t('Notificar quando cair ou voltar')}
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#cbd5e1', cursor: 'pointer' }} title={t('Aparece com o nome, o status e a disponibilidade (sem IP) na página de status pública do mapa, se ela estiver ativa.')}>
+          <input type="checkbox" checked={statusPublico} onChange={(e) => setStatusPublico(e.target.checked)} />
+          <Gauge size={15} color={statusPublico ? '#10b981' : '#64748b'} /> {t('Mostrar na página de status')}
+        </label>
       </>}
 
       <div style={caixa}>
@@ -310,6 +345,7 @@ function EquipamentoModal({ node, nodes, modelos, onClose, onUpdate, onDelete, p
             <Wand2 size={13} /> {t('Usar como raiz e calcular uplinks pelos cabos')}
           </button>
         )}
+        {!semIp && <Reconhecimento node={node} projectId={projectId} />}
         {!semIp && <Manutencao node={node} projectId={projectId} />}
       </div>
 

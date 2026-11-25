@@ -3,6 +3,7 @@ import { X, Save, User, Key, Mail, Bell, FileText, Send, Loader2 } from 'lucide-
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { t, useI18n } from '../../i18n'
+import DoisFatores from '../DoisFatores'
 
 const PAPEL_ROTULO = { admin: 'Administrador', editor: 'Editor', visualizador: 'Visualizador' }
 const input = { width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white' }
@@ -116,6 +117,9 @@ export default function SettingsModal({ onClose, currentUser, onUpdated }) {
             <Save size={18} /> {isSaving ? t('Salvando...') : t('Salvar Alterações')}
           </button>
         </form>
+
+        <div style={{ height: '1px', backgroundColor: '#334155', margin: '20px 0 15px' }}></div>
+        <DoisFatores currentUser={currentUser} onUpdated={onUpdated} />
       </div>
     </div>
   )

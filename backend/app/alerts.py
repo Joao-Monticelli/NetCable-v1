@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 import requests
 
 from . import email_service
-from .email_service import texto_dependentes
+from .email_service import texto_dependentes, texto_extra, partes_resumo
 from .i18n import traduzir as tr, normalizar
 
 logger = logging.getLogger("netcable.alerts")
@@ -65,6 +65,14 @@ def montar_evento(equipamento, projeto_nome, status, status_anterior, tempo_ms=N
     }
 
 
+def montar_evento_reconhecido(equipamento, projeto_nome, usuario, nota=None):
+    return {
+        "evento": "equipamento_reconhecido", "equipamento_id": equipamento.id, "projeto_id": equipamento.projeto_id,
+        "projeto": projeto_nome, "equipamento": equipamento.nome, "ip": equipamento.ip, "status": "reconhecido",
+        "reconhecido_por": usuario, "nota": nota, "horario": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def montar_evento_metrica(equipamento, projeto_nome, metrica, valor, limite, situacao):
     """Temperatura/CPU acima do limite (situacao="alerta") ou de volta ao normal ("normal")."""
     return {
@@ -96,32 +104,26 @@ def formatar_mensagem(evento, idioma="pt"):
         if evento.get("projeto"):
             linhas.append(f"{tr('Mapa', idioma)}: {evento['projeto']}")
         return "\n".join(linhas)
-    titulo = tr("🔴 Equipamento OFFLINE" if evento["status"] == "offline" else "🟢 Equipamento voltou ONLINE", idioma)
+    if evento["status"] == "reconhecido":
+        titulo = tr("👀 Alerta reconhecido", idioma)
+    elif evento.get("lembrete"):
+        titulo = tr("⏰ Equipamento ainda OFFLINE", idioma)
+    else:
+        titulo = tr("🔴 Equipamento OFFLINE" if evento["status"] == "offline" else "🟢 Equipamento voltou ONLINE", idioma)
     linhas = [titulo, f"{evento['equipamento']} ({evento['ip']})"]
     if evento.get("projeto"):
         linhas.append(f"{tr('Mapa', idioma)}: {evento['projeto']}")
     if evento["status"] == "online" and evento.get("tempo_ms") is not None:
         linhas.append(f"{tr('Latência', idioma)}: {evento['tempo_ms']} ms")
+    if texto_extra(evento, idioma):
+        linhas.append(texto_extra(evento, idioma))
     if evento.get("dependentes"):
         linhas.append(texto_dependentes(evento, idioma))
     return "\n".join(linhas)
 
 
 def _titulo_resumo(eventos, idioma):
-    quedas = sum(1 for e in eventos if e["status"] == "offline")
-    certificados = sum(1 for e in eventos if e.get("metrica") == "certificado")
-    metricas = sum(1 for e in eventos if e.get("metrica")) - certificados
-    voltas = len(eventos) - quedas - metricas - certificados
-    partes = []
-    if certificados:
-        partes.append(tr("{n} alerta(s) de certificado", idioma, n=certificados))
-    if metricas:
-        partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
-    if quedas:
-        partes.append(tr("{n} equipamento(s) offline", idioma, n=quedas))
-    if voltas:
-        partes.append(tr("{n} recuperado(s)", idioma, n=voltas))
-    return "NetCable: " + ", ".join(partes)
+    return "NetCable: " + ", ".join(partes_resumo(eventos, idioma))
 
 
 # --------------------------------------------------------------------------- canais

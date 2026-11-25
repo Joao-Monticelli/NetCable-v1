@@ -27,13 +27,16 @@ Roda em **um único container Docker** em qualquer lugar: mini PC, VM, NAS, Rasp
 - 📡 **Monitoramento no servidor** — TCP (80/443/22) + ICMP em paralelo, SNMPv3 ou HTTP(S); funciona sem navegador aberto.
 - 🔒 **Monitor HTTP(S) e de certificado** — verifica um site, API ou painel web (código de resposta, tempo, texto na página) e avisa antes de o certificado TLS vencer.
 - 🚨 **Alertas** — e-mail, Discord, ntfy, Telegram e webhook na queda e na volta, agrupados, com liga/desliga por equipamento.
-- 🧠 **Alertas inteligentes** — defina o uplink de cada equipamento (ou calcule pelos cabos): quando um switch cai chega **um** alerta com a lista do que está atrás dele, e esses equipamentos ficam âmbar (*inalcançáveis*) no mapa. **Janelas de manutenção** silenciam um equipamento ou o mapa inteiro por um tempo.
+- 🧠 **Alertas inteligentes** — defina o uplink de cada equipamento (ou calcule pelos cabos): quando um switch cai chega **um** alerta com a lista do que está atrás dele, e esses equipamentos ficam âmbar (*inalcançáveis*) no mapa. **Janelas de manutenção** silenciam um equipamento ou o mapa inteiro agora, num horário agendado ou toda semana.
+- 👀 **Reconhecer alerta** — clique em *Estou vendo* num equipamento caído: a equipe fica sabendo quem está cuidando, e os lembretes opcionais ("ainda offline há 1 h") param.
 - 🌡️ **Métricas SNMP** — CPU, memória, temperatura, uptime e link/tráfego por porta dos equipamentos em SNMPv3, com gráficos, LEDs reais das portas no rack e alertas de temperatura/CPU.
 - 📊 **Disponibilidade e latência** — uptime %, quedas, gráfico de latência (24 h / 7 d / 30 d), relatório diário por e-mail e **relatório de SLA em CSV** (7 / 30 / 90 dias).
 - 📈 **`/metrics` para Prometheus** — status, latência, métricas SNMP e validade dos certificados para o Grafana.
 - 🕵️ **Log de auditoria** — quem entrou, mexeu em usuários, salvou ou excluiu mapas, compartilhou links ou alterou configurações, e quando.
 - 👥 **Equipe com papéis** — Administrador, Editor e Visualizador (ótimo para a TV do NOC).
+- 🔐 **Verificação em duas etapas** — código de 6 dígitos de um app autenticador (opcional), com códigos de recuperação de uso único.
 - 📺 **Link público e modo TV** — somente leitura, atualização automática, tela cheia e link revogável.
+- 🟢 **Página de status pública** — uma página simples para clientes ou para a equipe: status de cada serviço e barras de disponibilidade de 90 dias, além das manutenções programadas. Sem IPs nem o desenho da rede.
 - 💾 **Backups** — `.zip` diário (todos os mapas + catálogo de modelos + banco completo) numa pasta à sua escolha; exportar/importar mapas em JSON.
 - 🌐 **English / Português** — por usuário; vale também para e-mails e mensagens de erro.
 
@@ -122,6 +125,14 @@ e as portas pela IF-MIB (nome, descrição, link, velocidade, tráfego em contad
   (*"Switch core OFFLINE — 12 equipamentos atrás dele inalcançáveis: …"*). Na volta, um único alerta de recuperação também os lista.
 - **Manutenção:** o 🔧 na barra silencia o mapa inteiro por 1–24 h; dentro de um equipamento dá para silenciar só ele.
   O monitoramento e o histórico continuam; quem caiu durante a manutenção não manda "voltou" depois.
+- **Agenda de manutenção:** 🔧 → **Agendar / agenda…** marca uma janela para depois (ex.: sábado 22:00 → 02:00) ou **toda semana**
+  (ex.: todo domingo às 02:00 por 2 h, no fuso do sistema), para o mapa inteiro ou um equipamento. *Encerrar manutenção* durante
+  uma janela semanal pula só aquela ocorrência.
+- **Reconhecer (*Estou vendo*):** abra um equipamento offline e clique em **Estou vendo** (com uma nota, se quiser). Os canais recebem
+  *"👀 ana reconheceu o alerta e está cuidando"*, o mapa mostra 👁 no equipamento e o reconhecimento some sozinho quando ele volta
+  (o alerta de recuperação diz quem estava cuidando).
+- **Lembretes:** ⚙️ → **Canais de alerta** → *Lembrete de equipamento que continua offline* repete o alerta a cada 15 min … 4 h enquanto
+  o equipamento continua fora e ninguém reconheceu (desligado por padrão). Manutenção e uplink valem também para os lembretes.
 - **Canais:** ⚙️ → **Canais de alerta** (admin) para Discord, ntfy (notificação no celular), Telegram e webhook JSON, cada um com botão *Testar*. Tokens e URLs ficam cifrados.
   Também dá para usar variáveis de ambiente (`DISCORD_WEBHOOK_URL`, `NTFY_URL`, `NTFY_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ALERT_WEBHOOK_URL`); o que for definido na interface tem prioridade.
 
@@ -150,6 +161,25 @@ O mapa mostra os dias restantes (🔒 `12d`, âmbar com 14 dias ou menos, vermel
 - **Prometheus:** defina `METRICS_TOKEN` e colete `/metrics` com `authorization: { credentials: "seu-token" }`
   (ou `METRICS_PUBLIC=true` para liberar sem token numa rede confiável). Séries e exemplo no [README em inglês](README.md#sla-report-audit-log-and-prometheus).
   O log de auditoria fica guardado por `AUDIT_RETENTION_DAYS` (padrão 365) dias.
+
+## Verificação em duas etapas
+
+Cada usuário ativa em **Meu perfil** → *Verificação em duas etapas*: leia o QR code com qualquer app autenticador
+(Google Authenticator, Microsoft Authenticator, Authy, 1Password…), digite o código de 6 dígitos e guarde os 10 códigos de recuperação.
+A partir daí o login pede o código depois da senha. Códigos errados contam para o mesmo bloqueio das senhas erradas.
+
+- Perdeu o celular? Entre com um código de recuperação (cada um vale uma vez) e gere novos no perfil.
+- Um admin pode remover o 2FA de alguém em ⚙️ → **Usuários** (botão do escudo). Se o único admin ficou trancado para fora:
+  `docker compose exec netcable python -m app.redefinir_2fa <usuario>`.
+- O segredo fica cifrado com a chave secreta (e é cifrado de novo pelo comando de troca de chave).
+
+## Página de status pública
+
+⚙️ → **Página de status pública** → *Ativar* cria um endereço como `http://servidor:8080/status/<token>`, separado do link público
+do mapa. Para cada equipamento marcado em **Mostrar na página de status** (ligado por padrão), mostra o nome, o status atual
+(operacional / fora do ar / em manutenção) e uma barra por dia com a disponibilidade dos últimos 90 dias, além das manutenções em
+andamento ou programadas para os próximos 14 dias (com o motivo). **Não mostra IPs, ids nem o desenho da rede**, atualiza a cada
+minuto e pode ganhar um novo endereço ou ser desativada a qualquer momento. Dias além do `HISTORY_RETENTION_DAYS` aparecem como *sem dados*.
 
 ## Trocar a chave secreta
 

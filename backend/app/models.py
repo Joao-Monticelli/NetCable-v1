@@ -21,6 +21,12 @@ class Usuario(Base):
     relatorio_horario = Column(String, default="08:00", nullable=False)  # HH:MM no fuso do sistema
     ultimo_relatorio = Column(String, nullable=True)  # data (AAAA-MM-DD) do último relatório enviado
     idioma = Column(String, default="en", nullable=False)  # idioma da interface/e-mails: en ou pt
+    # Two-factor authentication (app/totp.py). The secret is Fernet-encrypted; it is set while
+    # enrolling (totp_ativo still False) and only enforced after the first valid code.
+    totp_segredo = Column(String, nullable=True)
+    totp_ativo = Column(Boolean, default=False, nullable=False)
+    totp_ultimo_passo = Column(Integer, nullable=True)  # last accepted time step (no code reuse)
+    totp_recuperacao = Column(String, nullable=True)    # JSON list of SHA-256 hashes of recovery codes
     projetos = relationship("Projeto", back_populates="usuario")
 
 
@@ -31,6 +37,8 @@ class Projeto(Base):
     user_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)  # quem criou
     # Token aleatório do link público; None = compartilhamento desativado.
     share_token = Column(String, nullable=True, unique=True, index=True)
+    # Token of the public status page (separate from the map link: shows no IPs or topology).
+    status_token = Column(String, nullable=True, unique=True, index=True)
     usuario = relationship("Usuario", back_populates="projetos")
     equipamentos = relationship("Equipamento", back_populates="projeto")
 
@@ -65,16 +73,24 @@ class Equipamento(Base):
     depende_de = Column(String, nullable=True)
     # Atalho para outro mapa (tipo "Atalho de mapa"): mostra o resumo do mapa de destino e abre ele ao clicar.
     mapa_destino_id = Column(Integer, nullable=True)
+    # Listed on the public status page of the map.
+    status_publico = Column(Boolean, default=True, nullable=False)
     projeto = relationship("Projeto", back_populates="equipamentos")
 
 
 class Manutencao(Base):
-    """Janela de manutenção: silencia alertas de um equipamento (ou do projeto inteiro) até `ate` (UTC)."""
+    """Janela de manutenção: silencia alertas de um equipamento (ou do projeto inteiro).
+    - imediata: `inicio` vazio, vale até `ate` (UTC);
+    - agendada: de `inicio` até `ate` (UTC);
+    - recorrente: `recorrencia` = JSON {"dias": [0-6, segunda=0], "hora": "HH:MM", "minutos": N} no fuso
+      do sistema; `ate` é até quando a regra vale."""
     __tablename__ = "manutencoes"
     id = Column(Integer, primary_key=True, index=True)
     projeto_id = Column(Integer, ForeignKey("projetos.id"), index=True, nullable=False)
     equipamento_id = Column(String, nullable=True, index=True)  # None = projeto inteiro
     ate = Column(DateTime, nullable=False, index=True)
+    inicio = Column(DateTime, nullable=True)
+    recorrencia = Column(String, nullable=True)
     motivo = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     criado_em = Column(DateTime, default=datetime.utcnow)
@@ -124,6 +140,17 @@ class ModeloEquipamento(Base):
     portas_rj45 = Column(Integer, default=0, nullable=False)
     portas_sfp = Column(Integer, default=0, nullable=False)
     prefixo_porta = Column(String, default="", nullable=False)  # ex.: "eth" -> eth1, eth2...
+
+
+class Reconhecimento(Base):
+    """Someone acknowledged an offline device ("I'm on it"). Kept apart from `equipamentos`
+    (rewritten on every map save); removed when the device comes back online."""
+    __tablename__ = "reconhecimentos"
+    equipamento_id = Column(String, primary_key=True)
+    projeto_id = Column(Integer, index=True, nullable=False)
+    usuario = Column(String, nullable=False)
+    nota = Column(String, nullable=True)
+    criado_em = Column(DateTime, default=datetime.utcnow)
 
 
 class Auditoria(Base):

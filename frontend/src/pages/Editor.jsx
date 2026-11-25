@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug, Radar } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug, Radar, Gauge } from 'lucide-react'
+import PaginaStatusModal from '../components/Modals/PaginaStatusModal'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
@@ -21,7 +22,7 @@ const tituloPagina = () => t('NetCable - Mapeador de Rede')
 // Assinatura do que é salvo no mapa (sem status/latência, que mudam sozinhos).
 const assinaturaMapa = (nodes, edges) => JSON.stringify([
   nodes.map(n => [n.id, Math.round(n.position.x), Math.round(n.position.y), n.style?.width, n.style?.height,
-    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null, n.data.notificar !== false,
+    n.data.label, n.data.ip, n.data.tipo, n.data.monitorMode, n.data.snmpConfig || null, n.data.notificar !== false, n.data.statusPublico !== false,
     n.parentNode || null, n.data.rackU || null, n.data.alturaU || null, n.data.us || null]),
   edges.map(e => [e.id, e.source, e.target, e.label || null, e.sourceHandle || null, e.targetHandle || null]),
 ])
@@ -58,6 +59,7 @@ export default function Editor() {
   const [foco, setFoco] = useState(null)
   const [manutencaoAte, setManutencaoAte] = useState(null)
   const [descobertaAberta, setDescobertaAberta] = useState(false)
+  const [paginaStatusAberta, setPaginaStatusAberta] = useState(false)
   const handleStatusProjeto = useCallback((s) => setManutencaoAte(s.manutencao_ate || null), [])
   // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
   const somenteLeitura = currentUser?.papel === 'visualizador'
@@ -327,7 +329,8 @@ export default function Editor() {
             </span>
           )}
           <BuscaEquipamento itens={itensBusca} onEscolher={(id) => setFoco({ id, n: Date.now() })} />
-          <ManutencaoProjeto projectId={projectId} ate={manutencaoAte} podeEditar={!somenteLeitura} onMudou={setManutencaoAte} />
+          <ManutencaoProjeto projectId={projectId} ate={manutencaoAte} podeEditar={!somenteLeitura} onMudou={setManutencaoAte}
+            equipamentos={itensBusca.filter(i => i.ip && i.ip !== 'Sem IP' && i.tipo !== 'Rack')} />
 
           <button onClick={alternarCabos} title={mostrarCabos ? t('Ocultar cabos entre portas') : t('Mostrar cabos entre portas')} aria-pressed={!mostrarCabos}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: mostrarCabos ? '#334155' : '#7c2d12', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
@@ -375,6 +378,9 @@ export default function Editor() {
                 <button onClick={() => { setShowConfigMenu(false); setIsHistoryModalOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Activity size={16} color="#f59e0b"/> {t('Histórico')}
                 </button>
+                {projectId !== 'novo' && <button onClick={() => { setShowConfigMenu(false); setPaginaStatusAberta(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Gauge size={16} color="#10b981"/> {t('Página de status pública')}
+                </button>}
                 {!somenteLeitura && <>
                 <button onClick={() => handleCopyLink(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
                   <Share2 size={16} color="#3b82f6"/> {t('Copiar Link Público')}
@@ -400,6 +406,7 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
+        {paginaStatusAberta && <PaginaStatusModal projectId={projectId} podeEditar={!somenteLeitura} onClose={() => setPaginaStatusAberta(false)} />}
         {descobertaAberta && <DescobertaModal nodes={currentNodes.current} onClose={() => setDescobertaAberta(false)} onAdicionar={handleAdicionarDescobertos} />}
         <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} onStatusProjeto={handleStatusProjeto} onAbrirMapa={abrirOutroMapa} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>

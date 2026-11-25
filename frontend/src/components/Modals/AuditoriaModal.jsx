@@ -11,6 +11,11 @@ export const ACOES = {
   'login.falhou': 'Login falhou',
   'login.bloqueado': 'Login bloqueado (muitas tentativas)',
   'login.desativado': 'Login de usuário desativado',
+  'login.2fa_falhou': 'Código de verificação errado',
+  '2fa.ativado': 'Ativou a verificação em duas etapas',
+  '2fa.desativado': 'Desativou a verificação em duas etapas',
+  '2fa.recuperacao_gerada': 'Gerou novos códigos de recuperação',
+  '2fa.removido_cli': 'Verificação em duas etapas removida pelo servidor',
   'perfil.senha_alterada': 'Trocou a própria senha',
   'usuario.criado': 'Usuário criado',
   'usuario.alterado': 'Usuário alterado',
@@ -23,8 +28,15 @@ export const ACOES = {
   'link.criado': 'Link público criado',
   'link.regenerado': 'Link público gerado de novo',
   'link.revogado': 'Link público revogado',
+  'status.criado': 'Página de status ativada',
+  'status.regenerado': 'Novo endereço da página de status',
+  'status.revogado': 'Página de status desativada',
   'manutencao.iniciada': 'Manutenção iniciada',
   'manutencao.encerrada': 'Manutenção encerrada',
+  'manutencao.agendada': 'Manutenção agendada',
+  'manutencao.removida': 'Manutenção removida da agenda',
+  'alerta.reconhecido': 'Alerta reconhecido',
+  'alerta.reconhecimento_removido': 'Reconhecimento desfeito',
   'config.email': 'E-mail (SMTP) alterado',
   'config.alertas': 'Canais de alerta alterados',
   'config.backup': 'Configuração de backup alterada',
@@ -33,8 +45,8 @@ export const ACOES = {
   'backup.baixado': 'Backup baixado',
 }
 
-const FILTROS = [['', 'Tudo'], ['login', 'Logins'], ['usuario', 'Usuários'], ['mapa', 'Mapas'], ['link', 'Links públicos'], ['manutencao', 'Manutenção'], ['config', 'Configurações'], ['backup', 'Backups']]
-const corAcao = (acao) => acao === 'login.falhou' || acao === 'login.bloqueado' || acao.endsWith('excluido') || acao === 'link.revogado' ? '#f87171'
+const FILTROS = [['', 'Tudo'], ['login', 'Logins'], ['usuario', 'Usuários'], ['mapa', 'Mapas'], ['link', 'Links públicos'], ['status', 'Página de status'], ['manutencao', 'Manutenção'], ['alerta', 'Alertas reconhecidos'], ['2fa', 'Verificação em duas etapas'], ['config', 'Configurações'], ['backup', 'Backups']]
+const corAcao = (acao) => acao === 'login.falhou' || acao === 'login.bloqueado' || acao === 'login.2fa_falhou' || acao === '2fa.desativado' || acao.endsWith('excluido') || acao === 'link.revogado' ? '#f87171'
   : acao.startsWith('config') || acao.startsWith('usuario') ? '#fbbf24' : '#cbd5e1'
 const th = { padding: '8px', fontWeight: 'normal' }
 const td = { padding: '7px 8px', verticalAlign: 'top' }

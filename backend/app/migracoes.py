@@ -20,6 +20,8 @@ def _colunas(conexao, tabela):
 
 def _adicionar(conexao, tabela, colunas):
     existentes = _colunas(conexao, tabela)
+    if not existentes:
+        return  # table not created yet: create_all creates it with every column
     for coluna, ddl in colunas:
         if coluna not in existentes:
             conexao.exec_driver_sql(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {ddl}")
@@ -55,10 +57,24 @@ def _m3(conexao):
     _adicionar(conexao, "equipamentos", [("mapa_destino_id", "INTEGER")])
 
 
+def _m4(conexao):
+    """2FA, manutenção agendada/recorrente e página de status pública."""
+    _adicionar(conexao, "usuarios", [
+        ("totp_segredo", "VARCHAR"), ("totp_ativo", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("totp_ultimo_passo", "INTEGER"), ("totp_recuperacao", "VARCHAR"),
+    ])
+    _adicionar(conexao, "manutencoes", [("inicio", "DATETIME"), ("recorrencia", "VARCHAR")])
+    _adicionar(conexao, "equipamentos", [("status_publico", "BOOLEAN NOT NULL DEFAULT 1")])
+    if "status_token" not in _colunas(conexao, "projetos"):
+        _adicionar(conexao, "projetos", [("status_token", "VARCHAR")])
+        conexao.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ix_projetos_status_token ON projetos (status_token)")
+
+
 MIGRACOES = [
     (1, "colunas de versões anteriores ao sistema de migrações", _m1),
     (2, "uplink dos equipamentos (alertas por dependência)", _m2),
     (3, "atalhos entre mapas", _m3),
+    (4, "2FA, manutenção agendada e página de status", _m4),
 ]
 
 

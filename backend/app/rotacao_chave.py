@@ -43,6 +43,8 @@ def recifrar(conexao, chaves_antigas, chave_nova):
     for tabela, col_chave, col_valor in COLUNAS_CIFRADAS:
         if tabela not in tabelas:
             continue
+        if col_valor not in {c[1] for c in conexao.execute(f"PRAGMA table_info({tabela})")}:
+            continue  # database from a version without this column
         linhas = conexao.execute(f"SELECT {col_chave}, {col_valor} FROM {tabela} WHERE {col_valor} IS NOT NULL").fetchall()
         for ident, valor in linhas:
             if not isinstance(valor, str) or not valor.startswith("gAAAA"):

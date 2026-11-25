@@ -4,15 +4,26 @@
    (ex.: o switch onde está ligado). Se o uplink está offline, o equipamento fica
    "inalcançável": não gera alerta próprio e aparece listado no alerta do uplink.
 2. Janelas de manutenção: silenciam os alertas de um equipamento ou de um projeto inteiro
-   até um horário. O monitoramento e o histórico continuam normalmente.
+   agora (até um horário), num período agendado ou toda semana (ex.: domingo 02:00 por 2 h, no
+   fuso do sistema). O monitoramento e o histórico continuam normalmente.
+3. Reconhecimento: alguém avisa "estou vendo" num equipamento offline; os lembretes param e a
+   equipe vê quem assumiu. Some sozinho quando o equipamento volta.
 
 Equipamentos cuja queda foi silenciada também não geram o alerta de "voltou", para não
 chegar um "voltou" de algo que ninguém soube que caiu.
 """
 
-from datetime import datetime
+import json
+import logging
+import os
+from datetime import datetime, time as hora_do_dia, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-from . import models
+from . import crud, models
+
+logger = logging.getLogger("netcable.regras")
+FUSO_PADRAO = os.getenv("TZ", "America/Sao_Paulo")
+SEM_FIM = datetime(9999, 12, 31)  # `ate` of a weekly window with no end date
 
 MAX_PROFUNDIDADE = 32  # proteção contra ciclos (A depende de B que depende de A)
 
@@ -50,14 +61,81 @@ def inalcancaveis(equipamentos):
 
 
 # --------------------------------------------------------------------------- manutenção
-def manutencoes_ativas(db, agora=None):
+def fuso_do_sistema(db):
+    """Time zone chosen by the admin (reports, weekly maintenance windows)."""
+    nome = crud.get_configuracoes(db, "sistema.fuso").get("sistema.fuso") or FUSO_PADRAO
+    try:
+        return ZoneInfo(nome)
+    except Exception:
+        logger.warning("Fuso horário inválido '%s'; usando UTC.", nome)
+        return timezone.utc
+
+
+def ler_recorrencia(m):
+    if not m.recorrencia:
+        return None
+    try:
+        return json.loads(m.recorrencia)
+    except ValueError:
+        return None
+
+
+def _utc_naive(momento):
+    return momento.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def ocorrencia_atual(rec, agora, fuso):
+    """End (UTC, naive) of the weekly occurrence that covers `agora` (UTC, naive), or None."""
+    local = agora.replace(tzinfo=timezone.utc).astimezone(fuso)
+    h, m = (int(x) for x in rec["hora"].split(":"))
+    duracao = timedelta(minutes=int(rec["minutos"]))
+    for dias_atras in range(0, 2 + duracao.days):
+        dia = local.date() - timedelta(days=dias_atras)
+        if dia.weekday() not in rec["dias"]:
+            continue
+        inicio = datetime.combine(dia, hora_do_dia(h, m), tzinfo=fuso)
+        if inicio <= local < inicio + duracao:
+            return _utc_naive(inicio + duracao)
+    return None
+
+
+def proxima_ocorrencia(rec, agora, fuso):
+    """Start (UTC, naive) of the next weekly occurrence after `agora`."""
+    local = agora.replace(tzinfo=timezone.utc).astimezone(fuso)
+    h, m = (int(x) for x in rec["hora"].split(":"))
+    for dias in range(0, 8):
+        dia = local.date() + timedelta(days=dias)
+        inicio = datetime.combine(dia, hora_do_dia(h, m), tzinfo=fuso)
+        if dia.weekday() in rec["dias"] and inicio > local:
+            return _utc_naive(inicio)
+    return None
+
+
+def fim_se_ativa(m, agora, fuso):
+    """End of the window `m` if it is silencing alerts right now (UTC, naive), else None."""
+    if m.ate <= agora or (m.inicio and m.inicio > agora):
+        return None
+    rec = ler_recorrencia(m)
+    if rec is None:
+        return m.ate
+    if rec.get("pular_ate") and agora < datetime.fromisoformat(rec["pular_ate"]):
+        return None  # this occurrence was ended early
+    fim = ocorrencia_atual(rec, agora, fuso)
+    return min(fim, m.ate) if fim else None
+
+
+def manutencoes_ativas(db, agora=None, fuso=None):
     """(projetos_em_manutencao: {projeto_id: ate}, equipamentos_em_manutencao: {eq_id: ate})."""
     agora = agora or datetime.utcnow()
+    fuso = fuso or fuso_do_sistema(db)
     projetos, equipamentos = {}, {}
     for m in db.query(models.Manutencao).filter(models.Manutencao.ate > agora).all():
+        fim = fim_se_ativa(m, agora, fuso)
+        if fim is None:
+            continue
         alvo = equipamentos if m.equipamento_id else projetos
         chave = m.equipamento_id or m.projeto_id
-        alvo[chave] = max(alvo.get(chave, m.ate), m.ate)
+        alvo[chave] = max(alvo.get(chave, fim), fim)
     return projetos, equipamentos
 
 
@@ -66,30 +144,97 @@ def em_manutencao(eq, ativas):
     return eq.id in equipamentos or eq.projeto_id in projetos
 
 
-def criar_manutencao(db, projeto_id, ate, equipamento_id=None, motivo=None, user_id=None):
-    # Uma janela por alvo: a nova substitui a anterior.
-    cancelar_manutencao(db, projeto_id, equipamento_id, commit=False)
-    m = models.Manutencao(projeto_id=projeto_id, equipamento_id=equipamento_id, ate=ate, motivo=motivo, user_id=user_id)
+def criar_manutencao(db, projeto_id, ate, equipamento_id=None, motivo=None, user_id=None, inicio=None, recorrencia=None):
+    if inicio is None and recorrencia is None:
+        # "Agora": substitui a janela imediata anterior do mesmo alvo (as agendadas continuam).
+        cancelar_manutencao(db, projeto_id, equipamento_id, commit=False)
+    m = models.Manutencao(projeto_id=projeto_id, equipamento_id=equipamento_id, ate=ate, motivo=motivo, user_id=user_id,
+                          inicio=inicio, recorrencia=json.dumps(recorrencia) if recorrencia else None)
     db.add(m)
     db.commit()
     db.refresh(m)
     return m
 
 
-def cancelar_manutencao(db, projeto_id, equipamento_id=None, commit=True):
+def _do_alvo(db, projeto_id, equipamento_id):
     q = db.query(models.Manutencao).filter(models.Manutencao.projeto_id == projeto_id)
-    q = q.filter(models.Manutencao.equipamento_id == equipamento_id) if equipamento_id else q.filter(models.Manutencao.equipamento_id.is_(None))
-    apagadas = q.delete(synchronize_session=False)
+    return q.filter(models.Manutencao.equipamento_id == equipamento_id) if equipamento_id else q.filter(models.Manutencao.equipamento_id.is_(None))
+
+
+def cancelar_manutencao(db, projeto_id, equipamento_id=None, commit=True, agora=None, fuso=None):
+    """Ends the maintenance that is silencing the target now: deletes one-off windows that already
+    started and skips the current occurrence of weekly ones. Future windows are kept."""
+    agora = agora or datetime.utcnow()
+    afetadas = 0
+    for m in _do_alvo(db, projeto_id, equipamento_id).all():
+        rec = ler_recorrencia(m)
+        if rec is None:
+            if m.inicio is None or m.inicio <= agora:
+                db.delete(m)
+                afetadas += 1
+            continue
+        fim = fim_se_ativa(m, agora, fuso or fuso_do_sistema(db))
+        if fim:
+            rec["pular_ate"] = fim.isoformat()
+            m.recorrencia = json.dumps(rec)
+            afetadas += 1
     if commit:
         db.commit()
-    return apagadas
+    return afetadas
+
+
+def remover_manutencao(db, projeto_id, manutencao_id):
+    m = db.query(models.Manutencao).filter(models.Manutencao.id == manutencao_id, models.Manutencao.projeto_id == projeto_id).first()
+    if not m:
+        return None
+    db.delete(m)
+    db.commit()
+    return m
 
 
 def listar_manutencoes(db, projeto_id, agora=None):
     agora = agora or datetime.utcnow()
     return db.query(models.Manutencao).filter(
         models.Manutencao.projeto_id == projeto_id, models.Manutencao.ate > agora
-    ).order_by(models.Manutencao.ate).all()
+    ).order_by(models.Manutencao.inicio, models.Manutencao.ate).all()
+
+
+# --------------------------------------------------------------------------- reconhecimento
+def reconhecer(db, equipamento, usuario, nota=None):
+    r = db.get(models.Reconhecimento, equipamento.id) or models.Reconhecimento(equipamento_id=equipamento.id)
+    r.projeto_id, r.usuario, r.nota, r.criado_em = equipamento.projeto_id, usuario, nota, datetime.utcnow()
+    db.merge(r)
+    db.commit()
+    return db.get(models.Reconhecimento, equipamento.id)
+
+
+def remover_reconhecimento(db, equipamento_id, commit=True):
+    """Returns the removed acknowledgement (or None)."""
+    r = db.get(models.Reconhecimento, equipamento_id)
+    if r:
+        db.delete(r)
+        if commit:
+            db.commit()
+    return r
+
+
+def limpar_reconhecimentos_orfaos(db):
+    """Acknowledgements of devices removed from their map (or online again while the API was down)."""
+    vivos = {i for (i,) in db.query(models.Equipamento.id).filter(models.Equipamento.status == "offline").all()}
+    apagados = 0
+    for r in db.query(models.Reconhecimento).all():
+        if r.equipamento_id not in vivos:
+            db.delete(r)
+            apagados += 1
+    db.commit()
+    return apagados
+
+
+def reconhecimentos(db, projeto_id=None):
+    q = db.query(models.Reconhecimento)
+    if projeto_id is not None:
+        q = q.filter(models.Reconhecimento.projeto_id == projeto_id)
+    return {r.equipamento_id: r for r in q.all()}
 
 
 def limpar_manutencoes_vencidas(db, agora=None):

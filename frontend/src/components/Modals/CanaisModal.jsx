@@ -68,7 +68,7 @@ export default function CanaisModal({ onClose }) {
   const [salvando, setSalvando] = useState(false)
   const [testando, setTestando] = useState(null)
 
-  const carregar = (c) => { setCfg(c); setValores({ telegram_chat: c.telegram_chat, ntfy_url: c.ntfy_url, idioma: c.idioma }) }
+  const carregar = (c) => { setCfg(c); setValores({ telegram_chat: c.telegram_chat, ntfy_url: c.ntfy_url, idioma: c.idioma, lembrete_min: c.lembrete_min ?? 0 }) }
   useEffect(() => { api.obterCanais().then(carregar).catch(e => toast.error(e.message)) }, [])
 
   const salvar = async (e) => {
@@ -125,6 +125,13 @@ export default function CanaisModal({ onClose }) {
               <Segredo rotuloCampo={t('URL que recebe um POST por evento')} nome="webhook_url" placeholder="https://..." {...p} />
             </div>
             <Limites />
+            <label style={rotulo}>{t('Lembrete de equipamento que continua offline')}
+              <select value={valores.lembrete_min ?? 0} onChange={e => setValores({ ...valores, lembrete_min: Number(e.target.value) })} style={campo}>
+                <option value={0}>{t('Desligado')}</option>
+                {[15, 30, 60, 120, 240].map(m => <option key={m} value={m}>{t('A cada {tempo} até alguém reconhecer', { tempo: m < 60 ? `${m} min` : `${m / 60} h` })}</option>)}
+              </select>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>{t('Repete o alerta enquanto o equipamento estiver offline e ninguém clicar em "Estou vendo" no mapa.')}</span>
+            </label>
             <label style={rotulo}>{t('Idioma das mensagens destes canais')}
               <select value={valores.idioma || 'en'} onChange={e => setValores({ ...valores, idioma: e.target.value })} style={campo}>
                 <option value="en">English</option>

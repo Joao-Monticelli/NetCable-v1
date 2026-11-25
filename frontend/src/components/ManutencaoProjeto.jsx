@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Wrench } from 'lucide-react'
+import { Wrench, CalendarClock } from 'lucide-react'
+import AgendaManutencaoModal from './Modals/AgendaManutencaoModal'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import { t, useI18n, localeAtual } from '../i18n'
@@ -8,9 +9,10 @@ const OPCOES = [[1, '1 h'], [2, '2 h'], [4, '4 h'], [8, '8 h'], [24, '24 h']]
 const item = { display: 'block', width: '100%', padding: '8px 12px', background: 'transparent', color: 'white', border: 0, textAlign: 'left', cursor: 'pointer', borderRadius: '4px', fontSize: '13px' }
 
 // Botão da barra: silencia os alertas do mapa inteiro por um tempo (ex.: janela de manutenção da rede).
-export default function ManutencaoProjeto({ projectId, ate, podeEditar, onMudou }) {
+export default function ManutencaoProjeto({ projectId, ate, podeEditar, onMudou, equipamentos = [], onAgendaMudou }) {
   useI18n()
   const [aberto, setAberto] = useState(false)
+  const [agenda, setAgenda] = useState(false)
   const ref = useRef(null)
   useEffect(() => {
     if (!aberto) return
@@ -50,8 +52,13 @@ export default function ManutencaoProjeto({ projectId, ate, podeEditar, onMudou 
             <div style={{ height: 1, background: '#334155', margin: '5px 0' }} />
             <button role="menuitem" onClick={encerrar} style={{ ...item, color: '#38bdf8' }}>{t('Encerrar manutenção')}</button>
           </>}
+          <div style={{ height: 1, background: '#334155', margin: '5px 0' }} />
+          <button role="menuitem" onClick={() => { setAberto(false); setAgenda(true) }} style={{ ...item, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <CalendarClock size={14} /> {t('Agendar / agenda...')}
+          </button>
         </div>
       )}
+      {agenda && <AgendaManutencaoModal projectId={projectId} equipamentos={equipamentos} onClose={() => setAgenda(false)} onMudou={onAgendaMudou} />}
     </div>
   )
 }

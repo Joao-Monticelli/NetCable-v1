@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Users, UserPlus, Trash2, KeyRound, Loader2, ShieldCheck, Pencil, Eye } from 'lucide-react'
+import { X, Users, UserPlus, Trash2, KeyRound, Loader2, ShieldCheck, Pencil, Eye, Smartphone, ShieldOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { t, useI18n } from '../../i18n'
@@ -46,6 +46,11 @@ export default function UsersModal({ onClose, currentUser }) {
     if (senha) atualizar(u, { nova_senha: senha }, t('Senha redefinida.'))
   }
 
+  const remover2fa = (u) => {
+    if (window.confirm(t('Remover a verificação em duas etapas de "{nome}"? Use só se a pessoa perdeu o celular e os códigos de recuperação; ela poderá configurar de novo no perfil.', { nome: u.username })))
+      atualizar(u, { remover_2fa: true }, t('Verificação em duas etapas removida.'))
+  }
+
   const excluir = async (u) => {
     if (!window.confirm(t('Excluir o usuário "{nome}"? Os mapas criados por ele continuam disponíveis para a equipe.', { nome: u.username }))) return
     try { await api.excluirUsuario(u.id); toast.success(t('Usuário excluído.')); carregar() } catch (err) { toast.error(err.message) }
@@ -81,7 +86,10 @@ export default function UsersModal({ onClose, currentUser }) {
               const souEu = u.id === currentUser?.id
               return (
                 <tr key={u.id} style={{ borderTop: '1px solid #334155', opacity: u.ativo ? 1 : 0.55 }}>
-                  <td style={{ padding: '6px', fontWeight: 'bold' }}>{u.username}{souEu && <span style={{ color: '#64748b', fontWeight: 'normal' }}> {t('(você)')}</span>}</td>
+                  <td style={{ padding: '6px', fontWeight: 'bold' }}>
+                    {u.username}{souEu && <span style={{ color: '#64748b', fontWeight: 'normal' }}> {t('(você)')}</span>}
+                    {u.totp_ativo && <span title={t('Verificação em duas etapas ativa')} style={{ marginLeft: '6px', verticalAlign: 'middle' }}><Smartphone size={13} color="#10b981" /></span>}
+                  </td>
                   <td style={{ padding: '6px' }}>
                     <input defaultValue={u.email || ''} placeholder={t('sem e-mail')} onBlur={(e) => e.target.value !== (u.email || '') && atualizar(u, { email: e.target.value }, t('E-mail atualizado.'))} style={{ ...campo, width: '100%' }} />
                   </td>
@@ -94,6 +102,7 @@ export default function UsersModal({ onClose, currentUser }) {
                     <input type="checkbox" checked={u.ativo} disabled={souEu} title={souEu ? t('Você não pode desativar a si mesmo') : t('Ativar/desativar acesso')} onChange={(e) => atualizar(u, { ativo: e.target.checked }, e.target.checked ? t('Usuário reativado.') : t('Usuário desativado.'))} />
                   </td>
                   <td style={{ padding: '6px', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                    {u.totp_ativo && !souEu && <button onClick={() => remover2fa(u)} title={t('Remover verificação em duas etapas')} style={{ ...botao, display: 'inline-flex', background: '#334155', padding: '6px 8px', marginRight: '6px' }}><ShieldOff size={14} /></button>}
                     <button onClick={() => redefinirSenha(u)} title={t('Redefinir senha')} style={{ ...botao, display: 'inline-flex', background: '#334155', padding: '6px 8px', marginRight: '6px' }}><KeyRound size={14} /></button>
                     <button onClick={() => excluir(u)} disabled={souEu} title={souEu ? t('Você não pode excluir a si mesmo') : t('Excluir usuário')} style={{ ...botao, display: 'inline-flex', background: souEu ? '#475569' : '#ef4444', padding: '6px 8px', cursor: souEu ? 'not-allowed' : 'pointer' }}><Trash2 size={14} /></button>
                   </td>

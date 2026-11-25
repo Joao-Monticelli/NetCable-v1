@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Projects from './pages/Projects'
 import Editor from './pages/Editor'
 import SharedView from './pages/SharedView'
+import StatusPage from './pages/StatusPage'
 import { api } from './services/api'
 import { useEffect } from 'react'
 import { useI18n, t } from './i18n'
@@ -30,6 +31,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/share/:token" element={<SharedView />} />
+        <Route path="/status/:token" element={<StatusPage />} />
         
         <Route element={<PrivateRoute />}>
           <Route path="/projects" element={<Projects />} />

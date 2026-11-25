@@ -15,7 +15,8 @@ from cryptography.fernet import Fernet
 CHAVE_DEV = "dev-only-change-this-secret"  # used by old versions when SECRET_KEY was not set
 
 # (table, key column, value column) of every column that may hold encrypted values.
-COLUNAS_CIFRADAS = (("equipamentos", "id", "monitor_config"), ("configuracoes", "chave", "valor"))
+COLUNAS_CIFRADAS = (("equipamentos", "id", "monitor_config"), ("configuracoes", "chave", "valor"),
+                    ("usuarios", "id", "totp_segredo"))
 
 
 def arquivo_chave(data_dir):

@@ -61,7 +61,7 @@ def enviar_email(cfg, destinatarios, assunto, texto, html=None, timeout=15):
 # --- Conteúdo dos e-mails ---------------------------------------------------
 
 _ESTILO = "font-family:Segoe UI,Arial,sans-serif;color:#0f172a"
-_COR = {"online": "#059669", "offline": "#dc2626", "visual": "#64748b"}
+_COR = {"online": "#059669", "offline": "#dc2626", "visual": "#64748b", "reconhecido": "#2563eb"}
 
 
 LIMITE_DEPENDENTES = 15  # nomes listados por mensagem; o resto vira "+N"
@@ -77,16 +77,62 @@ def texto_dependentes(evento, idioma="pt"):
     return tr(chave, idioma, n=len(nomes), lista=lista)
 
 
+def duracao_legivel(segundos, idioma="pt"):
+    minutos = max(1, int(segundos // 60))
+    if minutos < 60:
+        return f"{minutos} min"
+    horas, minutos = divmod(minutos, 60)
+    if horas < 48:
+        return f"{horas} h {minutos:02d} min" if minutos else f"{horas} h"
+    return tr("{n} dias", idioma, n=horas // 24)
+
+
+def texto_extra(e, idioma="pt"):
+    """Second line of reminders, acknowledgements and recoveries of acknowledged devices."""
+    if e.get("evento") == "equipamento_reconhecido":
+        texto = tr("👀 {usuario} reconheceu o alerta e está cuidando", idioma, usuario=e["reconhecido_por"])
+        return texto + (f": {e['nota']}" if e.get("nota") else "")
+    if e.get("lembrete"):
+        return tr("⏰ Ainda offline há {duracao} e ninguém reconheceu o alerta", idioma, duracao=duracao_legivel(e.get("offline_ha_s") or 0, idioma))
+    if e.get("reconhecido_por"):
+        return tr("👀 Reconhecido por {usuario}", idioma, usuario=e["reconhecido_por"])
+    return ""
+
+
+def partes_resumo(eventos, idioma="pt"):
+    """'2 equipamento(s) offline', '1 recuperado(s)'... for subjects and notification titles."""
+    reconhecidos = sum(1 for e in eventos if e.get("evento") == "equipamento_reconhecido")
+    quedas = sum(1 for e in eventos if e["status"] == "offline")
+    certificados = sum(1 for e in eventos if e.get("metrica") == "certificado")
+    metricas = sum(1 for e in eventos if e.get("metrica")) - certificados
+    voltas = len(eventos) - quedas - metricas - certificados - reconhecidos
+    partes = []
+    if certificados:
+        partes.append(tr("{n} alerta(s) de certificado", idioma, n=certificados))
+    if metricas:
+        partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
+    if quedas:
+        partes.append(tr("{n} equipamento(s) offline", idioma, n=quedas))
+    if voltas:
+        partes.append(tr("{n} recuperado(s)", idioma, n=voltas))
+    if reconhecidos:
+        partes.append(tr("{n} alerta(s) reconhecido(s)", idioma, n=reconhecidos))
+    return partes
+
+
 def _linha_evento(e, idioma):
     if e.get("metrica"):
         from .alerts import texto_metrica  # import tardio: alerts importa este módulo
         return f"{texto_metrica(e, idioma)}  {e['equipamento']} ({e['ip']}) — {tr('mapa', idioma)} {e.get('projeto') or '-'}"
     dep = texto_dependentes(e, idioma)
-    return _linha_evento_base(e, idioma) + (f"\n      ↳ {dep}" if dep else "")
+    extra = texto_extra(e, idioma)
+    return _linha_evento_base(e, idioma) + (f"\n      {extra}" if extra else "") + (f"\n      ↳ {dep}" if dep else "")
 
 
 def _linha_evento_base(e, idioma):
     mapa = f"{tr('mapa', idioma)} {e.get('projeto') or '-'}"
+    if e["status"] == "reconhecido":
+        return f"👀 {tr('RECONHECIDO', idioma)}  {e['equipamento']} ({e['ip']}) — {mapa}"
     if e["status"] == "offline":
         return f"🔴 OFFLINE  {e['equipamento']} ({e['ip']}) — {mapa}"
     lat = f" — {e['tempo_ms']} ms" if e.get("tempo_ms") is not None else ""
@@ -97,30 +143,20 @@ def _rotulo_status(e, idioma):
     if e.get("metrica"):
         from .alerts import texto_metrica
         return texto_metrica(e, idioma)
+    if e["status"] == "reconhecido":
+        return tr("RECONHECIDO", idioma)
     return e["status"].upper()
 
 
 def montar_email_alerta(eventos, idioma="pt"):
-    quedas = sum(1 for e in eventos if e["status"] == "offline")
-    certificados = sum(1 for e in eventos if e.get("metrica") == "certificado")
-    metricas = sum(1 for e in eventos if e.get("metrica")) - certificados
-    voltas = len(eventos) - quedas - metricas - certificados
-    partes = []
-    if certificados:
-        partes.append(tr("{n} alerta(s) de certificado", idioma, n=certificados))
-    if metricas:
-        partes.append(tr("{n} alerta(s) de temperatura/CPU", idioma, n=metricas))
-    if quedas:
-        partes.append(tr("{n} equipamento(s) offline", idioma, n=quedas))
-    if voltas:
-        partes.append(tr("{n} recuperado(s)", idioma, n=voltas))
-    assunto = "[NetCable] " + ", ".join(partes)
+    assunto = "[NetCable] " + ", ".join(partes_resumo(eventos, idioma))
     texto = tr("Mudanças de status detectadas pelo NetCable:", idioma) + "\n\n" + "\n".join(_linha_evento(e, idioma) for e in eventos)
     linhas_html = "".join(
         f"<tr><td style='padding:6px 10px;color:{_COR.get(e['status'], '#b45309')};font-weight:bold'>{escape(_rotulo_status(e, idioma))}</td>"
         f"<td style='padding:6px 10px'>{escape(e['equipamento'])}</td>"
         f"<td style='padding:6px 10px;color:#64748b'>{escape(e['ip'] or '')}</td>"
         f"<td style='padding:6px 10px;color:#64748b'>{escape(e.get('projeto') or '-')}</td></tr>"
+        + (f"<tr><td></td><td colspan='3' style='padding:0 10px 8px;color:#475569;font-size:13px'>{escape(texto_extra(e, idioma))}</td></tr>" if texto_extra(e, idioma) else "")
         + (f"<tr><td></td><td colspan='3' style='padding:0 10px 8px;color:#b45309;font-size:13px'>↳ {escape(texto_dependentes(e, idioma))}</td></tr>" if e.get('dependentes') else "")
         for e in eventos
     )

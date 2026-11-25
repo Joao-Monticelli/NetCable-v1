@@ -5,6 +5,11 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 ## [Unreleased]
 
 ### Added
+- **Two-factor authentication (TOTP)**: optional per user (My profile), QR code for any authenticator app, 10 single-use recovery codes, admin reset in ⚙️ → Users and `python -m app.redefinir_2fa <user>` for a locked-out admin. Wrong codes share the login lockout.
+- **Acknowledge alerts** ("I'm on it"): on an offline device, with an optional note; the channels are told who is handling it, the map shows it, and it clears when the device is back.
+- **Reminders** for devices still offline and not acknowledged (every 15 min to 4 h, off by default; ⚙️ → Alert channels).
+- **Scheduled and weekly maintenance windows** (🔧 → Schedule / calendar): for later, or every week at a time in the system time zone; ending maintenance during a weekly window skips only that occurrence.
+- **Public status page** per map (`/status/<token>`, separate from the map link): status and 90-day daily availability of the devices you choose, maintenance in progress or coming up; no IPs or layout; cached for 30 s.
 - **HTTP(S) monitor**: new monitoring method for websites, APIs and web panels — URL, expected status code, text that must be on the page and optional certificate verification (for self-signed devices).
 - **TLS certificate expiry alerts**: warning N days before the certificate expires (default 14), when it is already expired and when it is renewed; days left shown on the map. Works with self-signed certificates.
 - **SLA report (CSV)** for 7, 30 or 90 days: availability, downtime, outages and average latency per device (History → Availability → Export SLA).

@@ -8,6 +8,7 @@ export function dadosDeAlerta(eq, nomePorId) {
   return {
     inalcancavelPor: causa, inalcancavelNome: causa ? (nomePorId.get(causa) || causa) : null,
     manutencaoAte: eq.manutencao_ate || null,
+    reconhecido: eq.reconhecido || null,
     snmp: eq.snmp || null,
     http: eq.http || null,
     resumoMapa: eq.resumo_mapa || null,
@@ -23,6 +24,7 @@ export function equipamentosParaNodes(equipamentos) {
       label: eq.nome, ip: eq.ip, tipo: eq.tipo, status: eq.status, pingTime: eq.ping_time,
       monitorMode: eq.monitor_mode || 'ip', snmpConfig: eq.monitor_config || {},
       notificar: eq.notificar !== false,
+      statusPublico: eq.status_publico !== false,
       modeloId: eq.modelo_id || null,
       dependeDe: eq.depende_de || null,
       mapaDestinoId: eq.mapa_destino_id || null,
@@ -93,6 +95,7 @@ export function nodeParaEquipamento(node) {
     width: node.style?.width || 200, height: node.style?.height || 80,
     monitorMode: node.data.monitorMode || 'ip', monitorConfig: node.data.snmpConfig || null,
     notificar: node.data.notificar !== false,
+    statusPublico: node.data.statusPublico !== false,
     rackId: node.parentNode || null,
     rackU: node.parentNode ? node.data.rackU : null,
     alturaU: rack ? node.data.us : (node.parentNode ? node.data.alturaU : null),

@@ -94,6 +94,14 @@ export const api = {
     const q = equipamentoId ? `?equipamento_id=${encodeURIComponent(equipamentoId)}` : ''
     return requisicao(`/projetos/${projetoId}/manutencao${q}`, { method: 'DELETE' }, t('Não foi possível encerrar a manutenção.'))
   },
+  listarManutencoes(projetoId) { return requisicao(`/projetos/${projetoId}/manutencao`, {}, t('Não foi possível carregar a agenda de manutenção.')) },
+  removerManutencao(projetoId, id) { return requisicao(`/projetos/${projetoId}/manutencao/${id}`, { method: 'DELETE' }, t('Não foi possível remover a manutenção.')) },
+  reconhecerAlerta(projetoId, equipamentoId, nota = null) {
+    return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/reconhecer`, { method: 'POST', body: JSON.stringify({ nota }) }, t('Não foi possível reconhecer o alerta.'))
+  },
+  desfazerReconhecimento(projetoId, equipamentoId) {
+    return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/reconhecer`, { method: 'DELETE' }, t('Não foi possível desfazer o reconhecimento.'))
+  },
   obterCanais() { return requisicao('/config/alertas', {}, t('Não foi possível carregar os canais de alerta.')) },
   salvarCanais(dados) { return requisicao('/config/alertas', { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar os canais de alerta.')) },
   testarCanal(canal) { return requisicao('/config/alertas/teste', { method: 'POST', body: JSON.stringify({ canal }) }, t('Falha ao enviar o teste.')) },
@@ -124,9 +132,26 @@ export const api = {
       throw new Error(detail)
     }
     const data = await res.json();
+    if (data.requer_2fa) return data  // password ok: the 6-digit code comes next (login2fa)
     localStorage.setItem('netcable_token', data.access_token);
     return data;
   },
+
+  async login2fa(desafio, codigo) {
+    const res = await fetch(`${API_URL}/login/2fa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept-Language': getIdioma() }, body: JSON.stringify({ desafio, codigo })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) { const e = new Error(data.detail || t('Falha no login (HTTP {status})', { status: res.status })); e.status = res.status; throw e }
+    localStorage.setItem('netcable_token', data.access_token)
+    return data
+  },
+
+  // --- Two-factor authentication (own account) ---
+  iniciar2fa(senha) { return requisicao('/me/2fa/iniciar', { method: 'POST', body: JSON.stringify({ senha }) }) },
+  ativar2fa(codigo) { return requisicao('/me/2fa/ativar', { method: 'POST', body: JSON.stringify({ codigo }) }) },
+  desativar2fa(senha, codigo) { return requisicao('/me/2fa/desativar', { method: 'POST', body: JSON.stringify({ senha, codigo }) }) },
+  novosCodigosRecuperacao(codigo) { return requisicao('/me/2fa/recuperacao', { method: 'POST', body: JSON.stringify({ codigo }) }) },
 
   // Primeiro acesso: enquanto não houver usuários, a tela de login vira "criar administrador".
   async statusSetup() {
@@ -265,6 +290,17 @@ export const api = {
   },
 
   // Visualização pública: acessa o mapa pelo token do link (sem login).
+  // --- Public status page ---
+  obterPaginaStatus(projetoId) { return requisicao(`/projetos/${projetoId}/status-publico`, {}, t('Não foi possível carregar a página de status.')) },
+  gerarPaginaStatus(projetoId, regenerar = false) { return requisicao(`/projetos/${projetoId}/status-publico?regenerar=${regenerar}`, { method: 'POST' }, t('Não foi possível ativar a página de status.')) },
+  revogarPaginaStatus(projetoId) { return requisicao(`/projetos/${projetoId}/status-publico`, { method: 'DELETE' }, t('Não foi possível desativar a página de status.')) },
+  async paginaStatus(token) {
+    const res = await fetch(`${API_URL}/public/status/${encodeURIComponent(token)}`, { headers: { 'Accept-Language': getIdioma() } })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || t('Falha na comunicação com o servidor.'))
+    return data
+  },
+
   async obterMapaPublico(token) {
     const res = await fetch(`${API_URL}/public/mapas/${encodeURIComponent(token)}/dados`, { headers: { 'Accept-Language': getIdioma() } });
     const data = await res.json().catch(() => ({}));

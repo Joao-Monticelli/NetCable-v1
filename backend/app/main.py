@@ -31,7 +31,7 @@ from .snmp_service import test as snmp_test, discover_neighbors, SNMPUnavailable
 from . import models, crud, alerts, email_service
 from .i18n import traduzir, idioma_do_cabecalho, normalizar, IDIOMAS
 from .database import engine, SessionLocal, DATA_DIR, DB_PATH
-from . import migracoes, backup, regras_alerta, descoberta, snmp_service, metricas_snmp, segredos, monitor_http, auditoria
+from . import migracoes, backup, regras_alerta, descoberta, snmp_service, metricas_snmp, segredos, monitor_http, auditoria, totp
 from .segredos import CHAVE_DEV
 from fastapi import UploadFile, File
 from fastapi.responses import FileResponse, Response
@@ -168,12 +168,7 @@ def get_smtp_config(db: Session):
 
 
 def get_fuso(db: Session):
-    nome = crud.get_configuracoes(db, "sistema.fuso").get("sistema.fuso") or FUSO_PADRAO
-    try:
-        return ZoneInfo(nome)
-    except Exception:
-        logger.warning("Fuso horário inválido '%s'; usando UTC.", nome)
-        return timezone.utc
+    return regras_alerta.fuso_do_sistema(db)
 
 
 @app.get("/api/health")
@@ -232,7 +227,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if username is None:
+        # "fase" marks a half-done login (password ok, 2FA code still missing): not a session.
+        if username is None or payload.get("fase"):
             raise credentials_exception
     except JWTError:
         raise credentials_exception
@@ -330,23 +326,156 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
     if not user.ativo:
         auditoria.registrar(db, user, "login.desativado", request=request)
         raise HTTPException(status_code=403, detail="Usuário desativado. Fale com um administrador.")
+    if user.totp_ativo:
+        # Password ok; the failure counter is only cleared after the code, so it also limits code guessing.
+        desafio = jwt.encode({"sub": user.username, "fase": "2fa", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+                             SECRET_KEY, algorithm=ALGORITHM)
+        return {"requer_2fa": True, "desafio": desafio}
     login_failures.pop(form_data.username, None)
     auditoria.registrar(db, user, "login.ok", request=request)
     access_token = criar_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+class Login2faIn(BaseModel):
+    desafio: str
+    codigo: str
+
+
+def _conferir_segundo_fator(db: Session, user: models.Usuario, codigo: str):
+    """Checks a TOTP code or a recovery code. Returns "totp", "recuperacao" or None (and saves what changed)."""
+    segredo = abrir_config(user.totp_segredo).get("s")
+    passo = totp.verificar(segredo, codigo, user.totp_ultimo_passo)
+    if passo is not None:
+        user.totp_ultimo_passo = passo
+        db.commit()
+        return "totp"
+    ok, restantes = totp.usar_codigo_recuperacao(user.totp_recuperacao, codigo)
+    if ok:
+        user.totp_recuperacao = restantes
+        db.commit()
+        return "recuperacao"
+    return None
+
+
+@app.post("/api/login/2fa")
+def login_2fa(dados: Login2faIn, request: Request, db: Session = Depends(get_db)):
+    expirou = HTTPException(status_code=401, detail="O login expirou. Digite a senha de novo.")
+    try:
+        payload = jwt.decode(dados.desafio, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise expirou
+    username = payload.get("sub") or ""
+    if payload.get("fase") != "2fa":
+        raise expirou
+    now = time.monotonic()
+    failures = [momento for momento in login_failures[username] if now - momento < LOGIN_WINDOW_SECONDS]
+    login_failures[username] = failures
+    if len(failures) >= LOGIN_MAX_FAILURES:
+        auditoria.registrar(db, username[:80], "login.bloqueado", request=request)
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
+    user = crud.get_usuario(db, username)
+    if not user or not user.ativo or not user.totp_ativo:
+        raise expirou
+    metodo = _conferir_segundo_fator(db, user, dados.codigo)
+    if not metodo:
+        login_failures[username].append(now)
+        auditoria.registrar(db, user, "login.2fa_falhou", request=request)
+        raise HTTPException(status_code=400, detail="Código de verificação incorreto.")
+    login_failures.pop(username, None)
+    auditoria.registrar(db, user, "login.ok", "recovery code" if metodo == "recuperacao" else "2FA", request)
+    resposta = {"access_token": criar_token(data={"sub": user.username}), "token_type": "bearer"}
+    if metodo == "recuperacao":
+        resposta["recuperacao_restantes"] = totp.restantes(user.totp_recuperacao)
+    return resposta
+
+
 def usuario_publico(u: models.Usuario):
     return {
         "id": u.id, "username": u.username, "email": u.email, "papel": u.papel, "ativo": u.ativo,
         "receber_alertas": u.receber_alertas, "relatorio_diario": u.relatorio_diario,
-        "relatorio_horario": u.relatorio_horario, "idioma": u.idioma or "en",
+        "relatorio_horario": u.relatorio_horario, "idioma": u.idioma or "en", "totp_ativo": bool(u.totp_ativo),
     }
 
 
 @app.get("/api/me")
 def read_users_me(current_user: models.Usuario = Depends(get_current_user)):
-    return usuario_publico(current_user)
+    dados = usuario_publico(current_user)
+    if current_user.totp_ativo:
+        dados["totp_recuperacao_restantes"] = totp.restantes(current_user.totp_recuperacao)
+    return dados
+
+
+# --- VERIFICAÇÃO EM DUAS ETAPAS (2FA) ---
+class Iniciar2faIn(BaseModel):
+    senha: str
+
+
+class Codigo2faIn(BaseModel):
+    codigo: str
+    senha: Optional[str] = None
+
+
+@app.post("/api/me/2fa/iniciar")
+def iniciar_2fa(dados: Iniciar2faIn, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    """Step 1: new secret (shown as a QR code). 2FA is only enforced after /ativar with a valid code."""
+    if user.totp_ativo:
+        raise HTTPException(status_code=400, detail="A verificação em duas etapas já está ativa.")
+    if not verificar_senha(dados.senha, user.password_hash):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta.")
+    segredo = totp.novo_segredo()
+    user.totp_segredo = proteger_config({"s": segredo})
+    user.totp_ultimo_passo = None
+    db.commit()
+    return {"segredo": segredo, "uri": totp.uri(segredo, user.username)}
+
+
+@app.post("/api/me/2fa/ativar")
+def ativar_2fa(dados: Codigo2faIn, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    if user.totp_ativo:
+        raise HTTPException(status_code=400, detail="A verificação em duas etapas já está ativa.")
+    segredo = abrir_config(user.totp_segredo).get("s")
+    if not segredo:
+        raise HTTPException(status_code=400, detail="Comece a configuração de novo.")
+    passo = totp.verificar(segredo, dados.codigo)
+    if passo is None:
+        raise HTTPException(status_code=400, detail="Código incorreto. Confira o horário do celular e tente o código atual.")
+    codigos, hashes = totp.novos_codigos_recuperacao()
+    user.totp_ativo, user.totp_ultimo_passo, user.totp_recuperacao = True, passo, hashes
+    db.commit()
+    auditoria.registrar(db, user, "2fa.ativado", request=request)
+    return {"codigos_recuperacao": codigos}
+
+
+@app.post("/api/me/2fa/desativar")
+def desativar_2fa(dados: Codigo2faIn, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    if not user.totp_ativo:
+        return {"status": "ok"}
+    if not dados.senha or not verificar_senha(dados.senha, user.password_hash):
+        raise HTTPException(status_code=400, detail="Senha atual incorreta.")
+    if not _conferir_segundo_fator(db, user, dados.codigo):
+        raise HTTPException(status_code=400, detail="Código de verificação incorreto.")
+    _limpar_2fa(db, user)
+    auditoria.registrar(db, user, "2fa.desativado", request=request)
+    return {"status": "ok"}
+
+
+@app.post("/api/me/2fa/recuperacao")
+def novos_codigos_recuperacao(dados: Codigo2faIn, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    if not user.totp_ativo:
+        raise HTTPException(status_code=400, detail="A verificação em duas etapas não está ativa.")
+    if _conferir_segundo_fator(db, user, dados.codigo) != "totp":
+        raise HTTPException(status_code=400, detail="Código de verificação incorreto.")
+    codigos, hashes = totp.novos_codigos_recuperacao()
+    user.totp_recuperacao = hashes
+    db.commit()
+    auditoria.registrar(db, user, "2fa.recuperacao_gerada", request=request)
+    return {"codigos_recuperacao": codigos}
+
+
+def _limpar_2fa(db: Session, user: models.Usuario):
+    user.totp_ativo, user.totp_segredo, user.totp_ultimo_passo, user.totp_recuperacao = False, None, None, None
+    db.commit()
 
 
 HORARIO_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -413,6 +542,7 @@ class UsuarioUpdate(BaseModel):
     papel: Optional[str] = None
     ativo: Optional[bool] = None
     nova_senha: Optional[str] = None
+    remover_2fa: Optional[bool] = None  # admin: the user lost the phone and the recovery codes
 
 
 @app.get("/api/usuarios")
@@ -461,6 +591,9 @@ def atualizar_usuario_rota(user_id: int, dados: UsuarioUpdate, request: Request,
         mudancas.append("password reset")
     if email is not None and email != (alvo.email or ""):
         mudancas.append("email")
+    if dados.remover_2fa and alvo.totp_ativo:
+        _limpar_2fa(db, alvo)
+        mudancas.append("2FA removed")
     atualizado = crud.atualizar_usuario(db, user_id, email=email, papel=dados.papel, ativo=dados.ativo, password_hash=nova_hash)
     if mudancas:
         auditoria.registrar(db, admin, "usuario.alterado", f"{atualizado.username}: {', '.join(mudancas)}", request)
@@ -580,12 +713,13 @@ class CanaisIn(BaseModel):
     ntfy_token: Optional[str] = None
     webhook_url: Optional[str] = None
     idioma: Optional[str] = None
+    lembrete_min: Optional[int] = None  # repeat "still offline" every N minutes until acknowledged (0 = off)
 
 
 @app.get("/api/config/alertas")
 def obter_canais(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     salvos, ambiente, efetivo = _canais_salvos(db), alerts.canais_do_ambiente(), get_canais_config(db)
-    resposta = {"idioma": efetivo["idioma"] or "en", "ativos": alerts.canais_configurados(None, efetivo)}
+    resposta = {"idioma": efetivo["idioma"] or "en", "ativos": alerts.canais_configurados(None, efetivo), "lembrete_min": get_lembrete_min(db)}
     for campo in CAMPOS_CANAIS:
         if campo in CAMPOS_SECRETOS:
             resposta[f"{campo}_definido"] = bool(salvos[campo])
@@ -610,6 +744,10 @@ def salvar_canais(dados: CanaisIn, request: Request, db: Session = Depends(get_d
         if dados.idioma not in IDIOMAS:
             raise HTTPException(status_code=400, detail="Idioma inválido (use en ou pt).")
         valores["alertas.idioma"] = dados.idioma
+    if dados.lembrete_min is not None:
+        if dados.lembrete_min != 0 and not 5 <= dados.lembrete_min <= 1440:
+            raise HTTPException(status_code=400, detail="O lembrete deve ser de 5 a 1440 minutos (0 desliga).")
+        valores["alertas.lembrete_min"] = str(dados.lembrete_min)
     crud.salvar_configuracoes(db, valores)
     alterados = sorted({c.split(".", 1)[1].split("_")[0] for c in valores if c != "alertas.idioma"})
     auditoria.registrar(db, admin, "config.alertas", ", ".join(alterados) or None, request)
@@ -714,10 +852,54 @@ def registrar_monitoramento(db: Session, equipamento, resultado):
     if not mudou:
         return None
     logger.info("Status alterado: %s (%s) %s -> %s", equipamento.nome, equipamento.ip, status_anterior, status)
+    reconhecido = None
+    if status == "offline":
+        _offline_desde[equipamento.id] = {"desde": time.monotonic(), "aviso": time.monotonic()}
+    else:
+        _offline_desde.pop(equipamento.id, None)
+        reconhecido = regras_alerta.remover_reconhecimento(db, equipamento.id)  # it is back: nothing left to handle
     if not equipamento.notificar:
         return None
     projeto_nome = equipamento.projeto.nome if equipamento.projeto else None
-    return alerts.montar_evento(equipamento, projeto_nome, status, status_anterior, tempo_ms)
+    evento = alerts.montar_evento(equipamento, projeto_nome, status, status_anterior, tempo_ms)
+    if reconhecido:
+        evento["reconhecido_por"] = reconhecido.usuario
+    return evento
+
+
+# --- LEMBRETES DE EQUIPAMENTO AINDA OFFLINE ---
+# eq_id -> {"desde": monotonic of the fall, "aviso": monotonic of the last alert/reminder}
+# (in memory: after a restart the first reminder counts from the first cycle).
+_offline_desde = {}
+
+
+def get_lembrete_min(db: Session):
+    try:
+        return max(0, int(crud.get_configuracoes(db, "alertas.lembrete_min").get("alertas.lembrete_min") or 0))
+    except ValueError:
+        return 0
+
+
+def lembretes_offline(db: Session, agora=None):
+    """Reminder events for devices still offline after `alertas.lembrete_min` minutes that nobody acknowledged.
+    They go through regras_alerta.aplicar like any fall (maintenance and uplink rules apply)."""
+    minutos = get_lembrete_min(db)
+    if minutos <= 0:
+        return []
+    agora = time.monotonic() if agora is None else agora
+    reconhecidos = regras_alerta.reconhecimentos(db)
+    eventos = []
+    for eq in db.query(models.Equipamento).filter(models.Equipamento.status == "offline").all():
+        if not eq.notificar or not _equipamento_monitoravel(eq):
+            continue
+        estado = _offline_desde.setdefault(eq.id, {"desde": agora, "aviso": agora})
+        if eq.id in reconhecidos or agora - estado["aviso"] < minutos * 60:
+            continue
+        estado["aviso"] = agora
+        evento = alerts.montar_evento(eq, eq.projeto.nome if eq.projeto else None, "offline", "offline")
+        evento.update(evento="equipamento_lembrete", lembrete=True, offline_ha_s=round(agora - estado["desde"]))
+        eventos.append(evento)
+    return eventos
 
 
 def enviar_alertas(db: Session, eventos):
@@ -825,11 +1007,13 @@ def executar_ciclo_monitoramento():
             evento = registrar_monitoramento(db, equipamento, resultado)
             if evento:
                 eventos.append(evento)
+        eventos += lembretes_offline(db)
         # Um único alerta por ciclo, mesmo que vários equipamentos mudem juntos; quedas "em cascata"
         # (uplink offline) e equipamentos em manutenção não geram alerta próprio.
         enviar_alertas(db, regras_alerta.aplicar(db, eventos))
         if time.monotonic() - _ultima_limpeza["momento"] > 3600:
             regras_alerta.limpar_manutencoes_vencidas(db)
+            regras_alerta.limpar_reconhecimentos_orfaos(db)
         if HISTORY_RETENTION_DAYS > 0 and time.monotonic() - _ultima_limpeza["momento"] > 3600:
             _ultima_limpeza["momento"] = time.monotonic()
             auditoria.limpar(db)
@@ -1291,6 +1475,7 @@ class EquipamentoCreate(BaseModel):
     pingTime: Optional[float] = None; posX: float; posY: float; width: float; height: float
     monitorMode: str = "ip"; monitorConfig: Optional[dict] = None
     notificar: bool = True
+    statusPublico: bool = True
     rackId: Optional[str] = None; rackU: Optional[int] = None; alturaU: Optional[int] = None
     modeloId: Optional[int] = None
     dependeDe: Optional[str] = None
@@ -1356,6 +1541,7 @@ class EquipamentoBase(BaseModel):
     ping_time: Optional[float] = None; pos_x: float; pos_y: float; width: float; height: float
     monitor_mode: str = "ip"; monitor_config: Optional[dict] = None
     notificar: bool = True
+    status_publico: bool = True
     rack_id: Optional[str] = None; rack_u: Optional[int] = None; altura_u: Optional[int] = None
     modelo_id: Optional[int] = None
     depende_de: Optional[str] = None
@@ -1363,6 +1549,7 @@ class EquipamentoBase(BaseModel):
     resumo_mapa: Optional[dict] = None  # atalho: online/offline do mapa de destino
     inalcancavel_por: Optional[str] = None  # uplink offline que explica a queda
     manutencao_ate: Optional[str] = None
+    reconhecido: Optional[dict] = None  # who acknowledged the alert of this offline device
     snmp: Optional[dict] = None  # métricas SNMP compactas (CPU, memória, temperatura, portas)
     http: Optional[dict] = None  # last HTTP(S) check: status code, error, certificate
     class Config: from_attributes = True
@@ -1395,7 +1582,7 @@ def _obter_dados_projeto(projeto_id: int, db: Session, projeto, publico: bool = 
     extras = _estado_alertas(db, projeto_id, projeto.equipamentos)
     equipamentos = []
     for equipamento in projeto.equipamentos:
-        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'rack_id', 'rack_u', 'altura_u', 'modelo_id', 'depende_de', 'mapa_destino_id')}
+        item = {column: getattr(equipamento, column) for column in ('id', 'nome', 'ip', 'tipo', 'status', 'ping_time', 'pos_x', 'pos_y', 'width', 'height', 'monitor_mode', 'notificar', 'status_publico', 'rack_id', 'rack_u', 'altura_u', 'modelo_id', 'depende_de', 'mapa_destino_id')}
         item.update(extras["por_equipamento"].get(equipamento.id, {}))
         config = abrir_config(equipamento.monitor_config)
         item['monitor_config'] = {} if publico else {key: value for key, value in config.items() if key not in ('authPassword', 'privPassword')}
@@ -1508,6 +1695,101 @@ def revogar_link_publico(projeto_id: int, request: Request, db: Session = Depend
     return {"status": "sucesso"}
 
 
+# --- PÁGINA DE STATUS PÚBLICA (token próprio: sem IPs nem topologia) ---
+@app.get("/api/projetos/{projeto_id}/status-publico")
+def status_pagina_publica(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
+    projeto = crud.get_projeto(db, projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    return {"token": projeto.status_token}
+
+
+@app.post("/api/projetos/{projeto_id}/status-publico")
+def gerar_pagina_publica(projeto_id: int, request: Request, regenerar: bool = False, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    projeto = crud.get_projeto(db, projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    if projeto.status_token and not regenerar:
+        return {"token": projeto.status_token}
+    projeto = crud.definir_status_token(db, projeto_id, secrets.token_urlsafe(24))
+    _cache_status.clear()
+    auditoria.registrar(db, user, "status.regenerado" if regenerar else "status.criado", projeto.nome, request, projeto_id)
+    return {"token": projeto.status_token}
+
+
+@app.delete("/api/projetos/{projeto_id}/status-publico")
+def revogar_pagina_publica(projeto_id: int, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    projeto = crud.definir_status_token(db, projeto_id, None)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    _cache_status.clear()
+    auditoria.registrar(db, user, "status.revogado", projeto.nome, request, projeto_id)
+    return {"status": "sucesso"}
+
+
+STATUS_DIAS = 90
+STATUS_CACHE_S = 30  # public and unauthenticated: computed at most every 30 s per page
+_cache_status = {}
+
+
+def montar_pagina_status(db: Session, projeto, agora=None):
+    agora = agora or datetime.utcnow()
+    fuso = get_fuso(db)
+    equipamentos = [e for e in projeto.equipamentos if e.status_publico and crud._monitoravel(e) and e.ip and e.ip != "Sem IP"
+                    and e.tipo not in ("Rack", "Atalho de mapa")]
+    projetos_mnt, eqs_mnt = regras_alerta.manutencoes_ativas(db, agora, fuso)
+    mapa_em_manutencao = projeto.id in projetos_mnt
+    servicos = []
+    for e in sorted(equipamentos, key=lambda x: (x.nome or "").lower()):
+        diario = crud.disponibilidade_diaria(db, e.id, STATUS_DIAS, fuso, agora)
+        janela = lambda n: [p for _, p in diario[-n:] if p is not None]
+        media = lambda n: round(sum(janela(n)) / len(janela(n)), 2) if janela(n) else None
+        manutencao = mapa_em_manutencao or e.id in eqs_mnt
+        servicos.append({
+            "nome": e.nome, "tipo": e.tipo,
+            "status": "manutencao" if manutencao and e.status != "online" else e.status,
+            "em_manutencao": manutencao,
+            "uptime": {"1d": diario[-1][1], "30d": media(30), "90d": media(90)},
+            "dias": [{"data": d.isoformat(), "pct": p} for d, p in diario],
+        })
+    fora = [s for s in servicos if s["status"] == "offline"]
+    if fora:
+        geral = "fora" if len(fora) == len(servicos) else "parcial"
+    elif any(s["em_manutencao"] for s in servicos) or mapa_em_manutencao:
+        geral = "manutencao"
+    else:
+        geral = "operacional"
+    nomes = {e.id: e.nome for e in equipamentos}
+    proximas = []
+    for m in regras_alerta.listar_manutencoes(db, projeto.id, agora):
+        if m.equipamento_id and m.equipamento_id not in nomes:
+            continue  # device not on the status page
+        info = manutencao_publica(m, agora, fuso)
+        base = {"alvo": nomes.get(m.equipamento_id), "motivo": m.motivo, "recorrencia": info["recorrencia"]}
+        if info["ativa"]:
+            proximas.append({**base, "ativa": True, "inicio": None, "ate": info["ativa_ate"]})
+        elif info["proxima"] and datetime.fromisoformat(info["proxima"].rstrip("Z")) < agora + timedelta(days=14):
+            proximas.append({**base, "ativa": False, "inicio": info["proxima"], "ate": None if info["recorrencia"] else info["ate"]})
+    return {"titulo": projeto.nome, "atualizado_em": iso_utc(agora), "geral": geral, "fuso": getattr(fuso, "key", "UTC"),
+            "dias_historico": HISTORY_RETENTION_DAYS, "servicos": servicos, "manutencoes": proximas}
+
+
+@app.get("/api/public/status/{token}")
+def pagina_status_publica(token: str, db: Session = Depends(get_db)):
+    agora_m = time.monotonic()
+    guardado = _cache_status.get(token)
+    if guardado and agora_m - guardado[0] < STATUS_CACHE_S:
+        return guardado[1]
+    projeto = crud.get_projeto_por_status_token(db, token)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Página de status inválida ou desativada")
+    dados = montar_pagina_status(db, projeto)
+    if len(_cache_status) > 200:
+        _cache_status.clear()
+    _cache_status[token] = (agora_m, dados)
+    return dados
+
+
 @app.get("/api/public/mapas/{token}/dados", response_model=ProjetoResponse)
 def obter_dados_projeto_publico(token: str, db: Session = Depends(get_db)):
     projeto = crud.get_projeto_por_token(db, token)
@@ -1554,12 +1836,16 @@ def _estado_alertas(db: Session, projeto_id: int, equipamentos=None):
     if equipamentos is None:
         equipamentos = db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).all()
     projetos, por_eq = regras_alerta.manutencoes_ativas(db)
+    reconhecidos = regras_alerta.reconhecimentos(db, projeto_id)
     extras = {}
     for eq_id, causa in regras_alerta.inalcancaveis(equipamentos).items():
         extras.setdefault(eq_id, {})["inalcancavel_por"] = causa
     for e in equipamentos:
         if e.id in por_eq:
             extras.setdefault(e.id, {})["manutencao_ate"] = iso_utc(por_eq[e.id])
+        if e.id in reconhecidos:
+            r = reconhecidos[e.id]
+            extras.setdefault(e.id, {})["reconhecido"] = {"usuario": r.usuario, "nota": r.nota, "em": iso_utc(r.criado_em)}
         if e.id in _metricas:
             extras.setdefault(e.id, {})["snmp"] = _metricas_compactas(_metricas[e.id])
         if e.id in _http and e.monitor_mode == "http":
@@ -1572,19 +1858,50 @@ def _estado_alertas(db: Session, projeto_id: int, equipamentos=None):
     return {"manutencao_ate": iso_utc(projetos.get(projeto_id)), "por_equipamento": extras}
 
 
+class RecorrenciaIn(BaseModel):
+    dias: List[int]                     # 0 = Monday ... 6 = Sunday
+    hora: str                           # HH:MM in the system time zone
+    minutos: int                        # duration of each occurrence
+
+
 class ManutencaoIn(BaseModel):
-    horas: Optional[float] = None       # duração a partir de agora
-    ate: Optional[datetime] = None      # ou um horário final (ISO)
+    horas: Optional[float] = None       # duração (a partir de agora ou do início)
+    ate: Optional[datetime] = None      # ou um horário final (ISO); na semanal: até quando a regra vale
+    inicio: Optional[datetime] = None   # agendada: começa neste horário (ISO)
+    recorrencia: Optional[RecorrenciaIn] = None  # semanal
     equipamento_id: Optional[str] = None
     motivo: Optional[str] = None
+
+
+def _utc(momento):
+    if momento is None:
+        return None
+    return momento.astimezone(timezone.utc).replace(tzinfo=None) if momento.tzinfo else momento
+
+
+def manutencao_publica(m, agora=None, fuso=None):
+    agora = agora or datetime.utcnow()
+    rec = regras_alerta.ler_recorrencia(m)
+    fim_atual = regras_alerta.fim_se_ativa(m, agora, fuso)
+    if rec:
+        proxima = regras_alerta.proxima_ocorrencia(rec, max(agora, m.inicio or agora), fuso)
+        proxima = proxima if proxima and proxima < m.ate else None
+        rec = {k: rec[k] for k in ("dias", "hora", "minutos")}
+    else:
+        proxima = m.inicio if m.inicio and m.inicio > agora else None
+    return {
+        "id": m.id, "equipamento_id": m.equipamento_id, "inicio": iso_utc(m.inicio), "motivo": m.motivo,
+        "ate": None if m.ate >= regras_alerta.SEM_FIM else iso_utc(m.ate), "recorrencia": rec,
+        "ativa": fim_atual is not None, "ativa_ate": iso_utc(fim_atual), "proxima": iso_utc(proxima),
+    }
 
 
 @app.get("/api/projetos/{projeto_id}/manutencao")
 def listar_manutencao(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     if not crud.get_projeto(db, projeto_id):
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
-    return [{"id": m.id, "equipamento_id": m.equipamento_id, "ate": iso_utc(m.ate), "motivo": m.motivo}
-            for m in regras_alerta.listar_manutencoes(db, projeto_id)]
+    agora, fuso = datetime.utcnow(), get_fuso(db)
+    return [manutencao_publica(m, agora, fuso) for m in regras_alerta.listar_manutencoes(db, projeto_id, agora)]
 
 
 @app.post("/api/projetos/{projeto_id}/manutencao")
@@ -1592,29 +1909,102 @@ def iniciar_manutencao(projeto_id: int, dados: ManutencaoIn, request: Request, d
     if not crud.get_projeto(db, projeto_id):
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
     agora = datetime.utcnow()
-    if dados.ate:
-        ate = dados.ate.astimezone(timezone.utc).replace(tzinfo=None) if dados.ate.tzinfo else dados.ate
-    elif dados.horas:
-        ate = agora + timedelta(hours=dados.horas)
+    inicio, ate, recorrencia = _utc(dados.inicio), _utc(dados.ate), None
+    if dados.recorrencia:
+        r = dados.recorrencia
+        dias = sorted(set(r.dias))
+        if not dias or any(d < 0 or d > 6 for d in dias):
+            raise HTTPException(status_code=400, detail="Escolha pelo menos um dia da semana.")
+        if not HORARIO_RE.match(r.hora or ""):
+            raise HTTPException(status_code=400, detail="Horário inválido (use HH:MM).")
+        if not 5 <= r.minutos <= 24 * 60:
+            raise HTTPException(status_code=400, detail="Cada janela semanal deve durar de 5 minutos a 24 horas.")
+        recorrencia = {"dias": dias, "hora": r.hora, "minutos": r.minutos}
+        ate = ate or regras_alerta.SEM_FIM
+        if ate <= agora or (inicio and inicio >= ate):
+            raise HTTPException(status_code=400, detail="A manutenção deve terminar no futuro e durar no máximo 30 dias.")
     else:
-        raise HTTPException(status_code=400, detail="Informe a duração da manutenção.")
-    if not agora < ate <= agora + timedelta(days=30):
-        raise HTTPException(status_code=400, detail="A manutenção deve terminar no futuro e durar no máximo 30 dias.")
+        base = inicio or agora
+        if inicio and not agora - timedelta(minutes=5) <= inicio <= agora + timedelta(days=366):
+            raise HTTPException(status_code=400, detail="O início deve ser no futuro (até 1 ano).")
+        if not ate and dados.horas:
+            ate = base + timedelta(hours=dados.horas)
+        if not ate:
+            raise HTTPException(status_code=400, detail="Informe a duração da manutenção.")
+        if not (agora < ate and base < ate <= base + timedelta(days=30)):
+            raise HTTPException(status_code=400, detail="A manutenção deve terminar no futuro e durar no máximo 30 dias.")
+        if inicio and inicio <= agora:
+            inicio = None  # starts now
+    eq = None
     if dados.equipamento_id:
         eq = crud.get_equipamento(db, dados.equipamento_id)
         if not eq or eq.projeto_id != projeto_id:
             raise HTTPException(status_code=404, detail="Equipamento não encontrado")
-    m = regras_alerta.criar_manutencao(db, projeto_id, ate, dados.equipamento_id, (dados.motivo or "").strip()[:200] or None, user.id)
-    logger.info("%s iniciou manutenção (projeto %s, equipamento %s) até %s", user.username, projeto_id, dados.equipamento_id, ate)
-    auditoria.registrar(db, user, "manutencao.iniciada", f"{eq.nome if dados.equipamento_id else '*'} -> {iso_utc(ate)}", request, projeto_id)
-    return {"id": m.id, "equipamento_id": m.equipamento_id, "ate": iso_utc(m.ate), "motivo": m.motivo}
+    m = regras_alerta.criar_manutencao(db, projeto_id, ate, dados.equipamento_id, (dados.motivo or "").strip()[:200] or None, user.id,
+                                       inicio=inicio, recorrencia=recorrencia)
+    alvo = eq.nome if eq else "*"
+    if recorrencia or inicio:
+        detalhe = f"{alvo}: weekly {recorrencia['dias']} {recorrencia['hora']} {recorrencia['minutos']} min" if recorrencia else f"{alvo}: {iso_utc(inicio)} -> {iso_utc(ate)}"
+        auditoria.registrar(db, user, "manutencao.agendada", detalhe, request, projeto_id)
+    else:
+        logger.info("%s iniciou manutenção (projeto %s, equipamento %s) até %s", user.username, projeto_id, dados.equipamento_id, ate)
+        auditoria.registrar(db, user, "manutencao.iniciada", f"{alvo} -> {iso_utc(ate)}", request, projeto_id)
+    return manutencao_publica(m, agora, get_fuso(db))
 
 
 @app.delete("/api/projetos/{projeto_id}/manutencao")
 def encerrar_manutencao(projeto_id: int, request: Request, equipamento_id: Optional[str] = None, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    """Ends what is silencing the target now; scheduled and weekly windows stay (the current weekly one is skipped)."""
     if regras_alerta.cancelar_manutencao(db, projeto_id, equipamento_id):
         eq = crud.get_equipamento(db, equipamento_id) if equipamento_id else None
         auditoria.registrar(db, user, "manutencao.encerrada", eq.nome if eq else (equipamento_id or "*"), request, projeto_id)
+    return {"status": "ok"}
+
+
+@app.delete("/api/projetos/{projeto_id}/manutencao/{manutencao_id}")
+def remover_manutencao(projeto_id: int, manutencao_id: int, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    m = regras_alerta.remover_manutencao(db, projeto_id, manutencao_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Manutenção não encontrada.")
+    eq = crud.get_equipamento(db, m.equipamento_id) if m.equipamento_id else None
+    auditoria.registrar(db, user, "manutencao.removida", eq.nome if eq else (m.equipamento_id or "*"), request, projeto_id)
+    return {"status": "ok"}
+
+
+# --- RECONHECER ALERTA ("estou vendo") ---
+class ReconhecerIn(BaseModel):
+    nota: Optional[str] = None
+
+
+def _equipamento_do_projeto(db: Session, projeto_id: int, equipamento_id: str):
+    eq = crud.get_equipamento(db, equipamento_id)
+    if not eq or eq.projeto_id != projeto_id:
+        raise HTTPException(status_code=404, detail="Equipamento não encontrado")
+    return eq
+
+
+@app.post("/api/projetos/{projeto_id}/equipamentos/{equipamento_id}/reconhecer")
+def reconhecer_alerta(projeto_id: int, equipamento_id: str, dados: ReconhecerIn, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    eq = _equipamento_do_projeto(db, projeto_id, equipamento_id)
+    if eq.status != "offline":
+        raise HTTPException(status_code=400, detail="Só dá para reconhecer o alerta de um equipamento offline.")
+    nota = (dados.nota or "").strip()[:200] or None
+    r = regras_alerta.reconhecer(db, eq, user.username, nota)
+    auditoria.registrar(db, user, "alerta.reconhecido", eq.nome + (f": {nota}" if nota else ""), request, projeto_id)
+    # Tell the team (chat channels and e-mail), unless the device is in maintenance or muted.
+    if eq.notificar and not regras_alerta.em_manutencao(eq, regras_alerta.manutencoes_ativas(db)):
+        enviar_alertas(db, [alerts.montar_evento_reconhecido(eq, eq.projeto.nome if eq.projeto else None, user.username, nota)])
+    return {"usuario": r.usuario, "nota": r.nota, "em": iso_utc(r.criado_em)}
+
+
+@app.delete("/api/projetos/{projeto_id}/equipamentos/{equipamento_id}/reconhecer")
+def desfazer_reconhecimento(projeto_id: int, equipamento_id: str, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    eq = _equipamento_do_projeto(db, projeto_id, equipamento_id)
+    if regras_alerta.remover_reconhecimento(db, eq.id):
+        auditoria.registrar(db, user, "alerta.reconhecimento_removido", eq.nome, request, projeto_id)
+        estado = _offline_desde.get(eq.id)
+        if estado:
+            estado["aviso"] = time.monotonic()  # next reminder counts from now
     return {"status": "ok"}
 
 

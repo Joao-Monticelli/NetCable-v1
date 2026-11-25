@@ -29,13 +29,16 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 - 📡 **Server-side monitoring** — TCP (80/443/22) + ICMP in parallel, SNMPv3, or HTTP(S); works with no browser open.
 - 🔒 **HTTP(S) & certificate monitor** — check a website, API or web panel (status code, response time, text on the page) and get an alert before its TLS certificate expires.
 - 🚨 **Alerts** — email, Discord, ntfy, Telegram and webhook on down/up, grouped per cycle, per-device on/off.
-- 🧠 **Smart alerts** — set each device's uplink (or compute them from the cables): when a switch dies you get **one** alert listing what is behind it, and those devices turn amber (*unreachable*) on the map. **Maintenance windows** mute a device or a whole map for a while.
+- 🧠 **Smart alerts** — set each device's uplink (or compute them from the cables): when a switch dies you get **one** alert listing what is behind it, and those devices turn amber (*unreachable*) on the map. **Maintenance windows** mute a device or a whole map now, at a scheduled time or every week.
+- 👀 **Acknowledge alerts** — click *I'm on it* on a device that is down: the team is told who is handling it, and optional reminders ("still offline after 1 h") stop.
 - 🌡️ **SNMP metrics** — CPU, memory, temperature, uptime and per-port link/traffic for SNMPv3 devices, with charts, real port LEDs on the rack and temperature/CPU alerts.
 - 📊 **Uptime & latency** — availability %, outages, latency chart (24 h / 7 d / 30 d), a daily email report and an **SLA report in CSV** (7 / 30 / 90 days).
 - 📈 **Prometheus `/metrics`** — device status, latency, SNMP metrics and certificate expiry for Grafana.
 - 🕵️ **Audit log** — who logged in, changed users, saved or deleted maps, shared links or changed settings, and when.
 - 👥 **Team roles** — Admin, Editor and Viewer (great for a NOC TV).
+- 🔐 **Two-factor authentication** — optional 6-digit codes from an authenticator app, with single-use recovery codes.
 - 📺 **Public link & TV mode** — read-only, auto-refreshing, full screen, revocable secret link.
+- 🟢 **Public status page** — a simple page for customers or the team: each service's status and 90-day availability bars, plus scheduled maintenance. No IPs or network layout.
 - 💾 **Backups** — daily `.zip` (all maps + model catalog + full database) to a folder you choose; export/import single maps as JSON.
 - 🌐 **English / Português** — per user; also applies to emails and API errors.
 
@@ -159,6 +162,14 @@ For devices monitored with **SNMPv3**, NetCable collects every minute (`SNMP_MET
   (*"Core switch OFFLINE — 12 devices behind it unreachable: …"*). When it comes back, one recovery alert lists them too.
 - **Maintenance:** 🔧 in the toolbar mutes the whole map for 1–24 h; inside a device you can mute just that device.
   Monitoring and history keep running; devices that went down during maintenance don't send a "back online" alert afterwards.
+- **Maintenance calendar:** 🔧 → **Schedule / calendar…** plans a window for later (e.g. Saturday 22:00 → 02:00) or **every week**
+  (e.g. every Sunday at 02:00 for 2 h, in the system time zone), for the whole map or one device. *End maintenance* during a weekly
+  window skips only that occurrence.
+- **Acknowledge (*I'm on it*):** open a device that is offline and click **I'm on it** (optionally with a note). The channels get
+  *"👀 ana acknowledged the alert and is on it"*, the map shows 👁 on the device, and the acknowledgement goes away by itself when
+  the device comes back (the recovery alert says who was on it).
+- **Reminders:** ⚙️ → **Alert channels** → *Reminder for devices that stay offline* repeats the alert every 15 min … 4 h while a
+  device is still down and nobody acknowledged it (off by default). Maintenance and the uplink rules apply to reminders too.
 - **Channels:** ⚙️ → **Alert channels** (admins) for Discord, ntfy (push notifications on your phone), Telegram and a generic JSON webhook, each with a *Test* button. Tokens and URLs are stored encrypted.
 
 ## HTTP(S) and certificate monitoring
@@ -197,6 +208,25 @@ The map shows the days left (🔒 `12d`, amber at 14 days or less, red when expi
   `netcable_device_cpu_percent`, `netcable_device_memory_percent`, `netcable_device_temperature_celsius`,
   `netcable_http_status_code`, `netcable_tls_cert_expiry_days` (labels `map`, `device`, `ip`, `type`, `mode`) and
   `netcable_monitor_*`.
+
+## Two-factor authentication
+
+Each user can turn it on in **My profile** → *Two-factor authentication*: scan the QR code with any authenticator app
+(Google Authenticator, Microsoft Authenticator, Authy, 1Password…), type the 6-digit code and keep the 10 recovery codes shown.
+From then on, logging in asks for the code after the password. Wrong codes count towards the same lockout as wrong passwords.
+
+- Lost the phone? Log in with a recovery code (each works once) and generate new ones in the profile.
+- An admin can remove someone's 2FA in ⚙️ → **Users** (the shield button). If the only admin is locked out:
+  `docker compose exec netcable python -m app.redefinir_2fa <username>`.
+- The secret is stored encrypted with the secret key (and re-encrypted by the key rotation command).
+
+## Public status page
+
+⚙️ → **Public status page** → *Turn on* gives the map an address like `http://server:8080/status/<token>`, separate from the
+public map link. It shows, for each device marked **Show on the status page** (on by default), its name, current status
+(operational / down / under maintenance) and one bar per day with its availability over the last 90 days, plus maintenance in
+progress or scheduled for the next 14 days (with its reason). It shows **no IPs, ids or network layout**, refreshes every minute
+and can be given a new address or turned off at any time. Days older than `HISTORY_RETENTION_DAYS` show as *no data*.
 
 ## Rotating the secret key
 
