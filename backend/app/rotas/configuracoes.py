@@ -10,13 +10,14 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 from .. import models, crud, alerts, email_service
 from ..i18n import traduzir, IDIOMAS
-from .. import backup, auditoria
+from .. import backup, auditoria, ldap_auth
 from fastapi.responses import FileResponse
 from ..nucleo import (
     CAMPOS_CANAIS,
     CAMPOS_SECRETOS,
     FUSO_PADRAO,
     _canais_salvos,
+    abrir_config,
     get_canais_config,
     get_db,
     get_smtp_config,
@@ -24,10 +25,13 @@ from ..nucleo import (
     proteger_config,
     requer_admin,
 )
-from ..monitoramento import BACKUP_DIR_PADRAO, fazer_backup, get_backup_config, get_lembrete_min, get_limites
+from ..monitoramento import BACKUP_DIR_PADRAO, fazer_backup, get_backup_config, get_escalonamento, get_lembrete_min, get_limites
 from fastapi import APIRouter
 
 router = APIRouter()
+
+
+EMAIL_RE = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 
 
 # --- CONFIGURAÇÃO DE E-MAIL (ADMIN) ---
@@ -106,12 +110,20 @@ class CanaisIn(BaseModel):
     webhook_url: Optional[str] = None
     idioma: Optional[str] = None
     lembrete_min: Optional[int] = None  # repeat "still offline" every N minutes until acknowledged (0 = off)
+    # Escalation: after N minutes offline with nobody acknowledging, tell other people (0 = off).
+    escalar_min: Optional[int] = None
+    escalar_emails: Optional[str] = None
+    escalar_telegram_chat: Optional[str] = None
+    escalar_ntfy_url: Optional[str] = None  # secret: None keeps it, "" removes it
 
 
 @router.get("/api/config/alertas")
 def obter_canais(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
     salvos, ambiente, efetivo = _canais_salvos(db), alerts.canais_do_ambiente(), get_canais_config(db)
     resposta = {"idioma": efetivo["idioma"] or "en", "ativos": alerts.canais_configurados(None, efetivo), "lembrete_min": get_lembrete_min(db)}
+    escalar = get_escalonamento(db)
+    resposta.update(escalar_min=escalar["minutos"], escalar_emails=", ".join(escalar["emails"]),
+                    escalar_telegram_chat=escalar["telegram_chat"], escalar_ntfy_url_definido=bool(escalar["ntfy_url"]))
     for campo in CAMPOS_CANAIS:
         if campo in CAMPOS_SECRETOS:
             resposta[f"{campo}_definido"] = bool(salvos[campo])
@@ -140,6 +152,22 @@ def salvar_canais(dados: CanaisIn, request: Request, db: Session = Depends(get_d
         if dados.lembrete_min != 0 and not 5 <= dados.lembrete_min <= 1440:
             raise HTTPException(status_code=400, detail="O lembrete deve ser de 5 a 1440 minutos (0 desliga).")
         valores["alertas.lembrete_min"] = str(dados.lembrete_min)
+    if dados.escalar_min is not None:
+        if dados.escalar_min != 0 and not 5 <= dados.escalar_min <= 1440:
+            raise HTTPException(status_code=400, detail="O escalonamento deve ser de 5 a 1440 minutos (0 desliga).")
+        valores["alertas.escalar_min"] = str(dados.escalar_min)
+    if dados.escalar_emails is not None:
+        emails = [e.strip() for e in re.split(r"[,;\s]+", dados.escalar_emails) if e.strip()]
+        if any(not EMAIL_RE.match(e) for e in emails):
+            raise HTTPException(status_code=400, detail="E-mail de escalonamento inválido.")
+        valores["alertas.escalar_emails"] = ", ".join(dict.fromkeys(emails))
+    if dados.escalar_telegram_chat is not None:
+        valores["alertas.escalar_telegram_chat"] = dados.escalar_telegram_chat.strip()
+    if dados.escalar_ntfy_url is not None:
+        url = dados.escalar_ntfy_url.strip()
+        if url and not re.match(r"^https?://", url, re.I):
+            raise HTTPException(status_code=400, detail="Use um endereço que comece com http:// ou https://.")
+        valores["alertas.escalar_ntfy_url"] = proteger_config({"v": url}) if url else ""
     crud.salvar_configuracoes(db, valores)
     alterados = sorted({c.split(".", 1)[1].split("_")[0] for c in valores if c != "alertas.idioma"})
     auditoria.registrar(db, admin, "config.alertas", ", ".join(alterados) or None, request)
@@ -245,3 +273,79 @@ def listar_auditoria(limite: int = 200, usuario: Optional[str] = None, acao: Opt
     itens = auditoria.listar(db, limite, usuario or None, acao or None, antes_de)
     return [{"id": a.id, "criado_em": iso_utc(a.criado_em), "usuario": a.usuario, "acao": a.acao, "detalhe": a.detalhe,
              "ip": a.ip, "projeto_id": a.projeto_id} for a in itens]
+
+
+# --- DIRETÓRIO (LDAP / ACTIVE DIRECTORY) ---
+class LdapConfigIn(BaseModel):
+    ativo: bool = False
+    servidor: str = ""
+    starttls: bool = False
+    verificar_cert: bool = True
+    bind_dn: str = ""
+    bind_senha: Optional[str] = None  # None keeps the saved one; "" removes it
+    base_dn: str = ""
+    filtro: str = ""
+    atributo_email: str = ""
+    grupo_admin: str = ""
+    grupo_editor: str = ""
+    grupo_visualizador: str = ""
+    papel_padrao: str = ""
+
+
+class LdapTesteIn(BaseModel):
+    usuario: str
+    senha: Optional[str] = None
+
+
+def _ldap_publico(cfg):
+    dados = {campo: cfg[campo] for campo in ldap_auth.CAMPOS if campo != "bind_senha"}
+    dados["bind_senha_definida"] = bool(cfg["bind_senha"])
+    dados["filtro_padrao"] = ldap_auth.FILTRO_PADRAO
+    return dados
+
+
+@router.get("/api/config/ldap")
+def obter_ldap(db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    return _ldap_publico(ldap_auth.ler_config(db, abrir_config))
+
+
+@router.put("/api/config/ldap")
+def salvar_ldap(dados: LdapConfigIn, request: Request, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    servidor = dados.servidor.strip()
+    if servidor and not re.match(r"^(ldaps?://)?[\w.\-\[\]:]+/?$", servidor, re.I):
+        raise HTTPException(status_code=400, detail="Endereço do servidor inválido (use ldap://servidor ou ldaps://servidor).")
+    if dados.ativo and (not servidor or not dados.base_dn.strip()):
+        raise HTTPException(status_code=400, detail="Informe o servidor e a base de busca (base DN) para ativar.")
+    filtro = dados.filtro.strip()
+    if filtro and ("{usuario}" not in filtro or not (filtro.startswith("(") and filtro.endswith(")"))):
+        raise HTTPException(status_code=400, detail="O filtro precisa estar entre parênteses e conter {usuario}.")
+    if dados.papel_padrao not in ldap_auth.PAPEIS_PADRAO:
+        raise HTTPException(status_code=400, detail="Papel padrão inválido.")
+    valores = {f"ldap.{campo}": getattr(dados, campo).strip() for campo in
+               ("bind_dn", "base_dn", "atributo_email", "grupo_admin", "grupo_editor", "grupo_visualizador", "papel_padrao")}
+    valores.update({"ldap.ativo": "1" if dados.ativo else "0", "ldap.servidor": servidor, "ldap.filtro": filtro,
+                    "ldap.starttls": "1" if dados.starttls else "0", "ldap.verificar_cert": "1" if dados.verificar_cert else "0"})
+    if dados.bind_senha is not None:
+        valores["ldap.bind_senha"] = proteger_config({"v": dados.bind_senha}) if dados.bind_senha else ""
+    crud.salvar_configuracoes(db, valores)
+    auditoria.registrar(db, admin, "config.ldap", "on" if dados.ativo else "off", request)
+    return obter_ldap(db, admin)
+
+
+@router.post("/api/config/ldap/teste")
+def testar_ldap(dados: LdapTesteIn, db: Session = Depends(get_db), admin: models.Usuario = Depends(requer_admin)):
+    """Looks a user up (and checks the password, when given) without logging in. Uses the saved settings."""
+    cfg = ldap_auth.ler_config(db, abrir_config)
+    usuario = dados.usuario.strip().lower()
+    try:
+        if dados.senha:
+            info = ldap_auth.autenticar(cfg, usuario, dados.senha)
+            if info is None:
+                return {"encontrado": False, "senha_ok": False}
+            return {"encontrado": True, "senha_ok": True, **info}
+        info = ldap_auth.buscar(cfg, usuario)
+    except ldap_auth.ErroLdap as exc:
+        raise HTTPException(status_code=400, detail=f"Falha no diretório: {exc}")
+    if not info:
+        return {"encontrado": False}
+    return {"encontrado": True, "papel": ldap_auth.papel_dos_grupos(cfg, info["grupos"]), **info}

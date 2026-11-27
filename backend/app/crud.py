@@ -464,6 +464,8 @@ def deletar_projeto(db: Session, projeto_id: int):
         db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id).delete()
         db.query(models.Manutencao).filter(models.Manutencao.projeto_id == projeto_id).delete()
         db.query(models.Reconhecimento).filter(models.Reconhecimento.projeto_id == projeto_id).delete()
+        for incidente in db.query(models.Incidente).filter(models.Incidente.projeto_id == projeto_id).all():
+            db.delete(incidente)  # cascades to its updates
         if ids:
             db.query(models.MetricaSnmp).filter(models.MetricaSnmp.equipamento_id.in_(ids)).delete(synchronize_session=False)
         db.query(models.Equipamento).filter(models.Equipamento.projeto_id == projeto_id).delete()

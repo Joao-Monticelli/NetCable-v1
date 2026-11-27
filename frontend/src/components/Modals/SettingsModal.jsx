@@ -104,6 +104,9 @@ export default function SettingsModal({ onClose, currentUser, onUpdated }) {
           <div style={{ height: '1px', backgroundColor: '#334155', margin: '5px 0' }}></div>
 
           <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '5px' }}><Key size={16}/> {t('Alterar Senha')}</h3>
+          {currentUser?.origem === 'ldap' ? (
+            <span style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.45 }}>{t('Você entra com o usuário e a senha da empresa (LDAP/Active Directory). Para trocar a senha, use o processo da empresa.')}</span>
+          ) : <>
           <div>
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Senha Atual')}</label>
             <input type="password" value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} placeholder={t('Digite sua senha atual')} style={input} />
@@ -112,6 +115,7 @@ export default function SettingsModal({ onClose, currentUser, onUpdated }) {
             <label style={{ fontSize: '14px', color: '#94a3b8' }}>{t('Nova Senha')}</label>
             <input type="password" minLength={8} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} placeholder={t('Mínimo de 8 caracteres')} style={input} />
           </div>
+          </>}
 
           <button type="submit" disabled={isSaving} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px', padding: '10px 20px', backgroundColor: isSaving ? '#475569' : '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: isSaving ? 'wait' : 'pointer', marginTop: '5px' }}>
             <Save size={18} /> {isSaving ? t('Salvando...') : t('Salvar Alterações')}

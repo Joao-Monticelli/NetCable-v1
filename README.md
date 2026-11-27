@@ -26,19 +26,22 @@ It runs as **one Docker container** on anything: a mini PC, a VM, a NAS, a Raspb
 - 🗄️ **Realistic racks** — 4U to 48U racks; switches, servers, NAS, patch panels, UPS… snap to U positions.
 - 🧩 **Device model library** — register your real gear (e.g. “4× RJ45 + 2× SFP, 1U”) and its front panel is drawn with exactly those ports.
 - 🔌 **Port-to-port cables** — connect switch port 12 to firewall eth3; ports show as in use with tooltips.
+- 🧲 **Cables from LLDP/CDP** — ask your SNMPv3 switches who is plugged into each port and add the cables (port to port) in one click.
 - 📡 **Server-side monitoring** — TCP (80/443/22) + ICMP in parallel, SNMPv3, or HTTP(S); works with no browser open.
 - 🔒 **HTTP(S) & certificate monitor** — check a website, API or web panel (status code, response time, text on the page) and get an alert before its TLS certificate expires.
 - 🚨 **Alerts** — email, Discord, ntfy, Telegram and webhook on down/up, grouped per cycle, per-device on/off.
 - 🧠 **Smart alerts** — set each device's uplink (or compute them from the cables): when a switch dies you get **one** alert listing what is behind it, and those devices turn amber (*unreachable*) on the map. **Maintenance windows** mute a device or a whole map now, at a scheduled time or every week.
 - 👀 **Acknowledge alerts** — click *I'm on it* on a device that is down: the team is told who is handling it, and optional reminders ("still offline after 1 h") stop.
+- 📣 **Escalation** — if nobody acknowledges an outage in N minutes, NetCable tells other people (team lead, on-call) by e-mail, Telegram or ntfy.
 - 🌡️ **SNMP metrics** — CPU, memory, temperature, uptime and per-port link/traffic for SNMPv3 devices, with charts, real port LEDs on the rack and temperature/CPU alerts.
 - 📊 **Uptime & latency** — availability %, outages, latency chart (24 h / 7 d / 30 d), a daily email report and an **SLA report in CSV** (7 / 30 / 90 days).
 - 📈 **Prometheus `/metrics`** — device status, latency, SNMP metrics and certificate expiry for Grafana.
 - 🕵️ **Audit log** — who logged in, changed users, saved or deleted maps, shared links or changed settings, and when.
 - 👥 **Team roles** — Admin, Editor and Viewer (great for a NOC TV).
 - 🔐 **Two-factor authentication** — optional 6-digit codes from an authenticator app, with single-use recovery codes.
+- 🏢 **Company login (LDAP / Active Directory)** — people log in with their company account; the role comes from directory groups.
 - 📺 **Public link & TV mode** — read-only, auto-refreshing, full screen, revocable secret link.
-- 🟢 **Public status page** — a simple page for customers or the team: each service's status and 90-day availability bars, plus scheduled maintenance. No IPs or network layout.
+- 🟢 **Public status page** — a simple page for customers or the team: each service's status and 90-day availability bars, **incidents** with their updates, and scheduled maintenance. No IPs or network layout.
 - 💾 **Backups** — daily `.zip` (all maps + model catalog + full database) to a folder you choose; export/import single maps as JSON.
 - 🌐 **English / Português** — per user; also applies to emails and API errors.
 
@@ -137,6 +140,20 @@ Pick what you want, adjust names/types and click **Add to the map**, then save.
   ```
 - Editors and admins can scan; viewers cannot.
 
+### Cables from LLDP/CDP
+
+Switches that speak **LLDP** (most brands) or **CDP** (Cisco and others) know who is plugged into each port. In the editor,
+⚙️ → **Discover cables (LLDP/CDP)** asks every device of the map monitored by **SNMPv3** for its neighbors and lists:
+
+- **Cables found** between devices of the map, with the port on each side (*Core switch (ge-0/0/1) ↔ Firewall (port1)*).
+  A cable seen from both ends shows once; cables that already exist are marked *already connected*.
+- **Neighbors not on the map** (name, IP, platform and the port where they were seen), which you can add as devices.
+
+Neighbors are matched to devices by management IP, then by name (`sw-core.company.local` matches a device named *SW Core*).
+Pick what you want and click **Add to the map**: when the device is in a rack and the port name matches one of its ports
+(`ge-0/0/3`, `GigabitEthernet1/0/3`, `port3`), the cable goes into that port; otherwise it is drawn side to side with the port
+names as its label. Save the map to keep the cables. It uses the SNMPv3 credentials already saved on each device.
+
 ## SNMP metrics
 
 For devices monitored with **SNMPv3**, NetCable collects every minute (`SNMP_METRICS_INTERVAL`):
@@ -170,6 +187,9 @@ For devices monitored with **SNMPv3**, NetCable collects every minute (`SNMP_MET
   the device comes back (the recovery alert says who was on it).
 - **Reminders:** ⚙️ → **Alert channels** → *Reminder for devices that stay offline* repeats the alert every 15 min … 4 h while a
   device is still down and nobody acknowledged it (off by default). Maintenance and the uplink rules apply to reminders too.
+- **Escalation:** ⚙️ → **Alert channels** → *Escalation*: when a device stays offline for 15 min … 8 h and nobody clicked
+  *I'm on it*, NetCable sends **one** *"🚨 Escalated alert"* per outage to other people: e-mail addresses, a Telegram chat
+  (same bot as the main channel) and/or an ntfy topic. Off by default; maintenance and uplink rules apply.
 - **Channels:** ⚙️ → **Alert channels** (admins) for Discord, ntfy (push notifications on your phone), Telegram and a generic JSON webhook, each with a *Test* button. Tokens and URLs are stored encrypted.
 
 ## HTTP(S) and certificate monitoring
@@ -220,6 +240,24 @@ From then on, logging in asks for the code after the password. Wrong codes count
   `docker compose exec netcable python -m app.redefinir_2fa <username>`.
 - The secret is stored encrypted with the secret key (and re-encrypted by the key rotation command).
 
+## Login with LDAP / Active Directory
+
+⚙️ → **Directory (LDAP/AD)** (admins) lets people log in with their company username and password:
+
+1. **Server**: `ldaps://dc01.company.local` (port 636) or `ldap://…` with **STARTTLS**. Plain `ldap://` sends passwords
+   unencrypted, so use it only in a lab. Turn off *Verify the certificate* only for a self-signed lab directory.
+2. **Search base** (`dc=company,dc=local`) and a **service account** (bind DN + password, read-only is enough; empty for
+   anonymous search). The password is stored encrypted.
+3. **User filter**: the default finds `sAMAccountName` (AD), `uid` (OpenLDAP) or `userPrincipalName`; `{usuario}` is the name typed.
+4. **Groups → roles**: the admins, editors and viewers groups (full DN or just the group name). People in none of them
+   cannot log in, unless you choose *Log in as viewer/editor* for them. Direct membership counts (`memberOf`, `member`, `memberUid`).
+5. **Test** with a username (and optionally the password) to see the account, its groups and the role it would get.
+
+The NetCable account is created at the first login (marked **LDAP** in ⚙️ → Users) and its role and e-mail are refreshed at
+every login. The password is never stored: it is checked by the directory each time. **Local accounts keep working** (a local
+account always wins over a directory account with the same name), so if the directory is down the admin can still log in.
+Two-factor authentication works for directory users too. An admin can still disable a directory user in NetCable.
+
 ## Public status page
 
 ⚙️ → **Public status page** → *Turn on* gives the map an address like `http://server:8080/status/<token>`, separate from the
@@ -227,6 +265,11 @@ public map link. It shows, for each device marked **Show on the status page** (o
 (operational / down / under maintenance) and one bar per day with its availability over the last 90 days, plus maintenance in
 progress or scheduled for the next 14 days (with its reason). It shows **no IPs, ids or network layout**, refreshes every minute
 and can be given a new address or turned off at any time. Days older than `HISTORY_RETENTION_DAYS` show as *no data*.
+
+**Incidents:** ⚙️ → **Incidents** (or the *Incidents* button in the status page window) posts what is going on —
+a title, the impact (*minor*, *partial outage*, *down*), the affected services and a message — and then updates as the
+work goes on (*Investigating → Identified → Monitoring → Resolved*). The page shows the timeline, newest first, and the
+banner at the top follows open incidents. Resolved incidents stay on the page for 7 days. Editors and admins can post.
 
 ## Rotating the secret key
 
@@ -287,13 +330,13 @@ Stack: React 18, Vite, React Flow · FastAPI, SQLAlchemy, SQLite · Docker, GitH
 | Path | What lives there |
 |---|---|
 | `backend/app/main.py` | Creates the FastAPI app: middleware, routers, background tasks, serves the built UI |
-| `backend/app/rotas/` | API routes by subject: `contas` (setup, login, 2FA, users), `configuracoes`, `mapas` (maps, links, status page, maintenance, history, SLA), `rede`, `prometheus` |
+| `backend/app/rotas/` | API routes by subject: `contas` (setup, login, 2FA, LDAP, users), `configuracoes`, `mapas` (maps, links, status page, maintenance, history, SLA), `incidentes`, `rede` (discovery, LLDP/CDP cables), `prometheus` |
 | `backend/app/nucleo.py`, `monitoramento.py` | Shared core (settings, secret key, encryption, auth) and background work (monitor cycle, reminders, SNMP metrics, reports, scheduled backups) |
 | `backend/app/models.py`, `crud.py`, `database.py`, `migracoes.py` | Database models, queries and automatic migrations (SQLite) |
 | `backend/app/snmp_service.py`, `metricas_snmp.py`, `monitor_http.py` | SNMP queries, SNMP metrics and the HTTP(S)/certificate check |
 | `backend/app/alerts.py`, `regras_alerta.py`, `email_service.py` | Alert channels (Telegram, Discord, ntfy, webhook, email), smart alert rules, maintenance and acknowledgements |
-| `backend/app/totp.py`, `segredos.py`, `auditoria.py` | Two-factor authentication, secret key handling and the audit log |
-| `backend/app/descoberta.py`, `backup.py`, `i18n.py` | Network discovery, backups/restore, server-side translations |
+| `backend/app/totp.py`, `ldap_auth.py`, `segredos.py`, `auditoria.py` | Two-factor authentication, LDAP/Active Directory login, secret key handling and the audit log |
+| `backend/app/descoberta.py`, `cabos_lldp.py`, `backup.py`, `i18n.py` | Network discovery, cables from LLDP/CDP, backups/restore, server-side translations |
 | `backend/tests/` | pytest suite (plus an SNMPv3 simulator used in CI) |
 | `frontend/src/pages/` | Screens: login, projects, map editor, public shared view and public status page (loaded on demand) |
 | `frontend/src/components/` | Network map (React Flow), racks, charts, sidebar and all modals |

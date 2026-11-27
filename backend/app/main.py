@@ -52,7 +52,7 @@ from .monitoramento import (  # noqa: F401 (tests use app.main.*)
 )
 from .rotas.contas import ADMIN_PASSWORD, LOGIN_MAX_FAILURES, login_failures  # noqa: F401 (tests use app.main.*)
 from .rotas.mapas import _cache_status  # noqa: F401 (tests use app.main.*)
-from .rotas import contas, configuracoes, mapas, rede, prometheus
+from .rotas import contas, configuracoes, mapas, rede, prometheus, incidentes
 
 
 @asynccontextmanager
@@ -150,6 +150,7 @@ app.include_router(configuracoes.router)
 app.include_router(mapas.router)
 app.include_router(rede.router)
 app.include_router(prometheus.router)
+app.include_router(incidentes.router)
 
 
 # --- INTERFACE WEB (imagem única) ---

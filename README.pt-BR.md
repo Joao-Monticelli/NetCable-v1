@@ -24,19 +24,22 @@ Roda em **um único container Docker** em qualquer lugar: mini PC, VM, NAS, Rasp
 - 🗄️ **Racks realistas** — de 4U a 48U; switches, servidores, NAS, patch panels, nobreaks… encaixando por U.
 - 🧩 **Biblioteca de modelos** — cadastre seus equipamentos reais (ex.: “4 RJ45 + 2 SFP, 1U”) e a frente é desenhada com essas portas.
 - 🔌 **Cabos porta a porta** — porta 12 do switch → eth3 do firewall; portas em uso ficam marcadas.
+- 🧲 **Cabos pelo LLDP/CDP** — pergunta aos switches em SNMPv3 quem está ligado em cada porta e adiciona os cabos (porta a porta) num clique.
 - 📡 **Monitoramento no servidor** — TCP (80/443/22) + ICMP em paralelo, SNMPv3 ou HTTP(S); funciona sem navegador aberto.
 - 🔒 **Monitor HTTP(S) e de certificado** — verifica um site, API ou painel web (código de resposta, tempo, texto na página) e avisa antes de o certificado TLS vencer.
 - 🚨 **Alertas** — e-mail, Discord, ntfy, Telegram e webhook na queda e na volta, agrupados, com liga/desliga por equipamento.
 - 🧠 **Alertas inteligentes** — defina o uplink de cada equipamento (ou calcule pelos cabos): quando um switch cai chega **um** alerta com a lista do que está atrás dele, e esses equipamentos ficam âmbar (*inalcançáveis*) no mapa. **Janelas de manutenção** silenciam um equipamento ou o mapa inteiro agora, num horário agendado ou toda semana.
 - 👀 **Reconhecer alerta** — clique em *Estou vendo* num equipamento caído: a equipe fica sabendo quem está cuidando, e os lembretes opcionais ("ainda offline há 1 h") param.
+- 📣 **Escalonamento** — se ninguém reconhecer uma queda em N minutos, o NetCable avisa outras pessoas (coordenador, plantão) por e-mail, Telegram ou ntfy.
 - 🌡️ **Métricas SNMP** — CPU, memória, temperatura, uptime e link/tráfego por porta dos equipamentos em SNMPv3, com gráficos, LEDs reais das portas no rack e alertas de temperatura/CPU.
 - 📊 **Disponibilidade e latência** — uptime %, quedas, gráfico de latência (24 h / 7 d / 30 d), relatório diário por e-mail e **relatório de SLA em CSV** (7 / 30 / 90 dias).
 - 📈 **`/metrics` para Prometheus** — status, latência, métricas SNMP e validade dos certificados para o Grafana.
 - 🕵️ **Log de auditoria** — quem entrou, mexeu em usuários, salvou ou excluiu mapas, compartilhou links ou alterou configurações, e quando.
 - 👥 **Equipe com papéis** — Administrador, Editor e Visualizador (ótimo para a TV do NOC).
 - 🔐 **Verificação em duas etapas** — código de 6 dígitos de um app autenticador (opcional), com códigos de recuperação de uso único.
+- 🏢 **Login da empresa (LDAP / Active Directory)** — as pessoas entram com a conta da empresa; o papel vem dos grupos do diretório.
 - 📺 **Link público e modo TV** — somente leitura, atualização automática, tela cheia e link revogável.
-- 🟢 **Página de status pública** — uma página simples para clientes ou para a equipe: status de cada serviço e barras de disponibilidade de 90 dias, além das manutenções programadas. Sem IPs nem o desenho da rede.
+- 🟢 **Página de status pública** — uma página simples para clientes ou para a equipe: status de cada serviço e barras de disponibilidade de 90 dias, **incidentes** com as atualizações e as manutenções programadas. Sem IPs nem o desenho da rede.
 - 💾 **Backups** — `.zip` diário (todos os mapas + catálogo de modelos + banco completo) numa pasta à sua escolha; exportar/importar mapas em JSON.
 - 🌐 **English / Português** — por usuário; vale também para e-mails e mensagens de erro.
 
@@ -105,6 +108,20 @@ Escolha, ajuste nomes/tipos, clique em **Adicionar ao mapa** e salve.
   ```
 - Editores e admins podem varrer; visualizadores não.
 
+### Cabos pelo LLDP/CDP
+
+Switches que falam **LLDP** (a maioria das marcas) ou **CDP** (Cisco e outros) sabem quem está ligado em cada porta. No editor,
+⚙️ → **Descobrir cabos (LLDP/CDP)** pergunta a cada equipamento do mapa monitorado por **SNMPv3** quem são os vizinhos e lista:
+
+- **Cabos encontrados** entre equipamentos do mapa, com a porta de cada lado (*Switch core (ge-0/0/1) ↔ Firewall (port1)*).
+  Um cabo visto pelas duas pontas aparece uma vez só; cabos que já existem aparecem como *já ligado*.
+- **Vizinhos que não estão no mapa** (nome, IP, plataforma e a porta onde foram vistos), que você pode adicionar como equipamentos.
+
+Os vizinhos são ligados aos equipamentos pelo IP de gerência e depois pelo nome (`sw-core.empresa.local` casa com um equipamento
+chamado *SW Core*). Marque o que quiser e clique em **Adicionar ao mapa**: quando o equipamento está num rack e o nome da porta
+bate com uma das portas dele (`ge-0/0/3`, `GigabitEthernet1/0/3`, `port3`), o cabo vai nessa porta; senão é desenhado de lado a
+lado com os nomes das portas no rótulo. Salve o mapa para manter. Usa as credenciais SNMPv3 já salvas em cada equipamento.
+
 ## Métricas SNMP
 
 Para equipamentos monitorados por **SNMPv3**, o NetCable coleta a cada minuto (`SNMP_METRICS_INTERVAL`):
@@ -133,6 +150,9 @@ e as portas pela IF-MIB (nome, descrição, link, velocidade, tráfego em contad
   (o alerta de recuperação diz quem estava cuidando).
 - **Lembretes:** ⚙️ → **Canais de alerta** → *Lembrete de equipamento que continua offline* repete o alerta a cada 15 min … 4 h enquanto
   o equipamento continua fora e ninguém reconheceu (desligado por padrão). Manutenção e uplink valem também para os lembretes.
+- **Escalonamento:** ⚙️ → **Canais de alerta** → *Escalonamento*: quando um equipamento fica offline por 15 min … 8 h e ninguém
+  clicou em *Estou vendo*, o NetCable manda **um** *"🚨 Alerta escalado"* por queda para outras pessoas: e-mails, um chat do
+  Telegram (o mesmo bot do canal principal) e/ou um tópico ntfy. Vem desligado; manutenção e uplink valem também.
 - **Canais:** ⚙️ → **Canais de alerta** (admin) para Discord, ntfy (notificação no celular), Telegram e webhook JSON, cada um com botão *Testar*. Tokens e URLs ficam cifrados.
   Também dá para usar variáveis de ambiente (`DISCORD_WEBHOOK_URL`, `NTFY_URL`, `NTFY_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ALERT_WEBHOOK_URL`); o que for definido na interface tem prioridade.
 
@@ -173,6 +193,24 @@ A partir daí o login pede o código depois da senha. Códigos errados contam pa
   `docker compose exec netcable python -m app.redefinir_2fa <usuario>`.
 - O segredo fica cifrado com a chave secreta (e é cifrado de novo pelo comando de troca de chave).
 
+## Login com LDAP / Active Directory
+
+⚙️ → **Diretório (LDAP/AD)** (admin) permite entrar com o usuário e a senha da empresa:
+
+1. **Servidor**: `ldaps://dc01.empresa.local` (porta 636) ou `ldap://…` com **STARTTLS**. Com `ldap://` puro a senha passa sem
+   cifra pela rede: use só em laboratório. Desligue *Verificar o certificado* só para um diretório de laboratório autoassinado.
+2. **Base de busca** (`dc=empresa,dc=local`) e uma **conta de serviço** (bind DN + senha, só leitura basta; vazia para busca
+   anônima). A senha fica cifrada.
+3. **Filtro de usuário**: o padrão acha `sAMAccountName` (AD), `uid` (OpenLDAP) ou `userPrincipalName`; `{usuario}` é o nome digitado.
+4. **Grupos → papéis**: os grupos de administradores, editores e visualizadores (DN completo ou só o nome do grupo). Quem não
+   está em nenhum não entra, a não ser que você escolha *Entra como visualizador/editor*. Vale a participação direta (`memberOf`, `member`, `memberUid`).
+5. **Testar** com um usuário (e, se quiser, a senha) mostra a conta, os grupos e o papel que ela teria.
+
+A conta no NetCable é criada no primeiro login (marcada **LDAP** em ⚙️ → Usuários) e o papel e o e-mail são atualizados a cada
+login. A senha nunca é guardada: o diretório confere toda vez. **As contas locais continuam funcionando** (uma conta local sempre
+vence uma conta do diretório com o mesmo nome), então se o diretório cair o admin ainda entra. A verificação em duas etapas
+funciona também para quem entra pelo diretório, e o admin ainda pode desativar um usuário do diretório no NetCable.
+
 ## Página de status pública
 
 ⚙️ → **Página de status pública** → *Ativar* cria um endereço como `http://servidor:8080/status/<token>`, separado do link público
@@ -180,6 +218,11 @@ do mapa. Para cada equipamento marcado em **Mostrar na página de status** (liga
 (operacional / fora do ar / em manutenção) e uma barra por dia com a disponibilidade dos últimos 90 dias, além das manutenções em
 andamento ou programadas para os próximos 14 dias (com o motivo). **Não mostra IPs, ids nem o desenho da rede**, atualiza a cada
 minuto e pode ganhar um novo endereço ou ser desativada a qualquer momento. Dias além do `HISTORY_RETENTION_DAYS` aparecem como *sem dados*.
+
+**Incidentes:** ⚙️ → **Incidentes** (ou o botão *Incidentes* na janela da página de status) publica o que está acontecendo —
+título, impacto (*pequeno*, *parte dos serviços*, *fora do ar*), serviços afetados e uma mensagem — e depois as atualizações
+(*Investigando → Causa identificada → Monitorando → Resolvido*). A página mostra a linha do tempo, da mais nova para a mais
+antiga, e o aviso do topo acompanha os incidentes abertos. Incidentes resolvidos ficam na página por 7 dias. Editores e admins publicam.
 
 ## Trocar a chave secreta
 

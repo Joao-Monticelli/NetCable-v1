@@ -68,7 +68,11 @@ export default function CanaisModal({ onClose }) {
   const [salvando, setSalvando] = useState(false)
   const [testando, setTestando] = useState(null)
 
-  const carregar = (c) => { setCfg(c); setValores({ telegram_chat: c.telegram_chat, ntfy_url: c.ntfy_url, idioma: c.idioma, lembrete_min: c.lembrete_min ?? 0 }) }
+  const carregar = (c) => {
+    setCfg(c)
+    setValores({ telegram_chat: c.telegram_chat, ntfy_url: c.ntfy_url, idioma: c.idioma, lembrete_min: c.lembrete_min ?? 0,
+      escalar_min: c.escalar_min ?? 0, escalar_emails: c.escalar_emails || '', escalar_telegram_chat: c.escalar_telegram_chat || '' })
+  }
   useEffect(() => { api.obterCanais().then(carregar).catch(e => toast.error(e.message)) }, [])
 
   const salvar = async (e) => {
@@ -77,7 +81,7 @@ export default function CanaisModal({ onClose }) {
     try {
       // Segredos não preenchidos vão como null (mantém); '' apaga.
       const dados = { ...valores }
-      for (const k of ['telegram_token', 'discord_url', 'ntfy_token', 'webhook_url']) if (dados[k] === undefined) dados[k] = null
+      for (const k of ['telegram_token', 'discord_url', 'ntfy_token', 'webhook_url', 'escalar_ntfy_url']) if (dados[k] === undefined) dados[k] = null
       carregar(await api.salvarCanais(dados))
       toast.success(t('Canais de alerta salvos.'))
     } catch (err) { toast.error(err.message, { duration: 7000 }) } finally { setSalvando(false) }
@@ -132,6 +136,26 @@ export default function CanaisModal({ onClose }) {
               </select>
               <span style={{ fontSize: '11px', color: '#64748b' }}>{t('Repete o alerta enquanto o equipamento estiver offline e ninguém clicar em "Estou vendo" no mapa.')}</span>
             </label>
+            <div style={cartao}>
+              <strong style={{ fontSize: '14px' }}>{t('Escalonamento')}</strong>
+              <span style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.45 }}>{t('Se um equipamento ficar offline por um tempo e ninguém clicar em "Estou vendo", avisa outras pessoas (ex.: o coordenador ou o plantão). Uma vez por queda.')}</span>
+              <label style={rotulo}>{t('Escalar depois de')}
+                <select aria-label={t('Escalar depois de')} value={valores.escalar_min ?? 0} onChange={e => setValores({ ...valores, escalar_min: Number(e.target.value) })} style={campo}>
+                  <option value={0}>{t('Desligado')}</option>
+                  {[15, 30, 60, 120, 240, 480].map(m => <option key={m} value={m}>{t('{tempo} offline sem reconhecimento', { tempo: m < 60 ? `${m} min` : `${m / 60} h` })}</option>)}
+                </select>
+              </label>
+              <label style={rotulo}>{t('E-mails de quem recebe')}
+                <input aria-label={t('E-mails de quem recebe')} value={valores.escalar_emails || ''} onChange={e => setValores({ ...valores, escalar_emails: e.target.value })} placeholder="coordenador@empresa.com, plantao@empresa.com" style={campo} />
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 3fr', gap: '8px' }}>
+                <label style={rotulo}>{t('Chat do Telegram')}
+                  <input aria-label={t('Chat do Telegram do escalonamento')} value={valores.escalar_telegram_chat || ''} onChange={e => setValores({ ...valores, escalar_telegram_chat: e.target.value })} placeholder="-1001234567890" style={campo} />
+                </label>
+                <Segredo rotuloCampo={t('Tópico ntfy')} nome="escalar_ntfy_url" placeholder="https://ntfy.sh/plantao-secreto" {...p} />
+              </div>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>{t('O chat do Telegram usa o mesmo bot configurado acima. O e-mail usa o servidor SMTP do NetCable.')}</span>
+            </div>
             <label style={rotulo}>{t('Idioma das mensagens destes canais')}
               <select value={valores.idioma || 'en'} onChange={e => setValores({ ...valores, idioma: e.target.value })} style={campo}>
                 <option value="en">English</option>

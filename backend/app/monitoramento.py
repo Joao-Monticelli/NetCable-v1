@@ -100,6 +100,60 @@ def lembretes_offline(db: Session, agora=None):
     return eventos
 
 
+# --- ESCALONAMENTO: ninguém reconheceu a queda em N minutos ---
+def get_escalonamento(db: Session):
+    """{"minutos", "emails", "telegram_chat", "ntfy_url"} (minutos 0 = desligado)."""
+    cfg = crud.get_configuracoes(db, "alertas.escalar_")
+    try:
+        minutos = max(0, int(cfg.get("alertas.escalar_min") or 0))
+    except ValueError:
+        minutos = 0
+    ntfy = cfg.get("alertas.escalar_ntfy_url") or ""
+    return {
+        "minutos": minutos,
+        "emails": [e.strip() for e in (cfg.get("alertas.escalar_emails") or "").split(",") if e.strip()],
+        "telegram_chat": (cfg.get("alertas.escalar_telegram_chat") or "").strip(),
+        "ntfy_url": abrir_config(ntfy).get("v", "") if ntfy else "",
+    }
+
+
+def escalonamentos_offline(db: Session, agora=None, config=None):
+    """Escalation events (once per outage) for devices offline for `minutos` that nobody acknowledged."""
+    config = config or get_escalonamento(db)
+    minutos = config["minutos"]
+    if minutos <= 0 or not (config["emails"] or config["telegram_chat"] or config["ntfy_url"]):
+        return []
+    agora = time.monotonic() if agora is None else agora
+    reconhecidos = regras_alerta.reconhecimentos(db)
+    eventos = []
+    for eq in db.query(models.Equipamento).filter(models.Equipamento.status == "offline").all():
+        if not eq.notificar or not _equipamento_monitoravel(eq):
+            continue
+        estado = _offline_desde.setdefault(eq.id, {"desde": agora, "aviso": agora})
+        if estado.get("escalado") or eq.id in reconhecidos or agora - estado["desde"] < minutos * 60:
+            continue
+        estado["escalado"] = True
+        evento = alerts.montar_evento(eq, eq.projeto.nome if eq.projeto else None, "offline", "offline")
+        evento.update(evento="equipamento_escalado", escalado=True, offline_ha_s=round(agora - estado["desde"]))
+        eventos.append(evento)
+    return eventos
+
+
+def enviar_escalonamentos(db: Session, eventos, config=None):
+    """Sends escalations only to the escalation contacts (not to the usual channels)."""
+    if not eventos:
+        return
+    config = config or get_escalonamento(db)
+    principais = get_canais_config(db)
+    canais = {
+        "telegram_token": principais.get("telegram_token") if config["telegram_chat"] else "",
+        "telegram_chat": config["telegram_chat"], "ntfy_url": config["ntfy_url"],
+        "idioma": principais.get("idioma") or "en",
+    }
+    destinatarios = {normalizar(canais["idioma"]): config["emails"]} if config["emails"] else {}
+    alerts.notificar(eventos, get_smtp_config(db), destinatarios, canais)
+
+
 def enviar_alertas(db: Session, eventos):
     if not eventos:
         return
@@ -193,6 +247,8 @@ def executar_ciclo_monitoramento():
             if evento:
                 eventos.append(evento)
         eventos += lembretes_offline(db)
+        # Escalations follow the same rules (maintenance, uplink) but go to other people.
+        enviar_escalonamentos(db, regras_alerta.aplicar(db, escalonamentos_offline(db)))
         # Um único alerta por ciclo, mesmo que vários equipamentos mudem juntos; quedas "em cascata"
         # (uplink offline) e equipamentos em manutenção não geram alerta próprio.
         enviar_alertas(db, regras_alerta.aplicar(db, eventos))

@@ -6,7 +6,6 @@ still use the original IP/ICMP monitor until the dependency is installed.
 
 import asyncio
 import threading
-from collections import defaultdict
 
 
 class SNMPUnavailableError(RuntimeError):
@@ -153,31 +152,111 @@ def test(config):
     return {"status": "online", "hostname": next(iter(values.values()), None)}
 
 
+LLDP_REM = "1.0.8802.1.1.2.1.4.1.1"      # lldpRemTable, index timeMark.localPortNum.remIndex
+LLDP_LOC_PORT = "1.0.8802.1.1.2.1.3.7.1"  # lldpLocPortTable, index localPortNum
+LLDP_MAN_ADDR = "1.0.8802.1.1.2.1.4.2.1"  # lldpRemManAddrTable, index ...remIndex.addrSubtype.len.address
+CDP_CACHE = "1.3.6.1.4.1.9.9.23.1.2.1.1"  # cdpCacheTable, index ifIndex.deviceIndex
+IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"
+IF_DESCR = "1.3.6.1.2.1.2.2.1.2"
+
+
+def _parece_mac(valor):
+    """LLDP port/chassis ids are often a MAC ("0x001122334455" or "00:11:22:33:44:55"): not a port name."""
+    texto = (valor or "").strip().lower()
+    hexa = texto[2:] if texto.startswith("0x") else texto.replace(":", "").replace("-", "")
+    return len(hexa) == 12 and all(c in "0123456789abcdef" for c in hexa)
+
+
+def _texto_hex(valor):
+    """prettyPrint of a non-printable OCTET STRING is "0x..."; printable ones come as text."""
+    if valor and valor.startswith("0x"):
+        try:
+            texto = bytes.fromhex(valor[2:]).decode("utf-8")
+            if texto.isprintable():
+                return texto
+        except ValueError:
+            pass
+    return valor
+
+
+def _ip_hex(valor):
+    """CDP addresses come as 4 raw bytes ("0x0a000001")."""
+    if valor and valor.startswith("0x") and len(valor) == 10:
+        try:
+            return ".".join(str(b) for b in bytes.fromhex(valor[2:]))
+        except ValueError:
+            return None
+    return None
+
+
+def _coluna(config, oid):
+    try:
+        return walk(config, oid)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Falha ao consultar {oid}: {exc}")
+
+
+def _nome_porta(*candidatos):
+    for valor in candidatos:
+        valor = _texto_hex((valor or "").strip())
+        if valor and not _parece_mac(valor):
+            return valor
+    return None
+
+
 def discover_neighbors(config):
-    """Collect the common LLDP and Cisco CDP neighbor tables via SNMP."""
+    """LLDP and Cisco CDP neighbors of a device, via SNMP.
+    Each item: protocol, index, name (system name), port (remote port), platform, local_port, address, chassis."""
     result = []
-    tables = {
-        "LLDP": {
-            "name": "1.0.8802.1.1.2.1.4.1.1.9",
-            "port": "1.0.8802.1.1.2.1.4.1.1.8",
-            "platform": "1.0.8802.1.1.2.1.4.1.1.10",
-        },
-        "CDP": {
-            "name": "1.3.6.1.4.1.9.9.23.1.2.1.1.6",
-            "port": "1.3.6.1.4.1.9.9.23.1.2.1.1.7",
-            "platform": "1.3.6.1.4.1.9.9.23.1.2.1.1.8",
-        },
-    }
-    for protocol, oids in tables.items():
-        rows = defaultdict(dict)
-        for field, oid in oids.items():
-            try:
-                coluna = walk(config, oid)
-            except RuntimeError as exc:
-                raise RuntimeError(f"Falha ao consultar a tabela {protocol} ({field}): {exc}")
-            for index, valor in coluna.items():
-                rows[index][field] = valor
-        for index, row in rows.items():
-            if row.get("name") or row.get("port"):
-                result.append({"protocol": protocol, "index": index, **row})
+    if_nomes = None
+
+    def nome_interface(if_index):
+        nonlocal if_nomes
+        if if_nomes is None:
+            if_nomes = _coluna(config, IF_NAME) or _coluna(config, IF_DESCR)
+        return if_nomes.get(str(if_index))
+
+    # LLDP
+    rem = {campo: _coluna(config, f"{LLDP_REM}.{col}") for campo, col in
+           (("chassis", 5), ("port_id", 7), ("port_desc", 8), ("name", 9), ("platform", 10))}
+    linhas = {}
+    for campo, coluna in rem.items():
+        for index, valor in coluna.items():
+            linhas.setdefault(index, {})[campo] = valor
+    if linhas:
+        loc_id, loc_desc = _coluna(config, f"{LLDP_LOC_PORT}.3"), _coluna(config, f"{LLDP_LOC_PORT}.4")
+        enderecos = {}
+        for index in _coluna(config, f"{LLDP_MAN_ADDR}.3"):
+            partes = index.split(".")
+            # timeMark.localPort.remIndex.subtype(1 = IPv4).length(4).a.b.c.d
+            if len(partes) >= 9 and partes[3] == "1" and partes[4] == "4":
+                enderecos.setdefault(".".join(partes[:3]), ".".join(partes[5:9]))
+        for index, linha in linhas.items():
+            partes = index.split(".")
+            porta_local = partes[1] if len(partes) >= 3 else None
+            nome = _texto_hex(linha.get("name") or "").strip() or None
+            porta = _nome_porta(linha.get("port_id"), linha.get("port_desc"))
+            if not (nome or porta):
+                continue
+            result.append({
+                "protocol": "LLDP", "index": index, "name": nome, "port": porta,
+                "platform": _texto_hex(linha.get("platform") or "").strip() or None,
+                "local_port": _nome_porta(loc_id.get(porta_local), loc_desc.get(porta_local)) or (nome_interface(porta_local) if porta_local else None),
+                "address": enderecos.get(index), "chassis": linha.get("chassis"),
+            })
+    # CDP (Cisco and others that speak it)
+    cdp = {campo: _coluna(config, f"{CDP_CACHE}.{col}") for campo, col in (("address", 4), ("name", 6), ("port", 7), ("platform", 8))}
+    linhas = {}
+    for campo, coluna in cdp.items():
+        for index, valor in coluna.items():
+            linhas.setdefault(index, {})[campo] = valor
+    for index, linha in linhas.items():
+        if not (linha.get("name") or linha.get("port")):
+            continue
+        if_index = index.split(".")[0]
+        result.append({
+            "protocol": "CDP", "index": index, "name": _texto_hex(linha.get("name") or "").strip() or None,
+            "port": _texto_hex(linha.get("port") or "").strip() or None, "platform": _texto_hex(linha.get("platform") or "").strip() or None,
+            "local_port": nome_interface(if_index), "address": _ip_hex(linha.get("address")), "chassis": None,
+        })
     return result

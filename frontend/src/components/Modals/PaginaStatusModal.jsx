@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Gauge, Copy, ExternalLink, RefreshCw, Link2Off, Loader2 } from 'lucide-react'
+import { X, Gauge, Copy, ExternalLink, RefreshCw, Link2Off, Loader2, Megaphone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../../services/api'
 import { t, useI18n } from '../../i18n'
@@ -7,7 +7,7 @@ import { t, useI18n } from '../../i18n'
 const botao = (cor) => ({ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', border: 0, borderRadius: '6px', background: cor, color: 'white', cursor: 'pointer', fontSize: '13px', textDecoration: 'none' })
 
 // Public status page of the map: on/off, link, new link. It shows names, status and uptime only (no IPs or topology).
-export default function PaginaStatusModal({ projectId, podeEditar, onClose }) {
+export default function PaginaStatusModal({ projectId, podeEditar, onClose, onIncidentes }) {
   useI18n()
   const [token, setToken] = useState(undefined)
   const [ocupado, setOcupado] = useState(false)
@@ -45,6 +45,7 @@ export default function PaginaStatusModal({ projectId, podeEditar, onClose }) {
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button onClick={copiar} style={botao('#3b82f6')}><Copy size={14} /> {t('Copiar')}</button>
               <a href={link} target="_blank" rel="noreferrer" style={botao('#334155')}><ExternalLink size={14} /> {t('Abrir')}</a>
+              {onIncidentes && <button onClick={onIncidentes} style={botao('#b45309')}><Megaphone size={14} /> {t('Incidentes')}</button>}
               {podeEditar && <>
                 <button onClick={() => ativar(true)} disabled={ocupado} style={botao('#334155')}><RefreshCw size={14} /> {t('Novo endereço')}</button>
                 <button onClick={desativar} disabled={ocupado} style={{ ...botao('#7f1d1d'), marginLeft: 'auto' }}><Link2Off size={14} /> {t('Desativar')}</button>

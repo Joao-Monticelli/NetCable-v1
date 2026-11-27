@@ -89,6 +89,7 @@ export default function UsersModal({ onClose, currentUser }) {
                   <td style={{ padding: '6px', fontWeight: 'bold' }}>
                     {u.username}{souEu && <span style={{ color: '#64748b', fontWeight: 'normal' }}> {t('(você)')}</span>}
                     {u.totp_ativo && <span title={t('Verificação em duas etapas ativa')} style={{ marginLeft: '6px', verticalAlign: 'middle' }}><Smartphone size={13} color="#10b981" /></span>}
+                    {u.origem === 'ldap' && <span title={t('Entra pelo diretório da empresa (LDAP/AD); o papel vem dos grupos a cada login')} style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 5px', borderRadius: '4px', background: '#1e3a8a', color: '#bfdbfe', fontWeight: 'normal', verticalAlign: 'middle' }}>LDAP</span>}
                   </td>
                   <td style={{ padding: '6px' }}>
                     <input defaultValue={u.email || ''} placeholder={t('sem e-mail')} onBlur={(e) => e.target.value !== (u.email || '') && atualizar(u, { email: e.target.value }, t('E-mail atualizado.'))} style={{ ...campo, width: '100%' }} />
@@ -103,7 +104,7 @@ export default function UsersModal({ onClose, currentUser }) {
                   </td>
                   <td style={{ padding: '6px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                     {u.totp_ativo && !souEu && <button onClick={() => remover2fa(u)} title={t('Remover verificação em duas etapas')} style={{ ...botao, display: 'inline-flex', background: '#334155', padding: '6px 8px', marginRight: '6px' }}><ShieldOff size={14} /></button>}
-                    <button onClick={() => redefinirSenha(u)} title={t('Redefinir senha')} style={{ ...botao, display: 'inline-flex', background: '#334155', padding: '6px 8px', marginRight: '6px' }}><KeyRound size={14} /></button>
+                    {u.origem !== 'ldap' && <button onClick={() => redefinirSenha(u)} title={t('Redefinir senha')} style={{ ...botao, display: 'inline-flex', background: '#334155', padding: '6px 8px', marginRight: '6px' }}><KeyRound size={14} /></button>}
                     <button onClick={() => excluir(u)} disabled={souEu} title={souEu ? t('Você não pode excluir a si mesmo') : t('Excluir usuário')} style={{ ...botao, display: 'inline-flex', background: souEu ? '#475569' : '#ef4444', padding: '6px 8px', cursor: souEu ? 'not-allowed' : 'pointer' }}><Trash2 size={14} /></button>
                   </td>
                 </tr>

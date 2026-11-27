@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes, Upload, Download, Archive, BellRing, ScrollText } from 'lucide-react'
+import { FolderPlus, Folder, LogOut, Network, Loader2, Trash2, Settings, UserCog, CheckCircle2, XCircle, MinusCircle, Share2, Users, Mail, Eye, Boxes, Upload, Download, Archive, BellRing, ScrollText, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { api } from '../services/api'
 import SettingsModal from '../components/Modals/SettingsModal'
@@ -10,6 +10,7 @@ import ModelosModal from '../components/Modals/ModelosModal'
 import BackupModal from '../components/Modals/BackupModal'
 import CanaisModal from '../components/Modals/CanaisModal'
 import AuditoriaModal from '../components/Modals/AuditoriaModal'
+import LdapModal from '../components/Modals/LdapModal'
 import { t, useI18n, SeletorIdioma, getIdioma } from '../i18n'
 
 const itemMenu = { display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }
@@ -124,6 +125,7 @@ export default function Projects() {
                 <button onClick={() => abrir('modelos')} style={itemMenu}><Boxes size={16} color="#a78bfa"/> {t('Modelos de equipamento')}</button>
                 {isAdmin && <>
                   <button onClick={() => abrir('usuarios')} style={itemMenu}><Users size={16} color="#3b82f6"/> {t('Usuários')}</button>
+                  <button onClick={() => abrir('ldap')} style={itemMenu}><Building2 size={16} color="#60a5fa"/> {t('Diretório (LDAP/AD)')}</button>
                   <button onClick={() => abrir('email')} style={itemMenu}><Mail size={16} color="#f59e0b"/> {t('E-mail (SMTP)')}</button>
                   <button onClick={() => abrir('canais')} style={itemMenu}><BellRing size={16} color="#f59e0b"/> {t('Canais de alerta')}</button>
                   <button onClick={() => abrir('backup')} style={itemMenu}><Archive size={16} color="#10b981"/> {t('Backup')}</button>
@@ -179,6 +181,7 @@ export default function Projects() {
       {modal === 'canais' && <CanaisModal onClose={() => setModal(null)} />}
       {modal === 'backup' && <BackupModal onClose={() => setModal(null)} />}
       {modal === 'auditoria' && <AuditoriaModal onClose={() => setModal(null)} />}
+      {modal === 'ldap' && <LdapModal onClose={() => setModal(null)} />}
       {modal === 'email' && <EmailConfigModal onClose={() => setModal(null)} currentUser={currentUser} />}
     </div>
   )

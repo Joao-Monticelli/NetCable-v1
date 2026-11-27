@@ -71,11 +71,17 @@ def _m4(conexao):
         conexao.exec_driver_sql("CREATE UNIQUE INDEX IF NOT EXISTS ix_projetos_status_token ON projetos (status_token)")
 
 
+def _m5(conexao):
+    """Origem do usuário (local ou LDAP). As tabelas de incidentes são criadas pelo create_all."""
+    _adicionar(conexao, "usuarios", [("origem", "VARCHAR NOT NULL DEFAULT 'local'")])
+
+
 MIGRACOES = [
     (1, "colunas de versões anteriores ao sistema de migrações", _m1),
     (2, "uplink dos equipamentos (alertas por dependência)", _m2),
     (3, "atalhos entre mapas", _m3),
     (4, "2FA, manutenção agendada e página de status", _m4),
+    (5, "login pelo diretório (LDAP) e incidentes", _m5),
 ]
 
 

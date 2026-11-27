@@ -7,8 +7,9 @@ from pydantic import BaseModel
 from typing import Optional
 from ..snmp_service import discover_neighbors, SNMPUnavailableError
 from .. import models, crud
-from .. import regras_alerta, descoberta
+from .. import regras_alerta, descoberta, cabos_lldp, snmp_service
 from ..nucleo import abrir_config, get_db, logger, requer_editor
+from ..snmp_service import SNMPUnavailableError as _SemSnmp
 from ..monitoramento import checar_equipamento, enviar_alertas, ping_equipamento, registrar_monitoramento
 from fastapi import APIRouter
 
@@ -56,6 +57,37 @@ def descobrir_vizinhos(request: DiscoveryRequest, user: models.Usuario = Depends
         raise HTTPException(status_code=501, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Falha na descoberta: {exc}")
+
+
+@router.post("/api/projetos/{projeto_id}/descobrir-cabos")
+def descobrir_cabos(projeto_id: int, db: Session = Depends(get_db), user: models.Usuario = Depends(requer_editor)):
+    """Asks every SNMPv3 device of the map for its LLDP/CDP neighbors and suggests the cables."""
+    projeto = crud.get_projeto(db, projeto_id)
+    if not projeto:
+        raise HTTPException(status_code=404, detail="Mapa não encontrado")
+    equipamentos = [e for e in projeto.equipamentos if e.tipo not in ("Rack", "Atalho de mapa")]
+    alvos = []
+    for e in equipamentos:
+        if e.monitor_mode == "snmpv3" and e.ip and e.ip != "Sem IP":
+            config = abrir_config(e.monitor_config)
+            if config.get("username"):
+                alvos.append((e.id, {**config, "host": e.ip}))
+    if not alvos:
+        raise HTTPException(status_code=400, detail="Nenhum equipamento deste mapa é monitorado por SNMPv3: configure o SNMPv3 nos switches primeiro.")
+    try:
+        snmp_service._hlapi()
+    except _SemSnmp as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    vizinhos, erros = cabos_lldp.consultar(alvos, snmp_service.discover_neighbors)
+    conexoes = [(c.source, c.target) for c in db.query(models.Conexao).filter(models.Conexao.projeto_id == projeto_id)]
+    sugestoes, fora = cabos_lldp.sugerir([{"id": e.id, "nome": e.nome, "ip": e.ip} for e in equipamentos], conexoes, vizinhos)
+    nomes = {e.id: e.nome for e in equipamentos}
+    logger.info("%s: LLDP/CDP em %d equipamento(s) do mapa %s: %d cabo(s) sugerido(s)", user.username, len(alvos), projeto_id, len(sugestoes))
+    return {
+        "consultados": [{"id": eq_id, "nome": nomes.get(eq_id), "vizinhos": len(vizinhos.get(eq_id) or []), "erro": erros.get(eq_id)}
+                        for eq_id, _ in alvos],
+        "sugestoes": sugestoes, "fora_do_mapa": fora,
+    }
 
 
 # --- DESCOBERTA DA REDE (varredura de faixa) ---

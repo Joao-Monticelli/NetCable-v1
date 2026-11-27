@@ -14,3 +14,4 @@ pysnmp>=7.1,<8
 pyasn1>=0.6.5
 tzdata
 httpx
+ldap3>=2.9,<3

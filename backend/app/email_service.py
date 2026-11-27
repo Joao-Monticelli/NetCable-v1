@@ -92,6 +92,8 @@ def texto_extra(e, idioma="pt"):
     if e.get("evento") == "equipamento_reconhecido":
         texto = tr("👀 {usuario} reconheceu o alerta e está cuidando", idioma, usuario=e["reconhecido_por"])
         return texto + (f": {e['nota']}" if e.get("nota") else "")
+    if e.get("escalado"):
+        return tr("🚨 Offline há {duracao} e ninguém da equipe reconheceu o alerta", idioma, duracao=duracao_legivel(e.get("offline_ha_s") or 0, idioma))
     if e.get("lembrete"):
         return tr("⏰ Ainda offline há {duracao} e ninguém reconheceu o alerta", idioma, duracao=duracao_legivel(e.get("offline_ha_s") or 0, idioma))
     if e.get("reconhecido_por"):

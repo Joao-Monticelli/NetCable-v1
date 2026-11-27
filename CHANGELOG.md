@@ -4,7 +4,17 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-27
+
 ### Added
+- **Incidents on the public status page**: post what is going on (title, impact, affected services, message) and follow-up updates
+  (Investigating → Identified → Monitoring → Resolved); the page shows the timeline and keeps resolved incidents for 7 days.
+- **Alert escalation**: when a device stays offline for 15 min to 8 h and nobody acknowledges it, one "escalated" alert goes to other
+  people (e-mail addresses, a Telegram chat and/or an ntfy topic). Off by default (⚙️ → Alert channels).
+- **Cables from LLDP/CDP**: ⚙️ → Discover cables asks the SNMPv3 devices of a map for their LLDP/CDP neighbors, suggests the cables
+  between devices of the map (port to port when the ports are drawn) and lists neighbors that are not on the map yet.
+- **Login with LDAP / Active Directory** (⚙️ → Directory): accounts created at the first login, role from directory groups at every
+  login, test button, LDAPS/STARTTLS; local accounts keep working when the directory is down.
 - **Two-factor authentication (TOTP)**: optional per user (My profile), QR code for any authenticator app, 10 single-use recovery codes, admin reset in ⚙️ → Users and `python -m app.redefinir_2fa <user>` for a locked-out admin. Wrong codes share the login lockout.
 - **Acknowledge alerts** ("I'm on it"): on an offline device, with an optional note; the channels are told who is handling it, the map shows it, and it clears when the device is back.
 - **Reminders** for devices still offline and not acknowledged (every 15 min to 4 h, off by default; ⚙️ → Alert channels).
@@ -18,6 +28,7 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 - **Secret key rotation** command `python -m app.rotacao_chave`: re-encrypts every stored secret with a new key, keeping copies of the database and the old key.
 
 ### Security
+- New backend dependency `ldap3` (directory login).
 - A development `backend/data/` folder (database, `secret.key`, backups) was committed to the repository by mistake and is no longer tracked. Docker installs are not affected (they create their own key in their data volume); anyone who ran NetCable straight from a repository checkout using that folder should rotate the key and change the stored passwords and tokens.
 - Login tokens are now signed with **PyJWT** instead of `python-jose`, which (with its `ecdsa` dependency) has known vulnerabilities and no fixed release. Existing sessions stay valid.
 - **pysnmp 7** replaces pysnmp 4.4, so `pyasn1` can be updated past several known vulnerabilities in the decoding of SNMP responses. `pip-audit` reports no known vulnerabilities in the backend dependencies.
@@ -29,7 +40,9 @@ All notable changes to NetCable. Versions follow [semantic versioning](https://s
 - The monitor and SNMP metrics thread pools now live for the whole process, so SNMP engines are reused between cycles instead of being recreated every cycle.
 - `python -m app.rotacao_chave` exits with a clear message instead of a traceback when there is no terminal to confirm (use `--sim`).
 - Unverified HTTPS checks (certificate verification turned off for a device) no longer write a warning to the log on every check.
-- CI uses snmpsim 1.x for the SNMPv3 integration tests.
+- CI uses snmpsim 1.x for the SNMPv3 integration tests (fixed a missing space in the simulator command of the test job).
+- LLDP/CDP neighbor discovery reads local port names, management addresses and MAC-style port ids correctly.
+- The QA robot covers 2FA, acknowledgements, the maintenance calendar, the status page with incidents, escalation, LDAP and LLDP cables.
 
 ## [1.0.0] — 2026-11
 

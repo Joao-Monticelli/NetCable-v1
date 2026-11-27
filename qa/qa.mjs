@@ -11,6 +11,7 @@ import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import crypto from 'node:crypto'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const RAIZ = path.resolve(AQUI, '..')
@@ -97,6 +98,18 @@ async function subirAmbiente() {
   }
   await aguardarUrl(`${API}/health`)
   await aguardarUrl(WEB)
+}
+
+// Código TOTP (RFC 6238) do app autenticador, para testar a verificação em duas etapas.
+function totp(segredo, deslocamento = 0) {
+  const alfabeto = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  const bits = [...segredo.replace(/=+$/, '').toUpperCase()].map(c => alfabeto.indexOf(c).toString(2).padStart(5, '0')).join('')
+  const chave = Buffer.from(bits.match(/.{8}/g).map(b => parseInt(b, 2)))
+  const msg = Buffer.alloc(8)
+  msg.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30000) + deslocamento))
+  const h = crypto.createHmac('sha1', chave).update(msg).digest()
+  const o = h[h.length - 1] & 15
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0')
 }
 
 // ----------------------------------------------------------------------------- dados de exemplo
@@ -584,6 +597,192 @@ async function roteiros() {
     page.removeAllListeners('dialog'); page.on('dialog', d => d.dismiss())
     await page.click('button[title="Voltar aos projetos"]'); await page.waitForTimeout(400)
     await ok(page.url().includes('/editor/'), 'aviso ao sair sem salvar (cancelado = continua no editor)')
+  })
+
+  await cenario('Verificação em duas etapas (2FA)', async ({ page, ok }) => {
+    const usuario = { username: 'qa-2fa', senha: 'qa-2fa-senha-1' }
+    const u = await api('POST', '/usuarios', { ...usuario, papel: 'editor' }, TOKEN)
+    try {
+      await entrar(page, usuario.username, usuario.senha)
+      await page.click('button[title="Configurações"]')
+      await page.click('button:has-text("Meu perfil e notificações")')
+      await page.click('button:has-text("Ativar verificação em duas etapas")')
+      await page.fill('input[aria-label="Senha Atual"]', usuario.senha)
+      await page.click('button:has-text("Continuar")')
+      await ok(await existe(page, 'img[alt="QR code da verificação em duas etapas"]'), 'QR code aparece')
+      const segredo = (await page.locator('code').first().innerText()).trim()
+      await page.fill('input[aria-label="Código de verificação"]', totp(segredo))
+      await page.click('button:has-text("Ativar")')
+      await ok(await existe(page, 'button:has-text("Já guardei")'), 'códigos de recuperação mostrados')
+      await page.click('button:has-text("Já guardei")')
+      const me = await api('GET', '/usuarios', null, TOKEN)
+      await ok(me.find(x => x.id === u.id)?.totp_ativo, '2FA ativo no usuário')
+
+      // Novo login: senha e depois o código (o próximo passo de 30 s, pois o atual já foi usado)
+      await page.evaluate(() => localStorage.removeItem('netcable_token'))
+      await page.goto(WEB + '/')
+      await page.fill('input[type=text]', usuario.username)
+      await page.fill('input[type=password]', usuario.senha)
+      await page.click('button[type=submit]')
+      await ok(await existe(page, 'text=Verificação em duas etapas'), 'login pede o código')
+      await page.fill('input[aria-label="Código de verificação"]', '000000')
+      await page.click('button:has-text("Verificar")')
+      await ok(await existe(page, 'text=/Código de verificação incorreto/'), 'código errado é recusado')
+      await page.fill('input[aria-label="Código de verificação"]', totp(segredo, 1))
+      await page.click('button:has-text("Verificar")')
+      await page.waitForURL(/projects/, { timeout: 15000 }).catch(() => {})
+      await ok(page.url().includes('/projects'), 'entra com o código do app')
+    } finally {
+      await api('DELETE', `/usuarios/${u.id}`, null, TOKEN).catch(() => {})
+    }
+  })
+
+  await cenario('Estou vendo e agenda de manutenção', async ({ page, ok }) => {
+    await restaurarMapa()
+    try {
+      await entrar(page); await abrirEditor(page)
+      await page.locator('.react-flow__node[data-id="ap"]').click()
+      await ok(await existe(page, 'button:has-text("Estou vendo")', 10000), 'AP offline oferece "Estou vendo"')
+      await page.fill('input[aria-label="Nota (opcional)"]', 'indo ao rack')
+      await page.click('button:has-text("Estou vendo")')
+      await ok(await existe(page, 'text=/Alerta reconhecido/'), 'reconhecimento confirmado')
+      await ok(await existe(page, 'text=/está cuidando desde/'), 'modal mostra quem está cuidando')
+      await page.locator('h2:has-text("Editar Equipamento") + button').click()
+      await ok(await existe(page, '.react-flow__node[data-id="ap"] .node-reconhecido', 12000), 'olho de "reconhecido" no mapa')
+
+      await page.click('button[title="Manutenção: silenciar os alertas deste mapa"]')
+      await page.click('[role=menuitem]:has-text("Agendar / agenda")')
+      await ok(await existe(page, '[role=dialog][aria-label="Agenda de manutenção"]'), 'agenda abre')
+      await page.click('[role=dialog] button:has-text("Toda semana")')
+      const domingo = page.locator('[role=group][aria-label="Dias da semana"] button').last()
+      if (await domingo.getAttribute('aria-pressed') !== 'true') await domingo.click()
+      await page.fill('[role=dialog] input[type=time]', '02:00')
+      await page.fill('[role=dialog] input[type=number]', '2')
+      await page.fill('[role=dialog] input[placeholder="ex.: atualização de firmware"]', 'QA semanal')
+      await page.click('[role=dialog] button[type=submit]:has-text("Agendar")')
+      await ok(await existe(page, '[role=dialog] >> text=/QA semanal/'), 'janela semanal aparece na agenda')
+      const lista = await api('GET', `/projetos/${PID}/manutencao`, null, TOKEN)
+      const semanal = (lista.manutencoes || lista).find?.(m => m.motivo === 'QA semanal')
+      await ok(semanal?.recorrencia?.hora === '02:00', `salva toda semana às 02:00 (${JSON.stringify(semanal?.recorrencia)})`)
+      await print(page, 'agenda-manutencao')
+    } finally {
+      await api('DELETE', `/projetos/${PID}/equipamentos/ap/reconhecer`, null, TOKEN).catch(() => {})
+      const lista = await api('GET', `/projetos/${PID}/manutencao`, null, TOKEN).catch(() => [])
+      for (const m of (lista.manutencoes || lista || [])) await api('DELETE', `/projetos/${PID}/manutencao/${m.id}`, null, TOKEN).catch(() => {})
+    }
+  })
+
+  await cenario('Página de status e incidentes', async ({ page, ctx, ok }) => {
+    await restaurarMapa()
+    try {
+      await entrar(page); await abrirEditor(page)
+      await page.locator('button:has(svg.lucide-settings)').first().click()
+      await page.click('button:has-text("Página de status pública")')
+      await page.click('[role=dialog] button:has-text("Ativar página de status")')
+      const campoLink = page.locator('[role=dialog] input[aria-label="Endereço da página"]')
+      await campoLink.waitFor({ timeout: 8000 })
+      const link = await campoLink.inputValue()
+      await ok(/\/status\/[\w-]{20,}$/.test(link), `endereço da página gerado (${link.replace(/\/status\/.*/, '/status/…')})`)
+      await page.click('[role=dialog] button:has-text("Incidentes")')
+      await page.click('[role=dialog] button:has-text("Novo incidente")')
+      await page.fill('input[aria-label="Título do incidente"]', 'Lentidão no link QA')
+      await page.fill('textarea[aria-label="Mensagem do incidente"]', 'Estamos investigando com a operadora.')
+      await page.locator('[role=dialog] fieldset label:has-text("AP Solto") input').check()
+      await page.click('[role=dialog] button:has-text("Publicar incidente")')
+      await ok(await existe(page, 'text=Incidente publicado na página de status.'), 'incidente publicado')
+
+      const publica = await ctx.newPage()
+      await publica.goto(link)
+      await ok(await existe(publica, 'text=Lentidão no link QA'), 'incidente aparece na página pública')
+      await ok(await existe(publica, 'text=Afetados: AP Solto'), 'serviço afetado listado pelo nome')
+      const texto = await publica.locator('body').innerText()
+      await ok(!texto.includes('127.0.0.1') && !texto.includes('192.0.2.50'), 'página pública não mostra IPs')
+      await ok(await publica.locator('[role=list][aria-label^="Disponibilidade diária"]').count() >= 3, 'barras de disponibilidade dos serviços')
+      await print(publica, 'pagina-status-incidente')
+
+      await page.selectOption('[role=dialog] select[aria-label="Nova situação"]', 'resolvido')
+      await page.fill('[role=dialog] input[aria-label="Atualização do incidente"]', 'Link normalizado.')
+      await page.click('[role=dialog] button[aria-label="Publicar atualização"]')
+      await ok(await existe(page, 'text=Atualização publicada.'), 'atualização publicada')
+      await publica.reload()
+      await ok(await existe(publica, 'article >> text=Link normalizado.'), 'página pública mostra a resolução')
+      await publica.close()
+    } finally {
+      for (const i of await api('GET', `/projetos/${PID}/incidentes`, null, TOKEN).catch(() => [])) await api('DELETE', `/projetos/${PID}/incidentes/${i.id}`, null, TOKEN).catch(() => {})
+      await api('DELETE', `/projetos/${PID}/status-publico`, null, TOKEN).catch(() => {})
+    }
+  })
+
+  await cenario('Escalonamento e login pelo diretório (LDAP)', async ({ page, ctx, ok }) => {
+    try {
+      await entrar(page)
+      await page.click('button[title="Configurações"]')
+      await page.click('button:has-text("Canais de alerta")')
+      await page.selectOption('[role=dialog] select[aria-label="Escalar depois de"]', '30')
+      await page.fill('[role=dialog] input[aria-label="E-mails de quem recebe"]', 'coordenador@qa.local')
+      await page.click('[role=dialog] button[type=submit]')
+      await ok(await existe(page, 'text=Canais de alerta salvos.'), 'escalonamento salvo')
+      const canais = await api('GET', '/config/alertas', null, TOKEN)
+      await ok(canais.escalar_min === 30 && canais.escalar_emails === 'coordenador@qa.local', `escalonamento guardado (${canais.escalar_min} min)`)
+      await page.locator('[role=dialog] button[aria-label="Fechar"]').click()
+
+      await page.click('button[title="Configurações"]')
+      await page.click('button:has-text("Diretório (LDAP/AD)")')
+      await page.locator('[role=dialog] label:has-text("Permitir login pelo diretório") input').check()
+      await page.fill('[role=dialog] input[aria-label="Servidor LDAP"]', 'ldap://127.0.0.1:1')
+      await page.fill('[role=dialog] input[aria-label="Base DN"]', 'dc=qa,dc=local')
+      await page.click('[role=dialog] button[type=submit]:has-text("Salvar")')
+      await ok(await existe(page, 'text=Configuração do diretório salva.'), 'diretório salvo')
+      await page.fill('[role=dialog] input[aria-label="Usuário para testar"]', 'ana')
+      await page.click('[role=dialog] button:has-text("Testar")')
+      await ok(await existe(page, '[role=dialog] [role=alert]:has-text("Falha no diretório")', 12000), 'teste mostra que o diretório não responde')
+      await print(page, 'ldap')
+
+      // Diretório fora do ar: nome desconhecido recebe aviso claro; a conta local continua entrando.
+      const outra = await ctx.browser().newContext({ viewport: { width: 1200, height: 800 } })
+      await outra.addInitScript(DEFINIR_IDIOMA, 'pt')
+      const login = await outra.newPage()
+      await login.goto(WEB + '/')
+      await login.fill('input[type=text]', 'ana.diretorio')
+      await login.fill('input[type=password]', 'qualquer-senha')
+      await login.click('button[type=submit]')
+      await ok(await existe(login, 'text=/Não foi possível falar com o diretório/', 12000), 'aviso de diretório fora do ar no login')
+      await outra.close()
+    } finally {
+      await api('PUT', '/config/alertas', { escalar_min: 0, escalar_emails: '' }, TOKEN).catch(() => {})
+      await api('PUT', '/config/ldap', { ativo: false, servidor: '', base_dn: '' }, TOKEN).catch(() => {})
+    }
+  })
+
+  if (process.env.QA_SNMPSIM) await cenario('Cabos pelo LLDP/CDP (agente simulado)', async ({ page, ok }) => {
+    const [host, porta] = process.env.QA_SNMPSIM.split(':')
+    const modelo = await api('POST', '/modelos', { nome: 'Lab LLDP', tipo: 'Switch Gerenciável', altura_u: 1, portas_rj45: 4, portas_sfp: 0, prefixo_porta: 'ge' }, TOKEN)
+    const sw = { id: 'lldp', nome: 'Switch LLDP', ip: host, tipo: 'Switch Gerenciável', status: 'offline', posX: 0, posY: 0, width: 380, height: 28,
+      rackId: 'r1', rackU: 8, alturaU: 1, monitorMode: 'snmpv3', modeloId: modelo.id,
+      monitorConfig: { username: 'netcable', authProtocol: 'SHA', authPassword: 'authpass123', privProtocol: 'AES', privPassword: 'privpass123', port: Number(porta), context: 'public' } }
+    try {
+      await api('POST', `/projetos/${PID}/salvar`, { ...MAPA, equipamentos: [...MAPA.equipamentos, sw] }, TOKEN)
+      await entrar(page); await abrirEditor(page)
+      const antes = await page.locator('.react-flow__edge').count()
+      await page.locator('button:has(svg.lucide-settings)').first().click()
+      await page.click('button:has-text("Descobrir cabos (LLDP/CDP)")')
+      await ok(await existe(page, '[role=dialog] h3:has-text("Cabos encontrados")', 30000), 'switch consultado')
+      const linhas = page.locator('[role=dialog] section:has(h3:has-text("Cabos encontrados")) label')
+      await ok(await linhas.count() === 3, `3 cabos sugeridos (firewall, NAS e AP) — ${await linhas.count()}`)
+      await ok(await existe(page, '[role=dialog] >> text=printer-01'), 'vizinho fora do mapa listado')
+      await print(page, 'cabos-lldp')
+      await page.click('[role=dialog] button:has-text("Adicionar ao mapa (3)")')
+      await ok(await existe(page, 'text=/3 cabo\\(s\\) e 0 equipamento\\(s\\) adicionados/'), 'cabos adicionados')
+      await page.waitForTimeout(600)
+      await ok(await page.locator('.react-flow__edge').count() === antes + 3, 'três cabos novos no mapa')
+      await page.keyboard.press('Control+s')
+      await page.waitForTimeout(1500)
+      const dados = await api('GET', `/projetos/${PID}/dados`, null, TOKEN)
+      const fw = dados.conexoes.find(c => [c.source, c.target].includes('lldp') && [c.source, c.target].includes('fw'))
+      await ok(fw && fw.source_handle === 'p:1' && fw.target_handle === 'p:1', `cabo switch porta 1 ↔ firewall porta 1 (${fw?.source_handle} → ${fw?.target_handle})`)
+    } finally {
+      await restaurarMapa()
+    }
   })
 }
 

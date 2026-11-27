@@ -59,6 +59,31 @@ for i, (nome, alias, tipo, oper, vel, ent, sai) in portas.items():
     linhas[f"1.3.6.1.2.1.31.1.1.1.15.{i}"] = f"66|{vel}"
     linhas[f"1.3.6.1.2.1.31.1.1.1.18.{i}"] = f"4|{alias}"
 
+# LLDP: what the switch sees on each port (lldpLocPortTable + lldpRemTable + lldpRemManAddrTable)
+for porta in (1, 2, 3, 4):
+    linhas[f"1.0.8802.1.1.2.1.3.7.1.3.{porta}"] = f"4|ge-0/0/{porta}"
+    linhas[f"1.0.8802.1.1.2.1.3.7.1.4.{porta}"] = f"4|GigabitEthernet 0/0/{porta}"
+vizinhos_lldp = {  # local port: (system name, port id, port description, IP or None)
+    1: ("firewall-qa.lab.local", "4|port1", "LAN 1", "192.0.2.10"),
+    2: ("nas-qa", "4x|001132aabbcc", "eth0", None),  # port id is a MAC: the description is used
+    4: ("printer-01", "4|1", "Ethernet", None),       # not on the map
+}
+for porta, (nome, port_id, desc, ip) in vizinhos_lldp.items():
+    base = f"0.{porta}.1"
+    linhas[f"1.0.8802.1.1.2.1.4.1.1.4.{base}"] = "2|4"
+    linhas[f"1.0.8802.1.1.2.1.4.1.1.5.{base}"] = f"4x|00aabbccdd0{porta}"
+    linhas[f"1.0.8802.1.1.2.1.4.1.1.7.{base}"] = port_id
+    linhas[f"1.0.8802.1.1.2.1.4.1.1.8.{base}"] = f"4|{desc}"
+    linhas[f"1.0.8802.1.1.2.1.4.1.1.9.{base}"] = f"4|{nome}"
+    linhas[f"1.0.8802.1.1.2.1.4.1.1.10.{base}"] = "4|Lab device"
+    if ip:
+        linhas[f"1.0.8802.1.1.2.1.4.2.1.3.{base}.1.4.{ip}"] = "2|2"
+# CDP: an access point on port 3 (cdpCacheTable, index ifIndex.deviceIndex; address = 4 raw bytes)
+linhas["1.3.6.1.4.1.9.9.23.1.2.1.1.4.3.1"] = "4x|c0000232"  # 192.0.2.50
+linhas["1.3.6.1.4.1.9.9.23.1.2.1.1.6.3.1"] = "4|AP-Solto(FOC1234X)"
+linhas["1.3.6.1.4.1.9.9.23.1.2.1.1.7.3.1"] = "4|GigabitEthernet0"
+linhas["1.3.6.1.4.1.9.9.23.1.2.1.1.8.3.1"] = "4|cisco AIR-AP2802I"
+
 chave = lambda oid: tuple(int(x) for x in oid.split("."))
 pasta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dados")
 os.makedirs(pasta, exist_ok=True)

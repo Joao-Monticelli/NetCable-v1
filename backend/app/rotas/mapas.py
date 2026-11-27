@@ -394,14 +394,21 @@ def montar_pagina_status(db: Session, projeto, agora=None):
             "uptime": {"1d": diario[-1][1], "30d": media(30), "90d": media(90)},
             "dias": [{"data": d.isoformat(), "pct": p} for d, p in diario],
         })
+    nomes = {e.id: e.nome for e in equipamentos}
+    from .incidentes import incidentes_da_pagina  # here: rotas.incidentes imports this module
+    lista_incidentes = incidentes_da_pagina(db, projeto.id, nomes, agora)
+    abertos = [i for i in lista_incidentes if i["estado"] != "resolvido"]
     fora = [s for s in servicos if s["status"] == "offline"]
     if fora:
         geral = "fora" if len(fora) == len(servicos) else "parcial"
+    elif any(i["impacto"] == "grave" for i in abertos):
+        geral = "parcial"
+    elif abertos:
+        geral = "incidente"
     elif any(s["em_manutencao"] for s in servicos) or mapa_em_manutencao:
         geral = "manutencao"
     else:
         geral = "operacional"
-    nomes = {e.id: e.nome for e in equipamentos}
     proximas = []
     for m in regras_alerta.listar_manutencoes(db, projeto.id, agora):
         if m.equipamento_id and m.equipamento_id not in nomes:
@@ -413,7 +420,8 @@ def montar_pagina_status(db: Session, projeto, agora=None):
         elif info["proxima"] and datetime.fromisoformat(info["proxima"].rstrip("Z")) < agora + timedelta(days=14):
             proximas.append({**base, "ativa": False, "inicio": info["proxima"], "ate": None if info["recorrencia"] else info["ate"]})
     return {"titulo": projeto.nome, "atualizado_em": iso_utc(agora), "geral": geral, "fuso": getattr(fuso, "key", "UTC"),
-            "dias_historico": HISTORY_RETENTION_DAYS, "servicos": servicos, "manutencoes": proximas}
+            "dias_historico": HISTORY_RETENTION_DAYS, "servicos": servicos, "manutencoes": proximas,
+            "incidentes": lista_incidentes}
 
 
 @router.get("/api/public/status/{token}")

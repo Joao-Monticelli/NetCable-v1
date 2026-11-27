@@ -106,6 +106,8 @@ def formatar_mensagem(evento, idioma="pt"):
         return "\n".join(linhas)
     if evento["status"] == "reconhecido":
         titulo = tr("👀 Alerta reconhecido", idioma)
+    elif evento.get("escalado"):
+        titulo = tr("🚨 Alerta escalado: equipamento OFFLINE", idioma)
     elif evento.get("lembrete"):
         titulo = tr("⏰ Equipamento ainda OFFLINE", idioma)
     else:

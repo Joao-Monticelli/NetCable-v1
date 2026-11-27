@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, AlertTriangle, XCircle, Wrench, Loader2, CalendarClock, Network } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, Wrench, Loader2, CalendarClock, Network, Megaphone } from 'lucide-react'
 import { api } from '../services/api'
 import { t, useI18n, SeletorIdioma, localeAtual } from '../i18n'
+import { ESTADOS_INCIDENTE, IMPACTOS } from '../utils/incidentes'
 
 // Status palette (good / warning / serious / critical) - always paired with an icon or a label.
 const COR = { bom: '#0ca30c', aviso: '#fab219', serio: '#ec835a', critico: '#d03b3b', semDados: '#334155', manutencao: '#38bdf8' }
@@ -16,6 +17,7 @@ const GERAL = {
   parcial: { cor: COR.serio, icone: AlertTriangle, texto: 'Alguns serviços com problema' },
   fora: { cor: COR.critico, icone: XCircle, texto: 'Serviços fora do ar' },
   manutencao: { cor: COR.manutencao, icone: Wrench, texto: 'Manutenção em andamento' },
+  incidente: { cor: COR.aviso, icone: AlertTriangle, texto: 'Incidente em andamento' },
 }
 const STATUS = {
   online: { cor: COR.bom, icone: CheckCircle2, texto: 'Operacional' },
@@ -97,6 +99,35 @@ export default function StatusPage() {
           <IconeGeral size={26} color={geral.cor} />
           <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{t(geral.texto)}</div>
         </div>
+
+        {(dados.incidentes || []).length > 0 && (
+          <section style={{ marginBottom: '22px' }} aria-label={t('Incidentes')}>
+            {dados.incidentes.map(inc => {
+              const resolvido = inc.estado === 'resolvido'
+              const impacto = IMPACTOS[inc.impacto] || IMPACTOS.parcial
+              return (
+                <article key={inc.id} style={{ padding: '14px 16px', background: '#1e293b', borderRadius: '8px', border: '1px solid #334155',
+                  borderLeft: `4px solid ${resolvido ? '#475569' : impacto.cor}`, marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    {resolvido ? <CheckCircle2 size={17} color={COR.bom} /> : <Megaphone size={17} color={impacto.cor} />}
+                    <h2 style={{ fontSize: '15px', margin: 0 }}>{inc.titulo}</h2>
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>{resolvido ? t('Resolvido') : t(impacto.texto)}</span>
+                  </div>
+                  {inc.afetados.length > 0 && <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>{t('Afetados: {lista}', { lista: inc.afetados.join(', ') })}</div>}
+                  <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '8px' }}>
+                    {inc.atualizacoes.map((a, i) => (
+                      <li key={i} style={{ fontSize: '14px', lineHeight: 1.5 }}>
+                        <strong style={{ color: '#e2e8f0' }}>{t(ESTADOS_INCIDENTE[a.estado] || a.estado)}</strong>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}> · {quando(a.criado_em)}</span>
+                        <div style={{ color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>{a.mensagem}</div>
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+              )
+            })}
+          </section>
+        )}
 
         {dados.manutencoes.length > 0 && (
           <section style={{ marginBottom: '22px' }}>

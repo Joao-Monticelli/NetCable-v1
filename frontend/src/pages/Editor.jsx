@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug, Radar, Gauge } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Network, Settings, CheckCircle2, XCircle, MinusCircle, Loader2, Download, Upload, Share2, LogOut, UserCog, Bell, AlertTriangle, Activity, Eye, Pencil, RefreshCw, Link2Off, Boxes, Cable, Unplug, Radar, Gauge, Megaphone } from 'lucide-react'
 import PaginaStatusModal from '../components/Modals/PaginaStatusModal'
+import IncidentesModal from '../components/Modals/IncidentesModal'
+import CabosLldpModal from '../components/Modals/CabosLldpModal'
 import toast from 'react-hot-toast'
 import NetworkMap from '../components/NetworkMap'
 import AddEquipmentModal from '../components/Modals/AddEquipmentModal'
@@ -60,6 +62,8 @@ export default function Editor() {
   const [manutencaoAte, setManutencaoAte] = useState(null)
   const [descobertaAberta, setDescobertaAberta] = useState(false)
   const [paginaStatusAberta, setPaginaStatusAberta] = useState(false)
+  const [incidentesAbertos, setIncidentesAbertos] = useState(false)
+  const [cabosLldpAberto, setCabosLldpAberto] = useState(false)
   const handleStatusProjeto = useCallback((s) => setManutencaoAte(s.manutencao_ate || null), [])
   // Papel "visualizador": o editor vira somente leitura (o backend também bloqueia).
   const somenteLeitura = currentUser?.papel === 'visualizador'
@@ -264,6 +268,14 @@ export default function Editor() {
     navigate(`/editor/${destino}`)
   }
 
+  // Cables (and new neighbors) found by LLDP/CDP: added to the screen; saved with the map.
+  const handleCabosLldp = (cabos, equipamentos) => {
+    setCabosLldpAberto(false)
+    if (cabos.length) setMapEdges([...currentEdges.current, ...conexoesParaEdges(cabos)])
+    if (equipamentos.length) setNewEquipment(equipamentos.map((eq, i) => ({ ...eq, id: `${Date.now()}_l${i}` })))
+    toast.success(t('{c} cabo(s) e {e} equipamento(s) adicionados. Salve o mapa para manter.', { c: cabos.length, e: equipamentos.length }))
+  }
+
   const handleAdicionarDescobertos = (lista) => {
     setNewEquipment(lista.map((eq, i) => ({ ...eq, id: `${Date.now()}_d${i}` })))
     setDescobertaAberta(false)
@@ -381,6 +393,12 @@ export default function Editor() {
                 {projectId !== 'novo' && <button onClick={() => { setShowConfigMenu(false); setPaginaStatusAberta(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
                   <Gauge size={16} color="#10b981"/> {t('Página de status pública')}
                 </button>}
+                {projectId !== 'novo' && <button onClick={() => { setShowConfigMenu(false); setIncidentesAbertos(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Megaphone size={16} color="#f59e0b"/> {t('Incidentes')}
+                </button>}
+                {projectId !== 'novo' && !somenteLeitura && <button onClick={() => { setShowConfigMenu(false); setCabosLldpAberto(true) }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }}>
+                  <Cable size={16} color="#38bdf8"/> {t('Descobrir cabos (LLDP/CDP)')}
+                </button>}
                 {!somenteLeitura && <>
                 <button onClick={() => handleCopyLink(false)} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '10px', backgroundColor: 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', borderRadius: '4px' }} className="hover:bg-slate-700">
                   <Share2 size={16} color="#3b82f6"/> {t('Copiar Link Público')}
@@ -406,7 +424,9 @@ export default function Editor() {
       </div>
 
       <div style={{ flex: 1 }}>
-        {paginaStatusAberta && <PaginaStatusModal projectId={projectId} podeEditar={!somenteLeitura} onClose={() => setPaginaStatusAberta(false)} />}
+        {paginaStatusAberta && <PaginaStatusModal projectId={projectId} podeEditar={!somenteLeitura} onClose={() => setPaginaStatusAberta(false)} onIncidentes={() => { setPaginaStatusAberta(false); setIncidentesAbertos(true) }} />}
+        {incidentesAbertos && <IncidentesModal projectId={projectId} nodes={currentNodes.current} podeEditar={!somenteLeitura} onClose={() => setIncidentesAbertos(false)} />}
+        {cabosLldpAberto && <CabosLldpModal projectId={projectId} nodes={currentNodes.current} edges={currentEdges.current} modelos={modelos} onAplicar={handleCabosLldp} onClose={() => setCabosLldpAberto(false)} />}
         {descobertaAberta && <DescobertaModal nodes={currentNodes.current} onClose={() => setDescobertaAberta(false)} onAdicionar={handleAdicionarDescobertos} />}
         <NetworkMap initialNodes={mapNodes} initialEdges={mapEdges} newEquipment={newEquipment} onMapUpdate={handleMapUpdate} onAlertaQueda={handleAlertaQueda} onStatusProjeto={handleStatusProjeto} onAbrirMapa={abrirOutroMapa} readOnly={leitura} projectId={projectId} modelos={modelos} modelosProntos={modelosProntos} mostrarCabosPorta={mostrarCabos} foco={foco} />
       </div>

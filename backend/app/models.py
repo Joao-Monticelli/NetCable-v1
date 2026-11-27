@@ -27,6 +27,8 @@ class Usuario(Base):
     totp_ativo = Column(Boolean, default=False, nullable=False)
     totp_ultimo_passo = Column(Integer, nullable=True)  # last accepted time step (no code reuse)
     totp_recuperacao = Column(String, nullable=True)    # JSON list of SHA-256 hashes of recovery codes
+    # "local" (password stored here) or "ldap" (password checked against the directory, see app/ldap_auth.py).
+    origem = Column(String, default="local", nullable=False)
     projetos = relationship("Projeto", back_populates="usuario")
 
 
@@ -151,6 +153,37 @@ class Reconhecimento(Base):
     usuario = Column(String, nullable=False)
     nota = Column(String, nullable=True)
     criado_em = Column(DateTime, default=utcnow)
+
+
+class Incidente(Base):
+    """Incident posted by the team on the public status page ("Investigating slow uplink")."""
+    __tablename__ = "incidentes"
+    id = Column(Integer, primary_key=True, index=True)
+    projeto_id = Column(Integer, ForeignKey("projetos.id"), index=True, nullable=False)
+    titulo = Column(String, nullable=False)
+    impacto = Column(String, default="parcial", nullable=False)  # see IMPACTOS
+    estado = Column(String, default="investigando", nullable=False)  # see ESTADOS_INCIDENTE
+    afetados = Column(String, nullable=True)  # JSON list of equipment ids (shown by name on the page)
+    criado_em = Column(DateTime, default=utcnow, index=True)
+    resolvido_em = Column(DateTime, nullable=True)
+    usuario = Column(String, nullable=True)
+    atualizacoes = relationship("IncidenteAtualizacao", back_populates="incidente", cascade="all, delete-orphan",
+                                order_by="IncidenteAtualizacao.criado_em")
+
+
+IMPACTOS = ("menor", "parcial", "grave")
+ESTADOS_INCIDENTE = ("investigando", "identificado", "monitorando", "resolvido")
+
+
+class IncidenteAtualizacao(Base):
+    __tablename__ = "incidente_atualizacoes"
+    id = Column(Integer, primary_key=True, index=True)
+    incidente_id = Column(Integer, ForeignKey("incidentes.id"), index=True, nullable=False)
+    estado = Column(String, nullable=False)
+    mensagem = Column(String, nullable=False)
+    criado_em = Column(DateTime, default=utcnow)
+    usuario = Column(String, nullable=True)
+    incidente = relationship("Incidente", back_populates="atualizacoes")
 
 
 class Auditoria(Base):

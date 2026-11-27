@@ -8,6 +8,7 @@ import jwt
 from jwt import PyJWTError as JWTError
 import time
 import os
+import secrets
 import threading
 from collections import defaultdict
 from pydantic import BaseModel
@@ -15,7 +16,7 @@ from typing import Optional
 from .. import models, crud
 from ..i18n import IDIOMAS
 from ..database import SessionLocal
-from .. import auditoria, totp
+from .. import auditoria, ldap_auth, totp
 from ..nucleo import (
     ALGORITHM,
     HORARIO_RE,
@@ -105,6 +106,54 @@ LOGIN_WINDOW_SECONDS = 300
 LOGIN_MAX_FAILURES = 5
 
 
+def conferir_senha(db: Session, user: models.Usuario, senha: str):
+    """Password check for an existing user: the local hash, or the directory for LDAP users."""
+    if (user.origem or "local") != "ldap":
+        return bool(senha) and verificar_senha(senha, user.password_hash)
+    try:
+        return ldap_auth.autenticar(ldap_auth.ler_config(db, abrir_config), user.username, senha) is not None
+    except ldap_auth.ErroLdap as exc:
+        logger.warning("LDAP: não foi possível conferir a senha de %s: %s", user.username, exc)
+        return False
+
+
+def _login_ldap(db: Session, username: str, senha: str, request: Request):
+    """Login of a name that is not a local account. Returns the (created/updated) user or None."""
+    cfg = ldap_auth.ler_config(db, abrir_config)
+    nome = username.strip().lower()
+    if not cfg["ativo"] or not USERNAME_RE.match(nome):
+        return None
+    existente = crud.get_usuario(db, nome)
+    if existente and (existente.origem or "local") != "ldap":
+        return None  # never take over a local account with the same name
+    try:
+        info = ldap_auth.autenticar(cfg, nome, senha)
+    except ldap_auth.ErroLdap as exc:
+        logger.warning("LDAP: falha ao autenticar %s: %s", nome, exc)
+        auditoria.registrar(db, nome, "login.ldap_erro", str(exc)[:200], request)
+        raise HTTPException(status_code=503, detail="Não foi possível falar com o diretório (LDAP/AD). Tente de novo ou use uma conta local.")
+    if info is None:
+        return None
+    if not info["papel"]:
+        auditoria.registrar(db, nome, "login.ldap_sem_grupo", request=request)
+        raise HTTPException(status_code=403, detail="Seu usuário do diretório não está em nenhum grupo liberado para o NetCable.")
+    if existente:
+        mudancas = {"papel": info["papel"]}
+        if info["email"]:
+            mudancas["email"] = info["email"]
+        if existente.papel == "admin" and info["papel"] != "admin" and crud.contar_admins_ativos(db, exceto_id=existente.id) == 0:
+            mudancas.pop("papel")  # the directory would leave the system without an admin
+        if mudancas.get("papel") and mudancas["papel"] != existente.papel:
+            auditoria.registrar(db, nome, "usuario.alterado", f"{nome}: {existente.papel} -> {mudancas['papel']} (LDAP)", request)
+        return crud.atualizar_usuario(db, existente.id, **mudancas)
+    # Random hash: the account cannot log in with a local password; the directory checks it.
+    novo = crud.criar_usuario(db, nome, pwd_context.hash(secrets.token_urlsafe(32)), info["email"], info["papel"])
+    novo = crud.atualizar_usuario(db, novo.id, origem="ldap")
+    auditoria.registrar(db, nome, "usuario.criado", f"{nome} ({info['papel']}, LDAP)", request)
+    logger.info("LDAP: usuário %s criado (%s)", nome, info["papel"])
+    return novo
+
+
 @router.post("/api/login")
 def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     now = time.monotonic()
@@ -114,7 +163,12 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
         auditoria.registrar(db, form_data.username[:80], "login.bloqueado", request=request)
         raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
     user = crud.get_usuario(db, form_data.username)
-    if not user or not verificar_senha(form_data.password, user.password_hash):
+    if user and (user.origem or "local") != "ldap":
+        senha_ok = verificar_senha(form_data.password, user.password_hash)
+    else:
+        user = _login_ldap(db, form_data.username, form_data.password, request)
+        senha_ok = user is not None
+    if not senha_ok:
         login_failures[form_data.username].append(now)
         auditoria.registrar(db, form_data.username[:80], "login.falhou", request=request)
         raise HTTPException(status_code=400, detail="Usuário ou senha incorretos")
@@ -190,6 +244,7 @@ def usuario_publico(u: models.Usuario):
         "id": u.id, "username": u.username, "email": u.email, "papel": u.papel, "ativo": u.ativo,
         "receber_alertas": u.receber_alertas, "relatorio_diario": u.relatorio_diario,
         "relatorio_horario": u.relatorio_horario, "idioma": u.idioma or "en", "totp_ativo": bool(u.totp_ativo),
+        "origem": u.origem or "local",
     }
 
 
@@ -216,7 +271,7 @@ def iniciar_2fa(dados: Iniciar2faIn, db: Session = Depends(get_db), user: models
     """Step 1: new secret (shown as a QR code). 2FA is only enforced after /ativar with a valid code."""
     if user.totp_ativo:
         raise HTTPException(status_code=400, detail="A verificação em duas etapas já está ativa.")
-    if not verificar_senha(dados.senha, user.password_hash):
+    if not conferir_senha(db, user, dados.senha):
         raise HTTPException(status_code=400, detail="Senha atual incorreta.")
     segredo = totp.novo_segredo()
     user.totp_segredo = proteger_config({"s": segredo})
@@ -246,7 +301,7 @@ def ativar_2fa(dados: Codigo2faIn, request: Request, db: Session = Depends(get_d
 def desativar_2fa(dados: Codigo2faIn, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     if not user.totp_ativo:
         return {"status": "ok"}
-    if not dados.senha or not verificar_senha(dados.senha, user.password_hash):
+    if not dados.senha or not conferir_senha(db, user, dados.senha):
         raise HTTPException(status_code=400, detail="Senha atual incorreta.")
     if not _conferir_segundo_fator(db, user, dados.codigo):
         raise HTTPException(status_code=400, detail="Código de verificação incorreto.")
@@ -287,6 +342,8 @@ class PerfilUpdate(BaseModel):
 def atualizar_perfil_usuario(dados: PerfilUpdate, request: Request, db: Session = Depends(get_db), user: models.Usuario = Depends(get_current_user)):
     nova_hash = None
     if dados.nova_senha:
+        if user.origem == "ldap":
+            raise HTTPException(status_code=400, detail="Sua senha é a do diretório da empresa (LDAP/AD): troque-a por lá.")
         if len(dados.nova_senha) < 8:
             raise HTTPException(status_code=400, detail="A nova senha precisa ter pelo menos 8 caracteres.")
         if not dados.senha_atual or not verificar_senha(dados.senha_atual, user.password_hash):
@@ -370,6 +427,8 @@ def atualizar_usuario_rota(user_id: int, dados: UsuarioUpdate, request: Request,
         raise HTTPException(status_code=400, detail="O sistema precisa de pelo menos um administrador ativo.")
     nova_hash = None
     if dados.nova_senha:
+        if alvo.origem == "ldap":
+            raise HTTPException(status_code=400, detail="A senha deste usuário é a do diretório (LDAP/AD).")
         if len(dados.nova_senha) < 8:
             raise HTTPException(status_code=400, detail="A senha precisa ter pelo menos 8 caracteres.")
         nova_hash = pwd_context.hash(dados.nova_senha)

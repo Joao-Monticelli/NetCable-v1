@@ -206,6 +206,21 @@ export const api = {
   atualizarModelo(id, dados) { return requisicao(`/modelos/${id}`, { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar o modelo.')) },
   excluirModelo(id) { return requisicao(`/modelos/${id}`, { method: 'DELETE' }, t('Não foi possível excluir o modelo.')) },
 
+  // --- Incidents on the public status page ---
+  listarIncidentes(projetoId) { return requisicao(`/projetos/${projetoId}/incidentes`, {}, t('Não foi possível carregar os incidentes.')) },
+  criarIncidente(projetoId, dados) { return requisicao(`/projetos/${projetoId}/incidentes`, { method: 'POST', body: JSON.stringify(dados) }, t('Não foi possível publicar o incidente.')) },
+  editarIncidente(projetoId, id, dados) { return requisicao(`/projetos/${projetoId}/incidentes/${id}`, { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar o incidente.')) },
+  atualizarIncidente(projetoId, id, dados) { return requisicao(`/projetos/${projetoId}/incidentes/${id}/atualizacoes`, { method: 'POST', body: JSON.stringify(dados) }, t('Não foi possível publicar a atualização.')) },
+  excluirIncidente(projetoId, id) { return requisicao(`/projetos/${projetoId}/incidentes/${id}`, { method: 'DELETE' }, t('Não foi possível excluir o incidente.')) },
+
+  // --- Cables from LLDP/CDP ---
+  descobrirCabos(projetoId) { return requisicao(`/projetos/${projetoId}/descobrir-cabos`, { method: 'POST' }, t('Falha ao consultar os vizinhos LLDP/CDP.')) },
+
+  // --- Directory (LDAP / Active Directory), admin ---
+  obterLdap() { return requisicao('/config/ldap', {}, t('Não foi possível carregar a configuração do diretório.')) },
+  salvarLdap(dados) { return requisicao('/config/ldap', { method: 'PUT', body: JSON.stringify(dados) }, t('Não foi possível salvar a configuração do diretório.')) },
+  testarLdap(usuario, senha) { return requisicao('/config/ldap/teste', { method: 'POST', body: JSON.stringify({ usuario, senha: senha || null }) }, t('Falha ao consultar o diretório.')) },
+
   latenciaEquipamento(projetoId, equipamentoId, horas = 24) {
     return requisicao(`/projetos/${projetoId}/equipamentos/${encodeURIComponent(equipamentoId)}/latencia?horas=${horas}`, {}, t('Não foi possível carregar a latência.'))
   },

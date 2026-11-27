@@ -39,3 +39,14 @@ def test_senha_errada_falha():
     from app import snmp_service
     with pytest.raises(RuntimeError):
         snmp_service.test(_cfg(authPassword="errada123", timeout=1))
+
+
+def test_vizinhos_lldp_e_cdp_reais():
+    from app import snmp_service
+    vizinhos = {v["name"]: v for v in snmp_service.discover_neighbors(_cfg())}
+    assert set(vizinhos) == {"firewall-qa.lab.local", "nas-qa", "printer-01", "AP-Solto(FOC1234X)"}
+    fw = vizinhos["firewall-qa.lab.local"]
+    assert (fw["local_port"], fw["port"], fw["address"]) == ("ge-0/0/1", "port1", "192.0.2.10")
+    assert vizinhos["nas-qa"]["port"] == "eth0"  # the port id is a MAC
+    ap = vizinhos["AP-Solto(FOC1234X)"]
+    assert (ap["protocol"], ap["local_port"], ap["address"]) == ("CDP", "ge-0/0/3", "192.0.2.50")

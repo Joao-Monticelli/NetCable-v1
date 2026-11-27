@@ -42,7 +42,7 @@ jobs:
           python tests/snmpsim/gerar.py
           VARIACOES="$(python -c 'import os, snmpsim; print(os.path.join(os.path.dirname(snmpsim.__file__), "variation"))')"
           echo "variation modules: $VARIACOES"; ls "$VARIACOES" | head -3 || true
-          nohup snmpsim-command-responder --data-dir="$PWD/tests/snmpsim/dados" --cache-dir=/tmp/snmpsim-cache--variation-modules-dir="$VARIACOES" --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123 --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES > /tmp/snmpsim.log 2>&1 &
+          nohup snmpsim-command-responder --data-dir="$PWD/tests/snmpsim/dados" --cache-dir=/tmp/snmpsim-cache --variation-modules-dir="$VARIACOES" --agent-udpv4-endpoint=127.0.0.1:11161 --v3-user=netcable --v3-auth-key=authpass123 --v3-auth-proto=SHA --v3-priv-key=privpass123 --v3-priv-proto=AES > /tmp/snmpsim.log 2>&1 &
       - name: SNMPv3 integration tests (real agent, informative)
         id: snmp
         continue-on-error: true
